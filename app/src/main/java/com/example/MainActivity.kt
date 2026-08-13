@@ -45,6 +45,7 @@ import com.example.ui.theme.LexiReadTheme
 class MainActivity : ComponentActivity() {
 
   private lateinit var container: AppContainer
+  var onVolumeKeyEvent: ((Int) -> Boolean)? = null
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -55,14 +56,25 @@ class MainActivity : ComponentActivity() {
       val readerSettings by container.userPreferencesManager.readerSettings.collectAsStateWithLifecycle(initialValue = com.example.domain.model.ReaderSettings())
 
       LexiReadTheme(readerTheme = readerSettings.theme) {
-        LexiReadApp(container = container)
+        LexiReadApp(container = container, onSetVolumeKeyListener = { listener ->
+            onVolumeKeyEvent = listener
+        })
       }
     }
+  }
+
+  override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+    if (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP || keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN) {
+      if (onVolumeKeyEvent?.invoke(keyCode) == true) {
+        return true
+      }
+    }
+    return super.onKeyDown(keyCode, event)
   }
 }
 
 @Composable
-fun LexiReadApp(container: AppContainer) {
+fun LexiReadApp(container: AppContainer, onSetVolumeKeyListener: (((Int) -> Boolean)?) -> Unit) {
   val navController = rememberNavController()
   val navBackStackEntry by navController.currentBackStackEntryAsState()
   val currentRoute = navBackStackEntry?.destination?.route
@@ -119,7 +131,7 @@ fun LexiReadApp(container: AppContainer) {
 
       composable(Screen.Library.route) {
         val libraryViewModel: LibraryViewModel = viewModel(
-          factory = LibraryViewModel.Factory(container.bookRepository)
+          factory = LibraryViewModel.Factory(container.bookRepository, container.bookImporter)
         )
         LibraryScreen(
           viewModel = libraryViewModel,
@@ -182,9 +194,17 @@ fun LexiReadApp(container: AppContainer) {
             vocabularyRepository = container.vocabularyRepository,
             aiRepository = container.aiRepository,
             preferencesManager = container.userPreferencesManager,
-            ttsHelper = container.ttsHelper
+            ttsHelper = container.ttsHelper,
+            bookImporter = container.bookImporter,
+            paginationEngine = container.paginationEngine
           )
         )
+
+        androidx.compose.runtime.DisposableEffect(readerViewModel) {
+          onSetVolumeKeyListener { keyCode -> readerViewModel.onVolumeKeyEvent(keyCode) }
+          onDispose { onSetVolumeKeyListener(null) }
+        }
+
         ReaderScreen(
           viewModel = readerViewModel,
           onBackClick = { navController.popBackStack() }

@@ -11,11 +11,14 @@ data class BookEntity(
     val coverUrl: String?,
     val description: String?,
     val fullText: String?,
+    val filePath: String? = null,
+    val format: String = "TXT",
     val language: String,
     val subjects: String, // Comma separated
     val isFavorite: Boolean,
     val isSaved: Boolean,
     val isFinished: Boolean,
+    val isImported: Boolean = false,
     val addedTimestamp: Long
 )
 
@@ -24,6 +27,8 @@ data class ReadingProgressEntity(
     @PrimaryKey val bookId: String,
     val scrollOffset: Int,
     val currentChapter: Int,
+    val currentPage: Int = 0,
+    val totalPagesInChapter: Int = 1,
     val totalLength: Int,
     val percentCompleted: Float,
     val lastReadTimestamp: Long

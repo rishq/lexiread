@@ -25,7 +25,7 @@ import com.example.data.local.entity.TranslationCacheEntity
         TranslationCacheEntity::class,
         AiExplanationEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

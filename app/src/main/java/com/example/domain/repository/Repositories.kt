@@ -19,6 +19,7 @@ interface BookRepository {
     suspend fun searchBooksOnline(query: String): Result<List<Book>>
     suspend fun fetchAndSaveFullBook(book: Book): Result<Book>
     suspend fun addBookToLibrary(book: Book)
+    suspend fun deleteBook(id: String)
     suspend fun toggleFavorite(bookId: String, isFavorite: Boolean)
     suspend fun toggleFinished(bookId: String, isFinished: Boolean)
     suspend fun saveReadingProgress(progress: ReadingProgress)

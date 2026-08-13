@@ -4,11 +4,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.core.preferences.UserPreferencesManager
+import com.example.core.reader.BookImporter
+import com.example.core.reader.PaginationEngine
 import com.example.core.util.TTSHelper
 import com.example.domain.model.AiExplanation
 import com.example.domain.model.Book
+import com.example.domain.model.BookChapter
 import com.example.domain.model.Bookmark
 import com.example.domain.model.DictionaryEntry
+import com.example.domain.model.ReaderPage
 import com.example.domain.model.ReaderSettings
 import com.example.domain.model.ReaderThemeOption
 import com.example.domain.model.ReadingProgress
@@ -19,11 +23,13 @@ import com.example.domain.repository.BookRepository
 import com.example.domain.repository.DictionaryRepository
 import com.example.domain.repository.TranslationRepository
 import com.example.domain.repository.VocabularyRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class SelectedWordState(
     val word: String,
@@ -39,14 +45,20 @@ data class SelectedWordState(
 
 data class ReaderUiState(
     val book: Book? = null,
+    val chapters: List<BookChapter> = emptyList(),
+    val currentChapterIndex: Int = 0,
+    val currentPageIndex: Int = 0,
+    val pagesForCurrentChapter: List<ReaderPage> = emptyList(),
     val readerSettings: ReaderSettings = ReaderSettings(),
     val bookmarks: List<Bookmark> = emptyList(),
-    val initialScrollOffset: Int = 0,
     val selectedWordState: SelectedWordState? = null,
+    val showControlsOverlay: Boolean = false,
     val showSettingsDialog: Boolean = false,
     val showBookmarksDialog: Boolean = false,
+    val showTocDialog: Boolean = false,
     val showAiExplanationDialog: Boolean = false,
     val isLoadingBook: Boolean = false,
+    val isPaginating: Boolean = false,
     val errorMessage: String? = null
 )
 
@@ -58,23 +70,27 @@ class ReaderViewModel(
     private val vocabularyRepository: VocabularyRepository,
     private val aiRepository: AiRepository,
     private val preferencesManager: UserPreferencesManager,
-    private val ttsHelper: TTSHelper
+    private val ttsHelper: TTSHelper,
+    private val bookImporter: BookImporter,
+    private val paginationEngine: PaginationEngine
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ReaderUiState(isLoadingBook = true))
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
 
+    private var availableWidthPx: Int = 0
+    private var availableHeightPx: Int = 0
+
     init {
-        loadBookAndProgress()
+        loadBookAndChapters()
         observePreferencesAndBookmarks()
     }
 
-    private fun loadBookAndProgress() {
+    private fun loadBookAndChapters() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoadingBook = true)
             var book = bookRepository.getBookById(bookId)
-            if (book == null || book.fullText.isNullOrBlank()) {
-                // Fetch full text online or fallback
+            if (book == null || (book.fullText.isNullOrBlank() && book.filePath.isNullOrBlank())) {
                 val fetchResult = bookRepository.fetchAndSaveFullBook(
                     book ?: Book(id = bookId, title = "Classic Book", author = "Unknown")
                 )
@@ -82,10 +98,17 @@ class ReaderViewModel(
             }
 
             if (book != null) {
+                val chapters = bookImporter.getChaptersForBook(book)
+                val progress = bookRepository.getReadingProgress(bookId)
+
                 _uiState.value = _uiState.value.copy(
                     book = book,
+                    chapters = chapters,
                     isLoadingBook = false
                 )
+
+                // Trigger initial pagination if container size is ready
+                repaginateCurrentChapter()
             } else {
                 _uiState.value = _uiState.value.copy(
                     isLoadingBook = false,
@@ -102,12 +125,167 @@ class ReaderViewModel(
                 bookRepository.getBookmarks(bookId),
                 bookRepository.getReadingProgress(bookId)
             ) { settings, bookmarks, progress ->
+                val prevSettings = _uiState.value.readerSettings
                 _uiState.value = _uiState.value.copy(
                     readerSettings = settings,
-                    bookmarks = bookmarks,
-                    initialScrollOffset = progress?.scrollOffset ?: 0
+                    bookmarks = bookmarks
                 )
+
+                // Restore saved progress if chapter/page not initialized
+                if (progress != null && _uiState.value.pagesForCurrentChapter.isEmpty()) {
+                    _uiState.value = _uiState.value.copy(
+                        currentChapterIndex = progress.currentChapter.coerceIn(0, (_uiState.value.chapters.size - 1).coerceAtLeast(0)),
+                        currentPageIndex = progress.currentPage
+                    )
+                }
+
+                if (prevSettings != settings) {
+                    repaginateCurrentChapter()
+                }
             }.collect {}
+        }
+    }
+
+    fun onContainerDimensionsChanged(widthPx: Int, heightPx: Int) {
+        if (widthPx <= 0 || heightPx <= 0) return
+        if (this.availableWidthPx != widthPx || this.availableHeightPx != heightPx) {
+            this.availableWidthPx = widthPx
+            this.availableHeightPx = heightPx
+            repaginateCurrentChapter()
+        }
+    }
+
+    fun repaginateCurrentChapter() {
+        val currentState = _uiState.value
+        val chapters = currentState.chapters
+        if (chapters.isEmpty() || availableWidthPx <= 0 || availableHeightPx <= 0) return
+
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isPaginating = true)
+            val chapterIdx = currentState.currentChapterIndex.coerceIn(0, chapters.size - 1)
+            val chapter = chapters[chapterIdx]
+
+            val pages = paginationEngine.paginateChapter(
+                chapter = chapter,
+                settings = currentState.readerSettings,
+                availableWidthPx = availableWidthPx,
+                availableHeightPx = availableHeightPx
+            )
+
+            val newPageIndex = currentState.currentPageIndex.coerceIn(0, (pages.size - 1).coerceAtLeast(0))
+
+            _uiState.value = _uiState.value.copy(
+                pagesForCurrentChapter = pages,
+                currentPageIndex = newPageIndex,
+                isPaginating = false
+            )
+
+            saveCurrentProgress()
+        }
+    }
+
+    fun nextPage() {
+        val state = _uiState.value
+        if (state.currentPageIndex < state.pagesForCurrentChapter.size - 1) {
+            _uiState.value = state.copy(currentPageIndex = state.currentPageIndex + 1)
+            saveCurrentProgress()
+        } else if (state.currentChapterIndex < state.chapters.size - 1) {
+            // Next chapter
+            goToChapter(state.currentChapterIndex + 1, targetPageIndex = 0)
+        }
+    }
+
+    fun previousPage() {
+        val state = _uiState.value
+        if (state.currentPageIndex > 0) {
+            _uiState.value = state.copy(currentPageIndex = state.currentPageIndex - 1)
+            saveCurrentProgress()
+        } else if (state.currentChapterIndex > 0) {
+            // Previous chapter, last page
+            goToChapter(state.currentChapterIndex - 1, targetPageIndex = Int.MAX_VALUE)
+        }
+    }
+
+    fun goToPage(pageIndex: Int) {
+        val maxPage = (_uiState.value.pagesForCurrentChapter.size - 1).coerceAtLeast(0)
+        _uiState.value = _uiState.value.copy(currentPageIndex = pageIndex.coerceIn(0, maxPage))
+        saveCurrentProgress()
+    }
+
+    fun goToChapter(chapterIndex: Int, targetPageIndex: Int = 0) {
+        val chapters = _uiState.value.chapters
+        if (chapters.isEmpty()) return
+        val validChapterIdx = chapterIndex.coerceIn(0, chapters.size - 1)
+
+        _uiState.value = _uiState.value.copy(
+            currentChapterIndex = validChapterIdx,
+            currentPageIndex = 0,
+            showTocDialog = false
+        )
+
+        viewModelScope.launch {
+            val chapter = chapters[validChapterIdx]
+            val pages = paginationEngine.paginateChapter(
+                chapter = chapter,
+                settings = _uiState.value.readerSettings,
+                availableWidthPx = availableWidthPx,
+                availableHeightPx = availableHeightPx
+            )
+
+            val pageIdx = if (targetPageIndex == Int.MAX_VALUE) {
+                (pages.size - 1).coerceAtLeast(0)
+            } else {
+                targetPageIndex.coerceIn(0, (pages.size - 1).coerceAtLeast(0))
+            }
+
+            _uiState.value = _uiState.value.copy(
+                pagesForCurrentChapter = pages,
+                currentPageIndex = pageIdx
+            )
+            saveCurrentProgress()
+        }
+    }
+
+    private fun saveCurrentProgress() {
+        val state = _uiState.value
+        val currentBook = state.book ?: return
+        val totalChapters = state.chapters.size.coerceAtLeast(1)
+        val percent = ((state.currentChapterIndex.toFloat() + (state.currentPageIndex.toFloat() / state.pagesForCurrentChapter.size.coerceAtLeast(1))) / totalChapters * 100f).coerceIn(0f, 100f)
+
+        viewModelScope.launch {
+            bookRepository.saveReadingProgress(
+                ReadingProgress(
+                    bookId = currentBook.id,
+                    currentChapter = state.currentChapterIndex,
+                    currentPage = state.currentPageIndex,
+                    totalPagesInChapter = state.pagesForCurrentChapter.size,
+                    percentCompleted = percent,
+                    lastReadTimestamp = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+
+    fun toggleControlsOverlay() {
+        _uiState.value = _uiState.value.copy(
+            showControlsOverlay = !_uiState.value.showControlsOverlay
+        )
+    }
+
+    fun onVolumeKeyEvent(keyCode: Int): Boolean {
+        val settings = _uiState.value.readerSettings
+        if (!settings.volumeKeysPageTurn) return false
+
+        return when (keyCode) {
+            android.view.KeyEvent.KEYCODE_VOLUME_UP -> {
+                nextPage()
+                true
+            }
+            android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                previousPage()
+                true
+            }
+            else -> false
         }
     }
 
@@ -126,7 +304,6 @@ class ReaderViewModel(
 
         _uiState.value = _uiState.value.copy(selectedWordState = initialState)
 
-        // 1. Fetch Dictionary & Translation in parallel
         viewModelScope.launch {
             val dictResult = dictionaryRepository.lookupWord(cleanWord)
             val current = _uiState.value.selectedWordState
@@ -206,30 +383,13 @@ class ReaderViewModel(
         ttsHelper.speak(text)
     }
 
-    fun saveScrollPosition(scrollOffset: Int, totalLength: Int) {
-        val currentBook = _uiState.value.book ?: return
-        val percent = if (totalLength > 0) (scrollOffset.toFloat() / totalLength * 100f).coerceIn(0f, 100f) else 0f
-
-        viewModelScope.launch {
-            bookRepository.saveReadingProgress(
-                ReadingProgress(
-                    bookId = currentBook.id,
-                    scrollOffset = scrollOffset,
-                    totalLength = totalLength,
-                    percentCompleted = percent,
-                    lastReadTimestamp = System.currentTimeMillis()
-                )
-            )
-        }
-    }
-
-    fun addBookmark(scrollOffset: Int, snippet: String) {
+    fun addBookmarkSnippet(snippet: String) {
         val currentBook = _uiState.value.book ?: return
         viewModelScope.launch {
             bookRepository.addBookmark(
                 Bookmark(
                     bookId = currentBook.id,
-                    scrollOffset = scrollOffset,
+                    scrollOffset = _uiState.value.currentPageIndex,
                     snippet = snippet.take(100)
                 )
             )
@@ -254,6 +414,10 @@ class ReaderViewModel(
         _uiState.value = _uiState.value.copy(showBookmarksDialog = show)
     }
 
+    fun toggleTocDialog(show: Boolean) {
+        _uiState.value = _uiState.value.copy(showTocDialog = show)
+    }
+
     fun toggleAiExplanationDialog(show: Boolean) {
         _uiState.value = _uiState.value.copy(showAiExplanationDialog = show)
     }
@@ -270,6 +434,22 @@ class ReaderViewModel(
         viewModelScope.launch { preferencesManager.updateLineHeight(multiplier) }
     }
 
+    fun updateFontFamily(family: String) {
+        viewModelScope.launch { preferencesManager.updateFontFamily(family) }
+    }
+
+    fun updateMarginDp(marginDp: Int) {
+        viewModelScope.launch { preferencesManager.updateMarginDp(marginDp) }
+    }
+
+    fun updateIsPaginated(isPaginated: Boolean) {
+        viewModelScope.launch { preferencesManager.updateIsPaginated(isPaginated) }
+    }
+
+    fun updateVolumeKeysPageTurn(enabled: Boolean) {
+        viewModelScope.launch { preferencesManager.updateVolumeKeysPageTurn(enabled) }
+    }
+
     class Factory(
         private val bookId: String,
         private val bookRepository: BookRepository,
@@ -278,7 +458,9 @@ class ReaderViewModel(
         private val vocabularyRepository: VocabularyRepository,
         private val aiRepository: AiRepository,
         private val preferencesManager: UserPreferencesManager,
-        private val ttsHelper: TTSHelper
+        private val ttsHelper: TTSHelper,
+        private val bookImporter: BookImporter,
+        private val paginationEngine: PaginationEngine
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -290,7 +472,9 @@ class ReaderViewModel(
                 vocabularyRepository,
                 aiRepository,
                 preferencesManager,
-                ttsHelper
+                ttsHelper,
+                bookImporter,
+                paginationEngine
             ) as T
         }
     }

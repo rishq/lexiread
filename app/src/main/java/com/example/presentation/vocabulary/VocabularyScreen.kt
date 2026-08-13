@@ -106,13 +106,16 @@ fun VocabularyScreen(
             if (state.words.isNotEmpty()) {
                 Button(
                     onClick = { viewModel.startReviewMode() },
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                    modifier = Modifier.testTag("start_review_button")
+                    modifier = Modifier
+                        .height(36.dp)
+                        .testTag("start_review_button")
                 ) {
-                    Icon(imageVector = Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(imageVector = Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(15.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = "Review", fontSize = 13.sp)
+                    Text(text = "Review", fontSize = 13.sp, fontWeight = FontWeight.Medium)
                 }
             }
         }
@@ -443,14 +446,18 @@ private fun WordReviewDialog(
                 ) {
                     Button(
                         onClick = { onAnswer(false) },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Refresh,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onErrorContainer
+                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Need Review", color = MaterialTheme.colorScheme.onErrorContainer, fontSize = 13.sp)
@@ -458,11 +465,19 @@ private fun WordReviewDialog(
 
                     Button(
                         onClick = { onAnswer(true) },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(imageVector = Icons.Filled.Check, contentDescription = null, tint = Color.White)
+                        Icon(
+                            imageVector = Icons.Filled.Check,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Got It!", color = Color.White, fontSize = 13.sp)
                     }

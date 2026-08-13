@@ -42,6 +42,14 @@ class AppContainer(private val context: Context) {
         TTSHelper(context.applicationContext)
     }
 
+    val bookImporter: com.example.core.reader.BookImporter by lazy {
+        com.example.core.reader.BookImporter(context.applicationContext)
+    }
+
+    val paginationEngine: com.example.core.reader.PaginationEngine by lazy {
+        com.example.core.reader.PaginationEngine(context.applicationContext)
+    }
+
     val bookRepository: BookRepository by lazy {
         val repo = BookRepositoryImpl(
             bookDao = database.bookDao(),

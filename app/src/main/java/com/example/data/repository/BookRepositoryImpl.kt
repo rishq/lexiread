@@ -134,6 +134,14 @@ class BookRepositoryImpl(
         bookDao.insertBook(entity)
     }
 
+    override suspend fun deleteBook(id: String) {
+        val book = bookDao.getBookById(id)
+        if (book?.filePath != null) {
+            runCatching { java.io.File(book.filePath).delete() }
+        }
+        bookDao.deleteBook(id)
+    }
+
     override suspend fun toggleFavorite(bookId: String, isFavorite: Boolean) {
         bookDao.setFavorite(bookId, isFavorite)
     }
@@ -232,11 +240,14 @@ fun BookEntity.toDomain() = Book(
     coverUrl = coverUrl,
     description = description,
     fullText = fullText,
+    filePath = filePath,
+    format = format,
     language = language,
     subjects = if (subjects.isBlank()) emptyList() else subjects.split(", "),
     isFavorite = isFavorite,
     isSaved = isSaved,
     isFinished = isFinished,
+    isImported = isImported,
     addedTimestamp = addedTimestamp
 )
 
@@ -247,11 +258,14 @@ fun Book.toEntity() = BookEntity(
     coverUrl = coverUrl,
     description = description,
     fullText = fullText,
+    filePath = filePath,
+    format = format,
     language = language,
     subjects = subjects.joinToString(", "),
     isFavorite = isFavorite,
     isSaved = isSaved,
     isFinished = isFinished,
+    isImported = isImported,
     addedTimestamp = addedTimestamp
 )
 
@@ -259,6 +273,8 @@ fun ReadingProgressEntity.toDomain() = ReadingProgress(
     bookId = bookId,
     scrollOffset = scrollOffset,
     currentChapter = currentChapter,
+    currentPage = currentPage,
+    totalPagesInChapter = totalPagesInChapter,
     totalLength = totalLength,
     percentCompleted = percentCompleted,
     lastReadTimestamp = lastReadTimestamp
@@ -268,6 +284,8 @@ fun ReadingProgress.toEntity() = ReadingProgressEntity(
     bookId = bookId,
     scrollOffset = scrollOffset,
     currentChapter = currentChapter,
+    currentPage = currentPage,
+    totalPagesInChapter = totalPagesInChapter,
     totalLength = totalLength,
     percentCompleted = percentCompleted,
     lastReadTimestamp = lastReadTimestamp

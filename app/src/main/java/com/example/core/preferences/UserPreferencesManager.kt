@@ -20,6 +20,9 @@ class UserPreferencesManager(private val context: Context) {
         val LINE_HEIGHT = floatPreferencesKey("line_height_multiplier")
         val FONT_FAMILY = stringPreferencesKey("font_family")
         val TARGET_LANG = stringPreferencesKey("target_language")
+        val MARGIN_DP = androidx.datastore.preferences.core.intPreferencesKey("margin_dp")
+        val IS_PAGINATED = androidx.datastore.preferences.core.booleanPreferencesKey("is_paginated")
+        val VOLUME_KEYS_PAGE_TURN = androidx.datastore.preferences.core.booleanPreferencesKey("volume_keys_page_turn")
     }
 
     val readerSettings: Flow<ReaderSettings> = context.dataStore.data.map { prefs ->
@@ -32,12 +35,18 @@ class UserPreferencesManager(private val context: Context) {
         val fontSize = prefs[Keys.FONT_SIZE] ?: 18f
         val lineHeight = prefs[Keys.LINE_HEIGHT] ?: 1.4f
         val fontFamily = prefs[Keys.FONT_FAMILY] ?: "Serif"
+        val marginDp = prefs[Keys.MARGIN_DP] ?: 20
+        val isPaginated = prefs[Keys.IS_PAGINATED] ?: true
+        val volumeKeysPageTurn = prefs[Keys.VOLUME_KEYS_PAGE_TURN] ?: false
 
         ReaderSettings(
             theme = theme,
             fontSizeSp = fontSize,
             lineHeightMultiplier = lineHeight,
-            fontFamilyName = fontFamily
+            fontFamilyName = fontFamily,
+            marginDp = marginDp,
+            isPaginated = isPaginated,
+            volumeKeysPageTurn = volumeKeysPageTurn
         )
     }
 
@@ -72,6 +81,24 @@ class UserPreferencesManager(private val context: Context) {
     suspend fun updateTargetLanguage(lang: String) {
         context.dataStore.edit { prefs ->
             prefs[Keys.TARGET_LANG] = lang
+        }
+    }
+
+    suspend fun updateMarginDp(marginDp: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.MARGIN_DP] = marginDp
+        }
+    }
+
+    suspend fun updateIsPaginated(isPaginated: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.IS_PAGINATED] = isPaginated
+        }
+    }
+
+    suspend fun updateVolumeKeysPageTurn(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.VOLUME_KEYS_PAGE_TURN] = enabled
         }
     }
 }
