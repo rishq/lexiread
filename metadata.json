@@ -1,0 +1,6 @@
+{
+  "name": "LexiRead",
+  "description": "AI-powered English reader with instant translation, dictionary, vocabulary trainer, and AI tutor.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
