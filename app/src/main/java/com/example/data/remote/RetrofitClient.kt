@@ -8,7 +8,6 @@ import com.example.data.remote.api.OpenLibraryApi
 import com.example.data.remote.api.TranslationApi
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
-import okhttp3.CertificatePinner
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -19,11 +18,6 @@ object RetrofitClient {
 
     private val moshi: Moshi = Moshi.Builder()
         .add(KotlinJsonAdapterFactory())
-        .build()
-
-    // Certificate Pinner for Google Generative AI & primary API endpoints
-    private val certificatePinner = CertificatePinner.Builder()
-        .add("generativelanguage.googleapis.com", "sha256/gB9F2iIu9TInT1R4i3Uu6M5aA+p2l4Y6+w6mO=") // Example pin configuration for SSL safety
         .build()
 
     // Primary API Client (REST APIs) with conditional logging

@@ -2,4 +2,6 @@
 <full-backup-content>
     <exclude domain="database" path="lexiread_db" />
     <exclude domain="sharedpref" path="." />
+    <exclude domain="cache" path="." />
+    <exclude domain="file" path="." />
 </full-backup-content>

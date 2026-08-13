@@ -68,7 +68,7 @@ class BookRepositoryImpl(
             val response = gutendexApi.searchBooks(query)
             val results = response.results?.map { dto ->
                 val authorStr = dto.authors?.joinToString(", ") { it.name ?: "" } ?: "Unknown Author"
-                val cover = dto.formats?.get("image/jpeg")
+                val cover = dto.formats?.get("image/jpeg")?.replace("http://", "https://")
                     ?: "https://www.gutenberg.org/cache/epub/${dto.id}/pg${dto.id}.cover.medium.jpg"
                 val textUrl = dto.formats?.get("text/plain; charset=us-ascii")
                     ?: dto.formats?.get("text/plain; charset=utf-8")
@@ -107,10 +107,10 @@ class BookRepositoryImpl(
             if (idNum != null) {
                 try {
                     val dto = gutendexApi.getBookById(idNum)
-                    val textUrl = dto.formats?.get("text/plain; charset=utf-8")
+                    val textUrl = (dto.formats?.get("text/plain; charset=utf-8")
                         ?: dto.formats?.get("text/plain; charset=us-ascii")
                         ?: dto.formats?.get("text/plain")
-                        ?: "https://www.gutenberg.org/files/$idNum/$idNum-0.txt"
+                        ?: "https://www.gutenberg.org/files/$idNum/$idNum-0.txt").replace("http://", "https://")
 
                     val responseBody = gutendexApi.downloadTextContent(textUrl)
                     textContent = downloadTextSafely(textUrl, responseBody)

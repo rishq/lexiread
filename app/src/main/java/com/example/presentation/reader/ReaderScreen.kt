@@ -41,6 +41,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.remember
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ReaderScreen(
@@ -49,12 +54,13 @@ fun ReaderScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val scrollState = rememberScrollState()
+    val listState = rememberLazyListState()
 
     // Save reading progress on scroll changes
-    LaunchedEffect(scrollState.value, scrollState.maxValue) {
-        if (scrollState.maxValue > 0) {
-            viewModel.saveScrollPosition(scrollState.value, scrollState.maxValue)
+    LaunchedEffect(listState.firstVisibleItemIndex, listState.layoutInfo.totalItemsCount) {
+        if (listState.layoutInfo.totalItemsCount > 0) {
+            val progress = listState.firstVisibleItemIndex.toFloat() / listState.layoutInfo.totalItemsCount.toFloat()
+            viewModel.saveScrollPosition(listState.firstVisibleItemIndex, listState.layoutInfo.totalItemsCount)
         }
     }
 
@@ -77,7 +83,7 @@ fun ReaderScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.addBookmark(scrollState.value, "Bookmark at ${scrollState.value}") }) {
+                    IconButton(onClick = { viewModel.addBookmark(listState.firstVisibleItemIndex, "Bookmark at section ${listState.firstVisibleItemIndex + 1}") }) {
                         Icon(
                             imageVector = Icons.Filled.BookmarkBorder,
                             contentDescription = "Add Bookmark"
@@ -109,48 +115,60 @@ fun ReaderScreen(
                         .padding(16.dp)
                 )
             } else {
-                val bookText = uiState.book?.description ?: "No text content available."
-                val words = bookText.split("\\s+".toRegex())
+                val bookText = uiState.book?.fullText ?: uiState.book?.description ?: "No text content available."
+                val paragraphs = remember(bookText) { 
+                    bookText.split("\n\n").filter { it.isNotBlank() }
+                }
 
-                Column(
+                LazyColumn(
+                    state = listState,
                     modifier = Modifier
                         .fillMaxSize()
-                        .verticalScroll(scrollState)
-                        .padding(20.dp)
+                        .padding(horizontal = 20.dp)
                 ) {
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Start
-                    ) {
-                        words.forEach { word ->
-                            val cleanWord = word.trim { !it.isLetterOrDigit() }
-                            Text(
-                                text = "$word ",
-                                style = MaterialTheme.typography.bodyLarge.copy(
-                                    fontSize = uiState.readerSettings.fontSizeSp.sp,
-                                    lineHeight = (uiState.readerSettings.fontSizeSp * uiState.readerSettings.lineHeightMultiplier).sp,
-                                    fontFamily = when (uiState.readerSettings.fontFamilyName.lowercase()) {
-                                        "serif" -> FontFamily.Serif
-                                        "sans-serif", "sans" -> FontFamily.SansSerif
-                                        "monospace", "mono" -> FontFamily.Monospace
-                                        else -> FontFamily.Serif
+                    itemsIndexed(paragraphs) { _, paragraph ->
+                        val words = remember(paragraph) { paragraph.split("\\s+".toRegex()) }
+                        FlowRow(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Start
+                        ) {
+                            words.forEach { word ->
+                                val cleanWord = word.trim { !it.isLetterOrDigit() }
+                                Text(
+                                    text = "$word ",
+                                    style = MaterialTheme.typography.bodyLarge.copy(
+                                        fontSize = uiState.readerSettings.fontSizeSp.sp,
+                                        lineHeight = (uiState.readerSettings.fontSizeSp * uiState.readerSettings.lineHeightMultiplier).sp,
+                                        fontFamily = when (uiState.readerSettings.fontFamilyName.lowercase()) {
+                                            "serif" -> FontFamily.Serif
+                                            "sans-serif", "sans" -> FontFamily.SansSerif
+                                            "monospace", "mono" -> FontFamily.Monospace
+                                            else -> FontFamily.Serif
+                                        }
+                                    ),
+                                    modifier = Modifier.clickable {
+                                        if (cleanWord.isNotEmpty()) {
+                                            viewModel.onWordSelected(cleanWord, paragraph)
+                                        }
                                     }
-                                ),
-                                modifier = Modifier.clickable {
-                                    if (cleanWord.isNotEmpty()) {
-                                        viewModel.onWordSelected(cleanWord, bookText.take(300))
-                                    }
-                                }
-                            )
+                                )
+                            }
                         }
                     }
-                    Spacer(modifier = Modifier.height(60.dp))
+                    item {
+                        Spacer(modifier = Modifier.height(60.dp))
+                    }
                 }
 
                 // Progress indicator at the bottom
-                val progress = if (scrollState.maxValue > 0) scrollState.value.toFloat() / scrollState.maxValue.toFloat() else 0f
+                val progress = if (listState.layoutInfo.totalItemsCount > 0) {
+                    (listState.firstVisibleItemIndex + 1).toFloat() / listState.layoutInfo.totalItemsCount.toFloat()
+                } else 0f
+
                 LinearProgressIndicator(
-                    progress = { progress },
+                    progress = { progress.coerceIn(0f, 1f) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
