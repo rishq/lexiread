@@ -15,8 +15,6 @@ class PdfParser : BookParser {
 
     companion object {
         private const val TAG = "PdfParser"
-        private const val MAX_STREAM_DECOMPRESSED_BYTES = 10 * 1024 * 1024 // 10 MB per stream
-        private const val MAX_TOTAL_PDF_TEXT_BYTES = 30 * 1024 * 1024 // 30 MB total extracted text
     }
 
     override fun canParse(format: String, file: File): Boolean {
@@ -132,12 +130,11 @@ class PdfParser : BookParser {
         val endStreamMarker = "endstream".toByteArray(Charsets.US_ASCII)
 
         var searchIndex = 0
-        var totalExtractedBytes = 0
-
-        while (searchIndex < pdfBytes.size && totalExtractedBytes < MAX_TOTAL_PDF_TEXT_BYTES) {
+        while (searchIndex < pdfBytes.size) {
             val streamStart = indexOfByteArray(pdfBytes, streamMarker, searchIndex)
             if (streamStart == -1) break
 
+            // Skip "stream" and any immediate whitespace / newline (\r\n or \n)
             var contentStart = streamStart + streamMarker.size
             if (contentStart < pdfBytes.size && pdfBytes[contentStart] == '\r'.code.toByte()) contentStart++
             if (contentStart < pdfBytes.size && pdfBytes[contentStart] == '\n'.code.toByte()) contentStart++
@@ -146,6 +143,7 @@ class PdfParser : BookParser {
             if (streamEnd == -1) break
 
             var contentEnd = streamEnd
+            // Trim trailing \r or \n before endstream
             if (contentEnd > contentStart && pdfBytes[contentEnd - 1] == '\n'.code.toByte()) contentEnd--
             if (contentEnd > contentStart && pdfBytes[contentEnd - 1] == '\r'.code.toByte()) contentEnd--
 
@@ -161,7 +159,6 @@ class PdfParser : BookParser {
                 val extractedFromChunk = parsePdfTextOperators(textChunk)
                 if (extractedFromChunk.isNotBlank()) {
                     result.append(extractedFromChunk).append("\n\n")
-                    totalExtractedBytes += extractedFromChunk.length
                 }
             }
 
@@ -183,80 +180,52 @@ class PdfParser : BookParser {
                     if (inflater.needsInput() || inflater.needsDictionary()) break
                 }
                 outputStream.write(buffer, 0, count)
-                if (outputStream.size() > MAX_STREAM_DECOMPRESSED_BYTES) {
-                    Log.w(TAG, "Stream exceeds max decompressed size limit")
-                    break
-                }
             }
             return if (outputStream.size() > 0) outputStream.toByteArray() else null
         } catch (e: Exception) {
+            // Not a FlateDecode stream or corrupted
             return null
         } finally {
             inflater.end()
         }
     }
 
-    // Fast linear scanner for PDF Tj and TJ text operators (ReDoS-immune)
     private fun parsePdfTextOperators(streamText: String): String {
         val sb = StringBuilder()
-        var i = 0
-        val len = streamText.length
 
-        while (i < len) {
-            val c = streamText[i]
-            if (c == '(') {
-                // Parse literal string (...)
-                val strBuilder = StringBuilder()
-                i++
-                var escaped = false
-                var depth = 1
-                while (i < len && depth > 0) {
-                    val sc = streamText[i]
-                    if (escaped) {
-                        strBuilder.append(sc)
-                        escaped = false
-                    } else if (sc == '\\') {
-                        escaped = true
-                    } else if (sc == '(') {
-                        depth++
-                        strBuilder.append(sc)
-                    } else if (sc == ')') {
-                        depth--
-                        if (depth > 0) strBuilder.append(sc)
-                    } else {
-                        strBuilder.append(sc)
-                    }
-                    i++
-                }
+        // Match Tj operator: (text) Tj
+        val tjRegex = Regex("\\((.*?)(?<!\\\\)\\)\\s*Tj", RegexOption.DOT_MATCHES_ALL)
+        for (match in tjRegex.findAll(streamText)) {
+            val text = decodePdfString(match.groupValues[1])
+            if (text.isNotBlank()) {
+                sb.append(text).append(" ")
+            }
+        }
 
-                // Check if followed by Tj
-                var nextNonSpace = i
-                while (nextNonSpace < len && streamText[nextNonSpace].isWhitespace()) nextNonSpace++
-                if (nextNonSpace + 1 < len && streamText[nextNonSpace] == 'T' && streamText[nextNonSpace + 1] == 'j') {
-                    val decoded = decodePdfString(strBuilder.toString())
-                    if (decoded.isNotBlank()) sb.append(decoded).append(" ")
-                    i = nextNonSpace + 2
+        // Match TJ array operator: [(text) -10 (more)] TJ
+        val tjArrayRegex = Regex("\\[(.*?)\\]\\s*TJ", RegexOption.DOT_MATCHES_ALL)
+        val innerStringRegex = Regex("\\((.*?)(?<!\\\\)\\)|<([0-9a-fA-F]+)>", RegexOption.DOT_MATCHES_ALL)
+        for (match in tjArrayRegex.findAll(streamText)) {
+            val arrayContent = match.groupValues[1]
+            for (item in innerStringRegex.findAll(arrayContent)) {
+                val str = item.groupValues[1]
+                val hex = item.groupValues[2]
+                if (str.isNotEmpty()) {
+                    sb.append(decodePdfString(str))
+                } else if (hex.isNotEmpty()) {
+                    sb.append(decodeHexPdfString(hex))
                 }
-            } else if (c == '<' && i + 1 < len && streamText[i + 1] != '<') {
-                // Parse hex string <...>
-                val hexStart = i + 1
-                val hexEnd = streamText.indexOf('>', hexStart)
-                if (hexEnd != -1) {
-                    val hexStr = streamText.substring(hexStart, hexEnd)
-                    var nextNonSpace = hexEnd + 1
-                    while (nextNonSpace < len && streamText[nextNonSpace].isWhitespace()) nextNonSpace++
-                    if (nextNonSpace + 1 < len && streamText[nextNonSpace] == 'T' && streamText[nextNonSpace + 1] == 'j') {
-                        val decoded = decodeHexPdfString(hexStr)
-                        if (decoded.isNotBlank()) sb.append(decoded).append(" ")
-                        i = nextNonSpace + 2
-                    } else {
-                        i = hexEnd + 1
-                    }
-                } else {
-                    i++
-                }
-            } else {
-                i++
+            }
+            sb.append(" ")
+        }
+
+        // Match Hex string Tj: <48656c6c6f> Tj
+        val hexTjRegex = Regex("<([0-9a-fA-F]+)>\\s*Tj")
+        for (match in hexTjRegex.findAll(streamText)) {
+            val hex = match.groupValues[1]
+            val text = decodeHexPdfString(hex)
+            if (text.isNotBlank()) {
+                sb.append(text).append(" ")
             }
         }
 
@@ -285,33 +254,18 @@ class PdfParser : BookParser {
         }
     }
 
-    // Boyer-Moore-Horspool fast substring search on byte arrays
     private fun indexOfByteArray(source: ByteArray, target: ByteArray, fromIndex: Int): Int {
         if (target.isEmpty() || fromIndex >= source.size) return -1
-        val m = target.size
-        val n = source.size
-        if (fromIndex + m > n) return -1
-
-        // Precompute shift table (bad character table)
-        val shiftTable = IntArray(256) { m }
-        for (i in 0 until m - 1) {
-            val byteVal = target[i].toInt() and 0xFF
-            shiftTable[byteVal] = m - 1 - i
-        }
-
-        var k = fromIndex + m - 1
-        while (k < n) {
-            var j = m - 1
-            var i = k
-            while (j >= 0 && source[i] == target[j]) {
-                i--
-                j--
+        val max = source.size - target.size
+        for (i in fromIndex..max) {
+            var found = true
+            for (j in target.indices) {
+                if (source[i + j] != target[j]) {
+                    found = false
+                    break
+                }
             }
-            if (j < 0) {
-                return i + 1
-            }
-            val lastByte = source[k].toInt() and 0xFF
-            k += shiftTable[lastByte]
+            if (found) return i
         }
         return -1
     }

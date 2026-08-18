@@ -49,6 +49,22 @@ LexiRead combines an e-book reader with language-learning utilities. Readers can
 - `app/src/main/java/com/example/domain/`: Domain models and repository interface declarations.
 - `app/src/main/java/com/example/presentation/`: Composables and ViewModels for Library, Reader, Explore, Vocabulary, and Settings screens.
 
+## CI/CD Pipeline (GitHub Actions)
+
+The repository includes a complete automated CI/CD workflow (`.github/workflows/android_ci_cd.yml`):
+
+- **Automatic Build & Test on Push / Pull Request**: Every push or PR to `main`/`master` runs unit tests and builds the debug and release APKs / AAB bundles.
+- **Automated GitHub Releases on Tags**: Push a tag (e.g. `v1.0.0`) to automatically trigger a build, create a GitHub Release, generate release notes, and attach the APK and AAB binaries.
+- **Manual Trigger (`workflow_dispatch`)**: Run the workflow directly from the GitHub Actions tab with custom release tags and pre-release options.
+- **GitHub Artifacts**: All successful builds upload artifacts (`LexiRead-debug.apk`, `LexiRead-release.apk`, `LexiRead-release.aab`) accessible directly in the workflow summary.
+
+### Setting up Repository Secrets (Optional)
+To sign release APKs and enable Gemini API in production builds, configure these in **GitHub Repository Settings -> Secrets and variables -> Actions**:
+- `GEMINI_API_KEY`: Your Gemini API Key (injected into `.env`).
+- `RELEASE_KEYSTORE_BASE64`: Base64-encoded release keystore file (`.jks`).
+- `STORE_PASSWORD`: Keystore password.
+- `KEY_PASSWORD`: Key alias password.
+
 ## License
 
 This project is licensed under the Apache License 2.0.

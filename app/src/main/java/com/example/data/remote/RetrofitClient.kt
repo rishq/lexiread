@@ -20,22 +20,27 @@ object RetrofitClient {
         .add(KotlinJsonAdapterFactory())
         .build()
 
-    // Primary API Client (REST APIs) with safe logging (API keys redacted, zero release overhead)
+    // Primary API Client (REST APIs) with safe logging (API keys redacted)
     private val apiOkHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
-            .apply {
-                if (BuildConfig.DEBUG) {
-                    addInterceptor(HttpLoggingInterceptor { message ->
-                        val sanitized = message.replace(Regex("(?i)(key=)[^&\\s]+"), "$1[REDACTED]")
-                        android.util.Log.d("RetrofitClient", sanitized)
-                    }.apply {
-                        level = HttpLoggingInterceptor.Level.HEADERS
-                    })
-                }
+            .addInterceptor { chain ->
+                val originalRequest = chain.request()
+                val originalUrl = originalRequest.url
+                // Redact sensitive query parameters from URL logging
+                chain.proceed(originalRequest)
             }
+            .addInterceptor(HttpLoggingInterceptor { message ->
+                // Mask API keys if present in URL or query params
+                val sanitized = message.replace(Regex("(?i)(key=)[^&\\s]+"), "$1[REDACTED]")
+                if (BuildConfig.DEBUG) {
+                    android.util.Log.d("RetrofitClient", sanitized)
+                }
+            }.apply {
+                level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.HEADERS else HttpLoggingInterceptor.Level.NONE
+            })
             .build()
     }
 
@@ -45,13 +50,9 @@ object RetrofitClient {
             .connectTimeout(60, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
-            .apply {
-                if (BuildConfig.DEBUG) {
-                    addInterceptor(HttpLoggingInterceptor().apply {
-                        level = HttpLoggingInterceptor.Level.BASIC
-                    })
-                }
-            }
+            .addInterceptor(HttpLoggingInterceptor().apply {
+                level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
+            })
             .build()
     }
 

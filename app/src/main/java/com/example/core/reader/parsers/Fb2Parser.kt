@@ -25,23 +25,23 @@ class Fb2Parser : BookParser {
     }
 
     override suspend fun parseChapters(file: File): List<BookChapter> = withContext(Dispatchers.IO) {
-        val chapters = ArrayList<BookChapter>(32)
+        val chapters = mutableListOf<BookChapter>()
 
         try {
-            file.inputStream().use { inputStream ->
-                val parser = Xml.newPullParser()
-                parser.setInput(inputStream, "UTF-8")
+            val fileText = file.readText(Charsets.UTF_8)
+            val parser = Xml.newPullParser()
+            parser.setInput(StringReader(fileText))
 
-                var eventType = parser.eventType
-                var inBody = false
-                var inSection = false
-                var inTitle = false
-                var inParagraph = false
+            var eventType = parser.eventType
+            var inBody = false
+            var inSection = false
+            var inTitle = false
+            var inParagraph = false
 
-                var currentSectionTitle: String? = null
-                val currentSectionParagraphs = ArrayList<String>(128)
-                val currentTitleBuffer = StringBuilder(128)
-                val currentParagraphBuffer = StringBuilder(512)
+            var currentSectionTitle: String? = null
+            val currentSectionParagraphs = mutableListOf<String>()
+            val currentTitleBuffer = StringBuilder()
+            val currentParagraphBuffer = StringBuilder()
 
             while (eventType != XmlPullParser.END_DOCUMENT) {
                 when (eventType) {
@@ -113,7 +113,6 @@ class Fb2Parser : BookParser {
                 }
                 eventType = parser.next()
             }
-        }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing FB2 with XmlPullParser, using regex fallback", e)
             try {

@@ -1,0 +1,170 @@
+name: Android CI/CD Build & Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Create a GitHub Release'
+        required: false
+        type: boolean
+        default: true
+      release_tag:
+        description: 'Release Tag (e.g. v1.0.0). If left empty, a timestamp-based tag will be generated.'
+        required: false
+        type: string
+        default: ''
+      is_prerelease:
+        description: 'Mark as Pre-release'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build_and_release:
+    name: Build APKs & Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Ensure Gradle Wrapper Exists
+        run: |
+          if [ ! -f "gradlew" ]; then
+            echo "Generating Gradle Wrapper..."
+            gradle wrapper --gradle-version 8.11.1 --distribution-type all
+          fi
+          chmod +x gradlew
+
+      - name: Prepare Secrets & Environment (.env)
+        run: |
+          echo "Setting up .env file..."
+          if [ -f ".env.example" ]; then
+            cp .env.example .env
+          else
+            touch .env
+          fi
+          
+          # Inject GEMINI_API_KEY if provided in GitHub Repository Secrets
+          if [ -n "${{ secrets.GEMINI_API_KEY }}" ]; then
+            echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
+          fi
+
+      - name: Prepare Keystore Files
+        run: |
+          # Restore debug keystore if base64 file exists
+          if [ -f "debug.keystore.base64" ] && [ ! -f "debug.keystore" ]; then
+            echo "Restoring debug.keystore from base64..."
+            base64 -d debug.keystore.base64 > debug.keystore
+          fi
+
+          # If custom release keystore secret is provided in base64
+          if [ -n "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" ]; then
+            echo "Decoding release keystore..."
+            echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > "$GITHUB_WORKSPACE/my-upload-key.jks"
+            echo "KEYSTORE_PATH=$GITHUB_WORKSPACE/my-upload-key.jks" >> $GITHUB_ENV
+          fi
+
+      - name: Run Unit Tests
+        run: ./gradlew testDebugUnitTest --continue
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Build Release APK & Bundle (AAB)
+        env:
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          # Try building release artifacts; fall back gracefully if signing keys are absent
+          if ./gradlew assembleRelease bundleRelease; then
+            echo "Release build succeeded."
+          else
+            echo "Release build without signing credentials failed or is unsigned. Continuing with Debug artifact..."
+          fi
+
+      - name: Collect and Rename Artifacts
+        run: |
+          mkdir -p outputs/
+          
+          # Find and copy Debug APK
+          if [ -f app/build/outputs/apk/debug/app-debug.apk ]; then
+            cp app/build/outputs/apk/debug/app-debug.apk outputs/LexiRead-debug.apk
+          fi
+          
+          # Find and copy Release APK (if built)
+          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
+            cp app/build/outputs/apk/release/app-release.apk outputs/LexiRead-release.apk
+          elif [ -f app/build/outputs/apk/release/app-release-unsigned.apk ]; then
+            cp app/build/outputs/apk/release/app-release-unsigned.apk outputs/LexiRead-release-unsigned.apk
+          fi
+
+          # Find and copy Release AAB Bundle (if built)
+          if [ -f app/build/outputs/bundle/release/app-release.aab ]; then
+            cp app/build/outputs/bundle/release/app-release.aab outputs/LexiRead-release.aab
+          fi
+
+          echo "Generated artifacts in outputs/:"
+          ls -la outputs/
+
+      - name: Upload Build Artifacts to GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: lexiread-build-artifacts
+          path: outputs/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Determine Release Tag
+        id: release_info
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'true')
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+          elif [ -n "${{ github.event.inputs.release_tag }}" ]; then
+            TAG_NAME="${{ github.event.inputs.release_tag }}"
+          else
+            TAG_NAME="v$(date +'%Y.%m.%d-%H%M%S')"
+          fi
+          echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        if: steps.release_info.outputs.tag_name != ''
+        with:
+          tag_name: ${{ steps.release_info.outputs.tag_name }}
+          name: "Release ${{ steps.release_info.outputs.tag_name }}"
+          draft: false
+          prerelease: ${{ github.event.inputs.is_prerelease == 'true' }}
+          generate_release_notes: true
+          files: |
+            outputs/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
