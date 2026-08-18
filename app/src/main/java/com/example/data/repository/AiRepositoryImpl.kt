@@ -15,6 +15,8 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import org.json.JSONObject
 
+import java.security.MessageDigest
+
 class AiRepositoryImpl(
     private val geminiApi: GeminiApi,
     private val cacheDao: CacheDao
@@ -22,6 +24,9 @@ class AiRepositoryImpl(
 
     companion object {
         private const val TAG = "AiRepository"
+        private const val CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000L // 24 hours
+        @Volatile
+        private var lastCleanupTimestamp: Long = 0L
     }
 
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
@@ -32,11 +37,20 @@ class AiRepositoryImpl(
     ): Result<AiExplanation> {
         val cleanText = sanitizePromptInput(sourceText, maxLen = 150)
         val cleanContext = sanitizePromptInput(contextSentence, maxLen = 500)
-        val cacheKey = "${cleanText.lowercase()}_${cleanContext.hashCode()}"
+        val cacheKey = generateSha256Key("${cleanText.lowercase()}||${cleanContext.lowercase()}")
 
-        // Periodic TTL cache cleanup (30 days TTL)
-        val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
-        cacheDao.deleteExpiredAiExplanationCache(thirtyDaysAgo)
+        val now = System.currentTimeMillis()
+        val thirtyDaysAgo = now - (30L * 24 * 60 * 60 * 1000)
+
+        // Throttled TTL cache cleanup (runs at most once every 24 hours)
+        if (now - lastCleanupTimestamp > CLEANUP_INTERVAL_MS) {
+            lastCleanupTimestamp = now
+            try {
+                cacheDao.deleteExpiredAiExplanationCache(thirtyDaysAgo)
+            } catch (e: Exception) {
+                Log.w(TAG, "Non-critical error during cache cleanup", e)
+            }
+        }
 
         // 1. Check Room cache
         val cached = cacheDao.getAiExplanationCache(cacheKey)
@@ -247,6 +261,16 @@ class AiRepositoryImpl(
             .replace(">", "&gt;")
             .replace("\n", " ")
             .replace("\r", " ")
+    }
+
+    private fun generateSha256Key(input: String): String {
+        return try {
+            val digest = MessageDigest.getInstance("SHA-256")
+            val hash = digest.digest(input.toByteArray(Charsets.UTF_8))
+            hash.joinToString("") { "%02x".format(it) }
+        } catch (e: Exception) {
+            input.hashCode().toString()
+        }
     }
 }
 

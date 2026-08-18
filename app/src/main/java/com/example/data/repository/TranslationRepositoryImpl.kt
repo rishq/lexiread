@@ -15,7 +15,7 @@ class TranslationRepositoryImpl(
         text: String,
         targetLang: String
     ): Result<TranslationResult> {
-        val cleanText = text.trim()
+        val cleanText = text.trim().take(300)
         if (cleanText.isBlank()) {
             return Result.failure(IllegalArgumentException("Text is empty"))
         }

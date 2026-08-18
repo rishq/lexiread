@@ -94,11 +94,15 @@ class PaginationEngine(private val context: Context) {
         textPaint: TextPaint,
         spacingMult: Float
     ): Int {
-        val remainingText = text.substring(startOffset)
-        if (remainingText.isEmpty()) return startOffset
+        if (startOffset >= text.length) return startOffset
+
+        // Optimize: Use a sliding chunk window (~3500 chars) instead of measuring the entire remainder of the chapter
+        val maxWindowSize = 3500
+        val windowEnd = (startOffset + maxWindowSize).coerceAtMost(text.length)
+        val windowText = text.substring(startOffset, windowEnd)
 
         val staticLayout = createStaticLayout(
-            text = remainingText,
+            text = windowText,
             paint = textPaint,
             width = usableWidth,
             spacingMult = spacingMult

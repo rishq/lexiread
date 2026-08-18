@@ -58,15 +58,19 @@ object ChapterParser {
         val cleaned = cleanParagraphs(rawText)
         if (cleaned.isBlank()) return listOf(BookChapter("Chapter 1", "No content available.", 0))
 
-        // Detect chapter markers like "Chapter 1", "CHAPTER I", "Глава 1", "BOOK 1"
-        val chapterRegex = Regex("(?i)\n\n\\s*(chapter|глава|book|part|часть)\\s+([0-9a-ivxlcdm]+|[一二三四五六七八九十]+).*\n\n")
-        val matches = chapterRegex.findAll("\n\n$cleaned\n\n").toList()
+        // Detect chapter markers like "Chapter 1", "CHAPTER I", "Глава 1", "BOOK 1", "Part 2"
+        // Uses strictly anchored, non-backtracking line-based regex
+        val chapterRegex = Regex(
+            pattern = "(?im)^[ \\t]*(?:chapter|глава|book|part|часть|книга)[ \\t]+([0-9]{1,4}|[ivxlcdm]{1,10})[.: \\t]*([^\\n\\r]{0,80})$",
+            options = setOf(RegexOption.MULTILINE, RegexOption.IGNORE_CASE)
+        )
+        val matches = chapterRegex.findAll(cleaned).toList()
 
         if (matches.size > 1) {
             val chapters = mutableListOf<BookChapter>()
             for (i in matches.indices) {
                 val match = matches[i]
-                val title = match.value.trim()
+                val title = match.value.trim().take(80)
                 val start = match.range.last + 1
                 val end = if (i < matches.size - 1) matches[i + 1].range.first else cleaned.length
                 val content = if (start < end && start < cleaned.length) {

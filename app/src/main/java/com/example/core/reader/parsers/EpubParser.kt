@@ -20,6 +20,9 @@ class EpubParser : BookParser {
 
     companion object {
         private const val TAG = "EpubParser"
+        private const val MAX_ENTRY_SIZE_BYTES = 15 * 1024 * 1024L // 15 MB per single entry
+        private const val MAX_TOTAL_UNCOMPRESSED_BYTES = 40 * 1024 * 1024L // 40 MB total extracted text
+        private const val MAX_ENTRIES_TO_PROCESS = 500
     }
 
     override fun canParse(format: String, file: File): Boolean {
@@ -28,21 +31,55 @@ class EpubParser : BookParser {
 
     override suspend fun parseChapters(file: File): List<BookChapter> = withContext(Dispatchers.IO) {
         val chapters = mutableListOf<BookChapter>()
+        var totalBytesRead = 0L
+
         try {
             val zipFile = ZipFile(file)
             val opfPath = findOpfPath(zipFile) ?: return@withContext emptyList()
             val opfEntry = zipFile.getEntry(opfPath) ?: return@withContext emptyList()
+
+            // Guard against large opf entry
+            if (opfEntry.size > MAX_ENTRY_SIZE_BYTES) {
+                Log.w(TAG, "OPF entry exceeds size limit: ${opfEntry.size}")
+                zipFile.close()
+                return@withContext emptyList()
+            }
             
             val (manifestItems, spineItemRefs) = parseOpf(zipFile.getInputStream(opfEntry))
             val baseDir = if (opfPath.contains("/")) opfPath.substringBeforeLast("/") + "/" else ""
 
             var chapterIndex = 0
-            for (idref in spineItemRefs) {
+            for ((processedCount, idref) in spineItemRefs.withIndex()) {
+                if (processedCount >= MAX_ENTRIES_TO_PROCESS || totalBytesRead >= MAX_TOTAL_UNCOMPRESSED_BYTES) {
+                    Log.w(TAG, "Reached safety limits for EPUB extraction: $totalBytesRead bytes read")
+                    break
+                }
+
                 val href = manifestItems[idref] ?: continue
                 val fullPath = baseDir + href
                 val entry = zipFile.getEntry(fullPath) ?: zipFile.getEntry(href) ?: continue
+
+                if (entry.size > MAX_ENTRY_SIZE_BYTES) {
+                    Log.w(TAG, "Skipping oversize EPUB entry: $fullPath (${entry.size} bytes)")
+                    continue
+                }
                 
-                val htmlContent = zipFile.getInputStream(entry).bufferedReader().use { it.readText() }
+                val htmlContent = zipFile.getInputStream(entry).use { inputStream ->
+                    val buffer = ByteArray(8192)
+                    val out = StringBuilder()
+                    var bytesForThisEntry = 0L
+                    var read: Int
+                    while (inputStream.read(buffer).also { read = it } != -1) {
+                        bytesForThisEntry += read
+                        totalBytesRead += read
+                        if (bytesForThisEntry > MAX_ENTRY_SIZE_BYTES || totalBytesRead > MAX_TOTAL_UNCOMPRESSED_BYTES) {
+                            break
+                        }
+                        out.append(String(buffer, 0, read, Charsets.UTF_8))
+                    }
+                    out.toString()
+                }
+
                 val cleanText = ChapterParser.cleanHtmlText(htmlContent)
 
                 if (cleanText.isNotBlank()) {

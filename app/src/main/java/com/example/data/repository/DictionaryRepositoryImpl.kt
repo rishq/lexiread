@@ -20,6 +20,7 @@ class DictionaryRepositoryImpl(
     override suspend fun lookupWord(word: String): Result<DictionaryEntry> {
         val cleanWord = word.trim().lowercase().removeSurrounding("\"", "\"").removeSurrounding("'", "'")
             .filter { it.isLetter() || it == '-' }
+            .take(50)
 
         if (cleanWord.isBlank()) {
             return Result.failure(IllegalArgumentException("Word is empty"))
