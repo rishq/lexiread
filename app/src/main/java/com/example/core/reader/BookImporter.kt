@@ -2,6 +2,7 @@ package com.example.core.reader
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import com.example.core.reader.parsers.EpubParser
 import com.example.core.reader.parsers.Fb2Parser
 import com.example.core.reader.parsers.PdfParser
@@ -14,6 +15,10 @@ import java.io.FileOutputStream
 import java.util.UUID
 
 class BookImporter(private val context: Context) {
+
+    companion object {
+        private const val TAG = "BookImporter"
+    }
 
     private val parsers: List<BookParser> = listOf(
         EpubParser(),
@@ -70,7 +75,7 @@ class BookImporter(private val context: Context) {
 
             Result.success(book)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error importing book from uri: $uri", e)
             Result.failure(e)
         }
     }

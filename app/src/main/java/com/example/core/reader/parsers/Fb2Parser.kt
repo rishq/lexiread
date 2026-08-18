@@ -1,6 +1,7 @@
 package com.example.core.reader.parsers
 
 import android.util.Base64
+import android.util.Log
 import android.util.Xml
 import com.example.core.reader.BookParser
 import com.example.core.reader.ChapterParser
@@ -15,48 +16,124 @@ import java.io.StringReader
 
 class Fb2Parser : BookParser {
 
+    companion object {
+        private const val TAG = "Fb2Parser"
+    }
+
     override fun canParse(format: String, file: File): Boolean {
         return format.lowercase() == "fb2" || file.extension.lowercase() == "fb2"
     }
 
     override suspend fun parseChapters(file: File): List<BookChapter> = withContext(Dispatchers.IO) {
-        val text = file.readText(Charsets.UTF_8)
         val chapters = mutableListOf<BookChapter>()
 
         try {
-            val sectionRegex = Regex("<section[\\s\\S]*?>([\\s\\S]*?)</section>", RegexOption.IGNORE_CASE)
-            val titleRegex = Regex("<title[\\s\\S]*?>([\\s\\S]*?)</title>", RegexOption.IGNORE_CASE)
-            val pRegex = Regex("<p[\\s\\S]*?>([\\s\\S]*?)</p>", RegexOption.IGNORE_CASE)
+            val fileText = file.readText(Charsets.UTF_8)
+            val parser = Xml.newPullParser()
+            parser.setInput(StringReader(fileText))
 
-            var sectionIndex = 0
-            for (match in sectionRegex.findAll(text)) {
-                val sectionXml = match.groupValues[1]
-                val titleMatch = titleRegex.find(sectionXml)
-                val rawTitle = titleMatch?.groupValues?.get(1)?.let { ChapterParser.cleanHtmlText(it) }
-                val title = if (!rawTitle.isNullOrBlank()) rawTitle else "Section ${sectionIndex + 1}"
+            var eventType = parser.eventType
+            var inBody = false
+            var inSection = false
+            var inTitle = false
+            var inParagraph = false
 
-                val paragraphs = pRegex.findAll(sectionXml)
-                    .map { ChapterParser.cleanHtmlText(it.groupValues[1]) }
-                    .filter { it.isNotBlank() }
-                    .joinToString("\n\n")
+            var currentSectionTitle: String? = null
+            val currentSectionParagraphs = mutableListOf<String>()
+            val currentTitleBuffer = StringBuilder()
+            val currentParagraphBuffer = StringBuilder()
 
-                if (paragraphs.isNotBlank()) {
-                    chapters.add(
-                        BookChapter(
-                            title = title,
-                            content = paragraphs,
-                            index = sectionIndex
-                        )
-                    )
-                    sectionIndex++
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                when (eventType) {
+                    XmlPullParser.START_TAG -> {
+                        when (parser.name.lowercase()) {
+                            "body" -> inBody = true
+                            "section" -> {
+                                if (inBody) {
+                                    inSection = true
+                                    currentSectionTitle = null
+                                    currentSectionParagraphs.clear()
+                                }
+                            }
+                            "title" -> {
+                                if (inSection) {
+                                    inTitle = true
+                                    currentTitleBuffer.clear()
+                                }
+                            }
+                            "p" -> {
+                                inParagraph = true
+                                currentParagraphBuffer.clear()
+                            }
+                        }
+                    }
+                    XmlPullParser.TEXT -> {
+                        val text = parser.text.orEmpty()
+                        if (inTitle) {
+                            currentTitleBuffer.append(text)
+                        } else if (inParagraph) {
+                            currentParagraphBuffer.append(text)
+                        }
+                    }
+                    XmlPullParser.END_TAG -> {
+                        when (parser.name.lowercase()) {
+                            "title" -> {
+                                inTitle = false
+                                val titleStr = currentTitleBuffer.toString().trim()
+                                if (titleStr.isNotBlank()) {
+                                    currentSectionTitle = titleStr
+                                }
+                            }
+                            "p" -> {
+                                inParagraph = false
+                                val pStr = currentParagraphBuffer.toString().trim()
+                                if (pStr.isNotBlank()) {
+                                    currentSectionParagraphs.add(pStr)
+                                }
+                            }
+                            "section" -> {
+                                inSection = false
+                                if (currentSectionParagraphs.isNotEmpty()) {
+                                    val title = currentSectionTitle ?: "Section ${chapters.size + 1}"
+                                    val content = currentSectionParagraphs.joinToString("\n\n")
+                                    chapters.add(
+                                        BookChapter(
+                                            title = title,
+                                            content = content,
+                                            index = chapters.size
+                                        )
+                                    )
+                                }
+                                currentSectionParagraphs.clear()
+                                currentSectionTitle = null
+                            }
+                            "body" -> inBody = false
+                        }
+                    }
                 }
+                eventType = parser.next()
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error parsing FB2 with XmlPullParser, using regex fallback", e)
+            try {
+                val text = file.readText(Charsets.UTF_8)
+                val cleanAll = ChapterParser.cleanHtmlText(text)
+                val split = ChapterParser.splitIntoChapters(cleanAll)
+                if (split.isNotEmpty()) {
+                    return@withContext split
+                }
+            } catch (fallbackEx: Exception) {
+                Log.e(TAG, "Fallback chapter splitting also failed", fallbackEx)
+            }
         }
 
         if (chapters.isEmpty()) {
-            val cleanAll = ChapterParser.cleanHtmlText(text)
+            val cleanAll = try {
+                val text = file.readText(Charsets.UTF_8)
+                ChapterParser.cleanHtmlText(text)
+            } catch (e: Exception) {
+                file.nameWithoutExtension
+            }
             return@withContext ChapterParser.splitIntoChapters(cleanAll)
         }
 
@@ -64,31 +141,51 @@ class Fb2Parser : BookParser {
     }
 
     override suspend fun extractMetadata(file: File): ParsedBookMetadata = withContext(Dispatchers.IO) {
-        var title = file.nameWithoutExtension.replace("_", " ")
+        var title = file.nameWithoutExtension.replace("_", " ").replace("-", " ")
         var author = "Unknown Author"
         var description: String? = null
         var coverPath: String? = null
 
         try {
             val text = file.readText(Charsets.UTF_8)
-            val titleMatch = Regex("<book-title[\\s\\S]*?>([\\s\\S]*?)</book-title>", RegexOption.IGNORE_CASE).find(text)
-            if (titleMatch != null) {
-                val t = ChapterParser.cleanHtmlText(titleMatch.groupValues[1])
-                if (t.isNotBlank()) title = t
+            val parser = Xml.newPullParser()
+            parser.setInput(StringReader(text))
+
+            var eventType = parser.eventType
+            var currentTag = ""
+            var authorFirstName = ""
+            var authorLastName = ""
+
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                when (eventType) {
+                    XmlPullParser.START_TAG -> {
+                        currentTag = parser.name.lowercase()
+                    }
+                    XmlPullParser.TEXT -> {
+                        val value = parser.text?.trim().orEmpty()
+                        if (value.isNotEmpty()) {
+                            when (currentTag) {
+                                "book-title" -> if (title == file.nameWithoutExtension.replace("_", " ").replace("-", " ")) title = value
+                                "first-name" -> authorFirstName = value
+                                "last-name" -> authorLastName = value
+                                "annotation" -> if (description == null) description = value
+                            }
+                        }
+                    }
+                    XmlPullParser.END_TAG -> {
+                        if (parser.name.equals("author", ignoreCase = true)) {
+                            val combinedAuthor = "$authorFirstName $authorLastName".trim()
+                            if (combinedAuthor.isNotBlank()) {
+                                author = combinedAuthor
+                            }
+                        }
+                        currentTag = ""
+                    }
+                }
+                eventType = parser.next()
             }
 
-            val authorFirstName = Regex("<first-name[\\s\\S]*?>([\\s\\S]*?)</first-name>", RegexOption.IGNORE_CASE).find(text)?.groupValues?.get(1)
-            val authorLastName = Regex("<last-name[\\s\\S]*?>([\\s\\S]*?)</last-name>", RegexOption.IGNORE_CASE).find(text)?.groupValues?.get(1)
-            if (!authorFirstName.isNullOrBlank() || !authorLastName.isNullOrBlank()) {
-                author = "${authorFirstName.orEmpty()} ${authorLastName.orEmpty()}".trim()
-            }
-
-            val descMatch = Regex("<annotation[\\s\\S]*?>([\\s\\S]*?)</annotation>", RegexOption.IGNORE_CASE).find(text)
-            if (descMatch != null) {
-                description = ChapterParser.cleanHtmlText(descMatch.groupValues[1])
-            }
-
-            // Extract binary cover page
+            // Extract binary cover if present
             val binaryMatch = Regex("<binary[^>]*id=\"([^\"]+)\"[^>]*>([\\s\\S]*?)</binary>", RegexOption.IGNORE_CASE).find(text)
             if (binaryMatch != null) {
                 val base64Data = binaryMatch.groupValues[2].replace("\\s".toRegex(), "")
@@ -100,7 +197,7 @@ class Fb2Parser : BookParser {
                 coverPath = coverFile.absolutePath
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Failed to parse FB2 metadata", e)
         }
 
         ParsedBookMetadata(
@@ -111,3 +208,4 @@ class Fb2Parser : BookParser {
         )
     }
 }
+

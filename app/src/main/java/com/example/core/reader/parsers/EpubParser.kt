@@ -1,7 +1,6 @@
 package com.example.core.reader.parsers
 
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
+import android.util.Log
 import android.util.Xml
 import com.example.core.reader.BookParser
 import com.example.core.reader.ChapterParser
@@ -18,6 +17,10 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 
 class EpubParser : BookParser {
+
+    companion object {
+        private const val TAG = "EpubParser"
+    }
 
     override fun canParse(format: String, file: File): Boolean {
         return format.lowercase() == "epub" || file.extension.lowercase() == "epub"
@@ -56,7 +59,7 @@ class EpubParser : BookParser {
             }
             zipFile.close()
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error parsing EPUB chapters", e)
         }
 
         if (chapters.isEmpty()) {
@@ -104,7 +107,7 @@ class EpubParser : BookParser {
             }
             zipFile.close()
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error extracting EPUB metadata", e)
         }
 
         ParsedBookMetadata(
@@ -114,6 +117,7 @@ class EpubParser : BookParser {
             coverPath = coverPath
         )
     }
+
 
     private fun findOpfPath(zipFile: ZipFile): String? {
         val containerEntry = zipFile.getEntry("META-INF/container.xml") ?: return null
