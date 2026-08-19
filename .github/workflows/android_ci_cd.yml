@@ -79,10 +79,15 @@ jobs:
 
       - name: Prepare Keystore Files
         run: |
-          # Restore debug keystore if base64 file exists
-          if [ -f "debug.keystore.base64" ] && [ ! -f "debug.keystore" ]; then
+          # Restore debug keystore from base64 if present, or generate a standard debug keystore
+          if [ -f "debug.keystore.base64" ] && [ ! -s "debug.keystore" ]; then
             echo "Restoring debug.keystore from base64..."
-            base64 -d debug.keystore.base64 > debug.keystore
+            base64 -d debug.keystore.base64 > debug.keystore || base64 -D debug.keystore.base64 > debug.keystore || true
+          fi
+
+          if [ ! -s "debug.keystore" ]; then
+            echo "Generating debug.keystore via keytool..."
+            keytool -genkeypair -alias androiddebugkey -keypass android -keystore debug.keystore -storepass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
           fi
 
           # If custom release keystore secret is provided in base64
