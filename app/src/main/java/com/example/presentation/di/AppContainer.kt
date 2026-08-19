@@ -30,7 +30,7 @@ class AppContainer(private val context: Context) {
             context.applicationContext,
             AppDatabase::class.java,
             "lexiread_db"
-        ).fallbackToDestructiveMigration()
+        ).fallbackToDestructiveMigration(dropAllTables = true)
             .build()
     }
 
