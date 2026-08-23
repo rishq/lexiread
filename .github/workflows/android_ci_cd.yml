@@ -72,10 +72,9 @@ jobs:
             touch .env
           fi
           
-          # Inject GEMINI_API_KEY if provided in GitHub Repository Secrets
-          if [ -n "${{ secrets.GEMINI_API_KEY }}" ]; then
-            echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
-          fi
+          # NOTE: GEMINI_API_KEY is intentionally NOT injected into the APK.
+          # Users provide their own key via the in-app Settings screen.
+          # Never package API secrets into release artifacts.
 
       - name: Prepare Keystore Files
         run: |

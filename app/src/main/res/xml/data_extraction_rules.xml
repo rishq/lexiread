@@ -3,13 +3,15 @@
     <cloud-backup>
         <exclude domain="database" path="lexiread_db" />
         <exclude domain="sharedpref" path="." />
-        <exclude domain="cache" path="." />
+        <exclude domain="file" path="datastore/lexiread_settings.preferences_pb" />
         <exclude domain="file" path="." />
+        <exclude domain="cache" path="." />
     </cloud-backup>
     <device-transfer>
         <exclude domain="database" path="lexiread_db" />
         <exclude domain="sharedpref" path="." />
-        <exclude domain="cache" path="." />
+        <exclude domain="file" path="datastore/lexiread_settings.preferences_pb" />
         <exclude domain="file" path="." />
+        <exclude domain="cache" path="." />
     </device-transfer>
 </data-extraction-rules>

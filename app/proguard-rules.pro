@@ -1,48 +1,17 @@
 # Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
+# Retrofit, OkHttp, Moshi (codegen), Room and Compose ship consumer rules;
+# broad -keep class ** rules defeat R8 shrinking and inflate the APK.
 
 # Preserve Line Numbers for Debugging
 -keepattributes SourceFile,LineNumberTable
 
-# Kotlin Reflection
--keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
+# Kotlin Reflection (used by nothing at runtime after codegen; keep minimal)
 -dontwarn kotlin.reflect.**
--keep class kotlin.reflect.** { *; }
 
-# Moshi & JSON Parsing
--keep class com.squareup.moshi.** { *; }
--keep interface com.squareup.moshi.** { *; }
+# Moshi: keep @JsonClass-generated adapters (consumer rules handle the rest)
 -keepclasseswithmembers class * {
-    @com.squareup.moshi.* <methods>;
+    @com.squareup.moshi.JsonClass <fields>;
 }
--keepclasseswithmembers class * {
-    @com.squareup.moshi.* <fields>;
-}
--keep class com.example.data.remote.dto.** { *; }
--keepclassmembers class com.example.data.remote.dto.** { *; }
 
-# Domain Models & Local Entities
--keep class com.example.domain.model.** { *; }
--keepclassmembers class com.example.domain.model.** { *; }
--keep class com.example.data.local.entity.** { *; }
--keepclassmembers class com.example.data.local.entity.** { *; }
--keep class com.example.data.local.dao.** { *; }
--keepclassmembers class com.example.data.local.dao.** { *; }
-
-# Retrofit & OkHttp
--dontnote retrofit2.Platform
--dontwarn retrofit2.Platform$Java8
+# Retrofit interface methods are looked up reflectively via generics
 -keepattributes Signature,Exceptions
--keepclasseswithmembers class * {
-    @retrofit2.http.* <methods>;
-}
--keep class retrofit2.** { *; }
--keep class okhttp3.** { *; }
-
-# Room Database
--keep class * extends androidx.room.RoomDatabase
--keep @androidx.room.Dao interface * { *; }
--keep @androidx.room.Entity class * { *; }
--dontwarn androidx.room.paging.**
-
