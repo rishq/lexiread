@@ -24,7 +24,9 @@ class BookRepositoryImpl(
 ) : BookRepository {
 
     suspend fun initializePreloadedBooks() {
-        // Pre-populate preloaded classic books if database is empty
+        // Pre-populate preloaded classic books if database is empty,
+        // or refresh them if they were stored with encoding corruption
+        // (older app versions shipped double-encoded UTF-8 strings).
         val existing = bookDao.getBookById("gutenberg_1342")
         if (existing == null) {
             bookDao.insertBooks(PreloadedBooks.defaultBooks)
@@ -39,7 +41,14 @@ class BookRepositoryImpl(
                     lastReadTimestamp = System.currentTimeMillis()
                 )
             )
+        } else if (containsEncodingCorruption(existing)) {
+            bookDao.insertBooks(PreloadedBooks.defaultBooks)
         }
+    }
+
+    private fun containsEncodingCorruption(entity: com.lexiread.data.local.entity.BookEntity): Boolean {
+        return listOfNotNull(entity.title, entity.author, entity.description, entity.subjects, entity.fullText)
+            .any { it.contains("вЂ") }
     }
 
     override fun getAllBooks(): Flow<List<Book>> {
