@@ -68,7 +68,7 @@ class TranslationRepositoryImpl(
         }
 
         // 3. Fallback: MyMemory API
-        return runCatching {
+        return try {
             val response = translationApi.translate(cleanText, "en|$targetLang")
             val translated = response.responseData?.translatedText
 
@@ -76,7 +76,11 @@ class TranslationRepositoryImpl(
                 throw Exception("Translation API limit reached")
             }
 
-            cacheAndReturn(cacheKey, cleanText, translated, targetLang)
+            Result.success(cacheAndReturn(cacheKey, cleanText, translated, targetLang))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 

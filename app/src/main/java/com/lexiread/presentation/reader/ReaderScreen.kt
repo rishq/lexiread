@@ -213,26 +213,30 @@ fun ReaderScreen(
                             .fillMaxWidth()
                             .pointerInput(pageText) {
                                 detectTapGestures { position ->
-                                    val layout = layoutResult ?: return@detectTapGestures
-                                    val offset = layout.getOffsetForPosition(position)
-                                    if (offset !in pageText.indices) return@detectTapGestures
+                                    runCatching {
+                                        val layout = layoutResult ?: return@detectTapGestures
+                                        val offset = layout.getOffsetForPosition(position)
+                                        if (offset !in pageText.indices) return@detectTapGestures
 
-                                    var start = offset
-                                    var end = offset
-                                    while (start > 0 && !pageText[start - 1].isWhitespace()) start--
-                                    while (end < pageText.length && !pageText[end].isWhitespace()) end++
-                                    val cleanWord = pageText.substring(start, end)
-                                        .trim { !it.isLetterOrDigit() }
+                                        var start = offset
+                                        var end = offset
+                                        while (start > 0 && !pageText[start - 1].isWhitespace()) start--
+                                        while (end < pageText.length && !pageText[end].isWhitespace()) end++
+                                        val cleanWord = pageText.substring(start, end)
+                                            .trim { !it.isLetterOrDigit() }
 
-                                    if (cleanWord.isNotEmpty()) {
-                                        val paragraphStart = pageText.lastIndexOf("\n\n", offset)
-                                            .let { if (it == -1) 0 else it + 2 }
-                                        val paragraphEnd = pageText.indexOf("\n\n", offset)
-                                            .let { if (it == -1) pageText.length else it }
-                                        viewModel.onWordSelected(
-                                            cleanWord,
-                                            pageText.substring(paragraphStart, paragraphEnd)
-                                        )
+                                        if (cleanWord.isNotEmpty()) {
+                                            val paragraphStart = pageText.lastIndexOf("\n\n", offset)
+                                                .let { if (it == -1) 0 else it + 2 }
+                                            val paragraphEnd = pageText.indexOf("\n\n", offset)
+                                                .let { if (it == -1) pageText.length else it }
+                                            viewModel.onWordSelected(
+                                                cleanWord,
+                                                pageText.substring(paragraphStart, paragraphEnd)
+                                            )
+                                        }
+                                    }.onFailure {
+                                        android.util.Log.e("ReaderScreen", "Word tap failed", it)
                                     }
                                 }
                             }
