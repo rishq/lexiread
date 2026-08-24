@@ -55,23 +55,25 @@ object ChapterParser {
     }
 
     fun splitIntoChapters(rawText: String): List<BookChapter> {
-        val cleaned = cleanParagraphs(rawText)
+        val cleaned = cleanParagraphs(rawText.removePrefix("\uFEFF"))
         if (cleaned.isBlank()) return listOf(BookChapter("Chapter 1", "No content available.", 0))
 
-        // Detect chapter markers like "Chapter 1", "CHAPTER I", "Глава 1", "BOOK 1", "Part 2"
+        // Detect chapter markers like "Chapter 1", "CHAPTER I", "Глава 1", "BOOK 1",
+        // "Part 2", "Prologue", "Epilogue" and their Russian equivalents.
         // Uses strictly anchored, non-backtracking line-based regex
         val chapterRegex = Regex(
-            pattern = "(?im)^[ \\t]*(?:chapter|глава|book|part|часть|книга)[ \\t]+([0-9]{1,4}|[ivxlcdm]{1,10})[.: \\t]*([^\\n\\r]{0,80})$",
+            pattern = "(?im)^[ \\t]*(?:(?:chapter|глава|book|part|часть|книга)[ \\t]+([0-9]{1,4}|[ivxlcdm]{1,10})|(?:prologue|epilogue|preface|предисловие|пролог|эпилог))[.: \\t]*([^\\n\\r]{0,80})$",
             options = setOf(RegexOption.MULTILINE, RegexOption.IGNORE_CASE)
         )
         val matches = chapterRegex.findAll(cleaned).toList()
 
-        if (matches.size > 1) {
+        if (matches.isNotEmpty()) {
             val chapters = mutableListOf<BookChapter>()
             for (i in matches.indices) {
                 val match = matches[i]
                 val title = match.value.trim().take(80)
-                val start = match.range.last + 1
+                // Front matter before the first marker belongs to the first chapter
+                val start = if (i == 0) 0 else match.range.last + 1
                 val end = if (i < matches.size - 1) matches[i + 1].range.first else cleaned.length
                 val content = if (start < end && start < cleaned.length) {
                     cleaned.substring(start.coerceAtMost(cleaned.length), end.coerceAtMost(cleaned.length)).trim()

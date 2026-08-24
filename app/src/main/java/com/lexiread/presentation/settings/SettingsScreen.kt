@@ -265,7 +265,7 @@ fun SettingsScreen(
                     com.lexiread.data.repository.AiProviders.DEEPSEEK -> state.deepSeekApiKey
                     else -> state.geminiApiKey
                 }
-                var keyValue by remember(state.aiProvider, selectedProviderKey) { mutableStateOf(selectedProviderKey) }
+                var keyValue by remember(state.aiProvider) { mutableStateOf(selectedProviderKey) }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     androidx.compose.material3.OutlinedTextField(
                         value = keyValue,
@@ -295,6 +295,12 @@ fun SettingsScreen(
                         color = Color(0xFF10B981)
                     )
                 }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Your API key is stored only locally on your device. It is never sent anywhere except the official API of the selected provider.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 

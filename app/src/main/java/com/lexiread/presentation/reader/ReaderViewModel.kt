@@ -87,6 +87,7 @@ class ReaderViewModel(
     private var availableWidthPx: Int = 0
     private var availableHeightPx: Int = 0
     private var paginationJob: kotlinx.coroutines.Job? = null
+    private val progressWriteDispatcher = Dispatchers.Default.limitedParallelism(1)
     private var progressRestored: Boolean = false
 
     init {
@@ -307,16 +308,19 @@ class ReaderViewModel(
         val percent = ((state.currentChapterIndex.toFloat() + (state.currentPageIndex.toFloat() / state.pagesForCurrentChapter.size.coerceAtLeast(1))) / totalChapters * 100f).coerceIn(0f, 100f)
 
         viewModelScope.launch {
-            bookRepository.saveReadingProgress(
-                ReadingProgress(
-                    bookId = currentBook.id,
-                    currentChapter = state.currentChapterIndex,
-                    currentPage = state.currentPageIndex,
-                    totalPagesInChapter = state.pagesForCurrentChapter.size,
-                    percentCompleted = percent,
-                    lastReadTimestamp = System.currentTimeMillis()
+            // Single-threaded dispatcher guarantees rapid page turns persist in order
+            withContext(progressWriteDispatcher) {
+                bookRepository.saveReadingProgress(
+                    ReadingProgress(
+                        bookId = currentBook.id,
+                        currentChapter = state.currentChapterIndex,
+                        currentPage = state.currentPageIndex,
+                        totalPagesInChapter = state.pagesForCurrentChapter.size,
+                        percentCompleted = percent,
+                        lastReadTimestamp = System.currentTimeMillis()
+                    )
                 )
-            )
+            }
         }
     }
 
@@ -398,7 +402,7 @@ class ReaderViewModel(
         viewModelScope.launch {
             val aiResult = aiRepository.explainWordOrSentence(selected.word, selected.contextSentence)
             val current = _uiState.value.selectedWordState
-            if (current != null) {
+            if (current?.word == selected.word) {
                 _uiState.value = _uiState.value.copy(
                     selectedWordState = current.copy(
                         aiExplanation = aiResult.getOrNull(),
@@ -429,9 +433,12 @@ class ReaderViewModel(
 
         viewModelScope.launch {
             vocabularyRepository.saveWord(savedWord)
-            _uiState.value = _uiState.value.copy(
-                selectedWordState = selected.copy(isWordSaved = true)
-            )
+            val current = _uiState.value.selectedWordState
+            if (current?.word == selected.word) {
+                _uiState.value = _uiState.value.copy(
+                    selectedWordState = current.copy(isWordSaved = true)
+                )
+            }
         }
     }
 

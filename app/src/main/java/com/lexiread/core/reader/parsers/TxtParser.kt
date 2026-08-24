@@ -15,7 +15,7 @@ class TxtParser : BookParser {
     }
 
     override suspend fun parseChapters(file: File): List<BookChapter> = withContext(Dispatchers.IO) {
-        val text = file.readText(Charsets.UTF_8)
+        val text = readWithEncodingDetection(file)
         ChapterParser.splitIntoChapters(text)
     }
 
@@ -27,5 +27,31 @@ class TxtParser : BookParser {
             author = "Unknown Author",
             description = "Plain text document imported from local storage."
         )
+    }
+
+    /**
+     * Many TXT books (especially Russian ones) are saved in Windows-1251 while
+     * being read as UTF-8 produces replacement chars. Decode heuristically:
+     * prefer UTF-8 unless it decodes with loss and the file is not valid UTF-8.
+     */
+    private fun readWithEncodingDetection(file: File): String {
+        val bytes = file.readBytes()
+        if (bytes.isEmpty()) return ""
+
+        // Strip UTF-8 BOM if present
+        val bomLess = if (bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()) {
+            bytes.copyOfRange(3, bytes.size)
+        } else bytes
+
+        // Strict UTF-8 decode: any malformed sequence means the file is not UTF-8
+        val isStrictUtf8 = runCatching {
+            Charsets.UTF_8.newDecoder()
+                .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                .decode(java.nio.ByteBuffer.wrap(bomLess))
+        }.isSuccess
+
+        return if (isStrictUtf8) String(bomLess, Charsets.UTF_8)
+        else String(bomLess, charset("windows-1251"))
     }
 }

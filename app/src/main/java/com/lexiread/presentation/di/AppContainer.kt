@@ -79,7 +79,12 @@ class AppContainer(private val context: Context) {
     val translationRepository: TranslationRepository by lazy {
         TranslationRepositoryImpl(
             translationApi = RetrofitClient.translationApi,
-            cacheDao = database.cacheDao()
+            cacheDao = database.cacheDao(),
+            geminiApi = RetrofitClient.geminiApi,
+            openAiApi = RetrofitClient.openAiApi,
+            claudeApi = RetrofitClient.claudeApi,
+            deepSeekApi = RetrofitClient.deepSeekApi,
+            providerConfigProvider = aiProviderConfig
         )
     }
 
@@ -89,6 +94,18 @@ class AppContainer(private val context: Context) {
         )
     }
 
+    private val aiProviderConfig: suspend () -> Pair<String, String> = {
+        val prefs = userPreferencesManager
+        val provider = prefs.aiProvider.first()
+        val key = when (provider) {
+            com.lexiread.data.repository.AiProviders.CHATGPT -> prefs.openAiApiKey.first()
+            com.lexiread.data.repository.AiProviders.CLAUDE -> prefs.claudeApiKey.first()
+            com.lexiread.data.repository.AiProviders.DEEPSEEK -> prefs.deepSeekApiKey.first()
+            else -> prefs.geminiApiKey.first()
+        }
+        provider to key
+    }
+
     val aiRepository: AiRepository by lazy {
         AiRepositoryImpl(
             geminiApi = RetrofitClient.geminiApi,
@@ -96,17 +113,7 @@ class AppContainer(private val context: Context) {
             claudeApi = RetrofitClient.claudeApi,
             deepSeekApi = RetrofitClient.deepSeekApi,
             cacheDao = database.cacheDao(),
-            providerConfigProvider = {
-                val prefs = userPreferencesManager
-                val provider = prefs.aiProvider.first()
-                val key = when (provider) {
-                    com.lexiread.data.repository.AiProviders.CHATGPT -> prefs.openAiApiKey.first()
-                    com.lexiread.data.repository.AiProviders.CLAUDE -> prefs.claudeApiKey.first()
-                    com.lexiread.data.repository.AiProviders.DEEPSEEK -> prefs.deepSeekApiKey.first()
-                    else -> prefs.geminiApiKey.first()
-                }
-                provider to key
-            }
+            providerConfigProvider = aiProviderConfig
         )
     }
 

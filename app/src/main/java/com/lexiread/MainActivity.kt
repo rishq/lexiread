@@ -133,7 +133,13 @@ fun LexiReadApp(container: AppContainer, onSetVolumeKeyListener: (((Int) -> Bool
           viewModel = homeViewModel,
           onBookClick = { bookId -> navController.navigate(Screen.BookDetails.createRoute(bookId)) },
           onReadClick = { bookId -> navController.navigate(Screen.Reader.createRoute(bookId)) },
-          onSearchClick = { navController.navigate(Screen.Search.route) }
+          onSearchClick = {
+            navController.navigate(Screen.Search.route) {
+              popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+              launchSingleTop = true
+              restoreState = true
+            }
+          }
         )
       }
 

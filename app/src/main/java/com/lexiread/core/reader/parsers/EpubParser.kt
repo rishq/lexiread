@@ -34,14 +34,13 @@ class EpubParser : BookParser {
         var totalBytesRead = 0L
 
         try {
-            val zipFile = ZipFile(file)
+            ZipFile(file).use { zipFile ->
             val opfPath = findOpfPath(zipFile) ?: return@withContext emptyList()
             val opfEntry = zipFile.getEntry(opfPath) ?: return@withContext emptyList()
 
             // Guard against large opf entry
             if (opfEntry.size > MAX_ENTRY_SIZE_BYTES) {
                 Log.w(TAG, "OPF entry exceeds size limit: ${opfEntry.size}")
-                zipFile.close()
                 return@withContext emptyList()
             }
             
@@ -56,8 +55,14 @@ class EpubParser : BookParser {
                 }
 
                 val href = manifestItems[idref] ?: continue
-                val fullPath = baseDir + href
-                val entry = zipFile.getEntry(fullPath) ?: zipFile.getEntry(href) ?: continue
+                // Some EPUBs percent-encode or relativize hrefs; normalize both attempts
+                val decodedHref = android.net.Uri.decode(href)
+                val normalizedHref = decodedHref.removePrefix("./")
+                val fullPath = (baseDir + normalizedHref).removePrefix("/")
+                val entry = zipFile.getEntry(fullPath)
+                    ?: zipFile.getEntry(baseDir + decodedHref)
+                    ?: zipFile.getEntry(decodedHref)
+                    ?: continue
 
                 if (entry.size > MAX_ENTRY_SIZE_BYTES) {
                     Log.w(TAG, "Skipping oversize EPUB entry: $fullPath (${entry.size} bytes)")
@@ -94,7 +99,7 @@ class EpubParser : BookParser {
                     chapterIndex++
                 }
             }
-            zipFile.close()
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing EPUB chapters", e)
         }
@@ -113,7 +118,7 @@ class EpubParser : BookParser {
         var coverPath: String? = null
 
         try {
-            val zipFile = ZipFile(file)
+            ZipFile(file).use { zipFile ->
             val opfPath = findOpfPath(zipFile)
             if (opfPath != null) {
                 val opfEntry = zipFile.getEntry(opfPath)
@@ -121,7 +126,6 @@ class EpubParser : BookParser {
                     // Guard against unknown (-1) and oversize OPF entries
                     if (opfEntry.size > MAX_ENTRY_SIZE_BYTES) {
                         Log.w(TAG, "OPF entry exceeds size limit: ${opfEntry.size}")
-                        zipFile.close()
                         return@withContext ParsedBookMetadata(
                             title = title,
                             author = author,
@@ -158,7 +162,7 @@ class EpubParser : BookParser {
                     }
                 }
             }
-            zipFile.close()
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error extracting EPUB metadata", e)
         }
