@@ -3,36 +3,7 @@
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
-// --- Gutendex DTOs ---
-@JsonClass(generateAdapter = true)
-data class GutendexResponse(
-    val count: Int?,
-    val next: String?,
-    val previous: String?,
-    val results: List<GutendexBookDto>?
-)
-
-@JsonClass(generateAdapter = true)
-data class GutendexPersonDto(
-    val name: String?,
-    val birth_year: Int?,
-    val death_year: Int?
-)
-
-@JsonClass(generateAdapter = true)
-data class GutendexBookDto(
-    val id: Int,
-    val title: String,
-    val authors: List<GutendexPersonDto>?,
-    val translators: List<GutendexPersonDto>?,
-    val subjects: List<String>?,
-    val bookshelves: List<String>?,
-    val languages: List<String>?,
-    val copyright: Boolean?,
-    val media_type: String?,
-    val formats: Map<String, String>?,
-    val download_count: Int?
-)
+// Gutendex DTOs moved to `data.remote.gutendex` — see GutendexDtos.kt.
 
 // --- Internet Archive DTOs ---
 @JsonClass(generateAdapter = true)

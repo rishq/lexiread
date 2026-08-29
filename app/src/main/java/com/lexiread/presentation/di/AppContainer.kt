@@ -2,14 +2,17 @@
 
 import android.content.Context
 import androidx.room.Room
+import com.lexiread.BuildConfig
 import com.lexiread.core.preferences.UserPreferencesManager
 import com.lexiread.core.reader.BookImporter
 import com.lexiread.core.reader.PaginationEngine
 import com.lexiread.core.util.TTSHelper
 import com.lexiread.data.local.AppDatabase
 import com.lexiread.data.remote.RetrofitClient
+import com.lexiread.data.repository.BooksRepositoryImpl
 import com.lexiread.data.source.GutendexBookSource
 import com.lexiread.data.source.InternetArchiveBookSource
+import com.lexiread.data.source.OpenLibraryBookSource
 import com.lexiread.data.source.StandardEbooksBookSource
 import com.lexiread.data.repository.AiRepositoryImpl
 import com.lexiread.data.repository.BookRepositoryImpl
@@ -18,9 +21,16 @@ import com.lexiread.data.repository.TranslationRepositoryImpl
 import com.lexiread.data.repository.VocabularyRepositoryImpl
 import com.lexiread.domain.repository.AiRepository
 import com.lexiread.domain.repository.BookRepository
+import com.lexiread.domain.repository.BookSource
+import com.lexiread.domain.repository.BooksRepository
 import com.lexiread.domain.repository.DictionaryRepository
 import com.lexiread.domain.repository.TranslationRepository
 import com.lexiread.domain.repository.VocabularyRepository
+import com.lexiread.domain.usecase.GetBookDetailsUseCase
+import com.lexiread.domain.usecase.GetBooksByCategoryUseCase
+import com.lexiread.domain.usecase.GetPopularBooksUseCase
+import com.lexiread.domain.usecase.OpenBookForReadingUseCase
+import com.lexiread.domain.usecase.SearchBooksUseCase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,7 +46,7 @@ class AppContainer(private val context: Context) {
             context.applicationContext,
             AppDatabase::class.java,
             "lexiread_db"
-        ).addMigrations(AppDatabase.MIGRATION_2_3)
+        ).addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
             .build()
     }
 
@@ -56,18 +66,48 @@ class AppContainer(private val context: Context) {
         PaginationEngine(context.applicationContext)
     }
 
+    /**
+     * One list, shared by both repositories: the legacy downloaders behind
+     * [BookRepository] and the catalogue behind [BooksRepository]. Keeping a
+     * single instance avoids downloading a book through one object while the
+     * other holds a stale path.
+     */
+    private val bookSources: List<BookSource> by lazy {
+        listOf(
+            GutendexBookSource(RetrofitClient.gutendexApi, context),
+            OpenLibraryBookSource(RetrofitClient.openLibraryApi),
+            InternetArchiveBookSource(RetrofitClient.internetArchiveApi, context),
+            StandardEbooksBookSource(RetrofitClient.standardEbooksApi, context)
+        )
+    }
+
     val bookRepository: BookRepository by lazy {
         BookRepositoryImpl(
             bookDao = database.bookDao(),
             readingProgressDao = database.readingProgressDao(),
             bookmarkDao = database.bookmarkDao(),
-            sources = listOf(
-                GutendexBookSource(RetrofitClient.gutendexApi),
-                InternetArchiveBookSource(RetrofitClient.internetArchiveApi, context),
-                StandardEbooksBookSource(RetrofitClient.standardEbooksApi, context)
-            )
+            sources = bookSources
         )
     }
+
+    val booksRepository: BooksRepository by lazy {
+        BooksRepositoryImpl(
+            gutendexApi = RetrofitClient.gutendexApi,
+            openLibraryApi = RetrofitClient.openLibraryApi,
+            googleBooksApi = RetrofitClient.googleBooksApi,
+            catalogCacheDao = database.catalogCacheDao(),
+            bookRepository = bookRepository,
+            sources = bookSources,
+            // Anonymous Google Books access is allowed; a key only raises the quota.
+            googleBooksApiKey = BuildConfig.GOOGLE_BOOKS_API_KEY.takeIf { it.isNotBlank() }
+        )
+    }
+
+    val searchBooksUseCase: SearchBooksUseCase by lazy { SearchBooksUseCase(booksRepository) }
+    val getPopularBooksUseCase: GetPopularBooksUseCase by lazy { GetPopularBooksUseCase(booksRepository) }
+    val getBooksByCategoryUseCase: GetBooksByCategoryUseCase by lazy { GetBooksByCategoryUseCase(booksRepository) }
+    val getBookDetailsUseCase: GetBookDetailsUseCase by lazy { GetBookDetailsUseCase(booksRepository) }
+    val openBookForReadingUseCase: OpenBookForReadingUseCase by lazy { OpenBookForReadingUseCase(booksRepository) }
 
     val dictionaryRepository: DictionaryRepository by lazy {
         DictionaryRepositoryImpl(
@@ -123,6 +163,9 @@ class AppContainer(private val context: Context) {
             runCatching { database.cacheDao().deleteExpiredDictionaryCache(System.currentTimeMillis() - CACHE_TTL_MS) }
             runCatching { database.cacheDao().deleteExpiredTranslationCache(System.currentTimeMillis() - CACHE_TTL_MS) }
             runCatching { database.cacheDao().deleteExpiredAiExplanationCache(System.currentTimeMillis() - AI_CACHE_TTL_MS) }
+            // Stale catalogue pages still serve as offline fallback, but they
+            // must not accumulate forever.
+            runCatching { database.catalogCacheDao().deleteExpired(System.currentTimeMillis() - CACHE_TTL_MS) }
         }
         applicationScope.launch {
             (bookRepository as BookRepositoryImpl).initializePreloadedBooks()

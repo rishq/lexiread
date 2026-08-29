@@ -17,3 +17,4 @@ local.properties
 .env
 debug.keystore
 .workbuddy-ai/
+.CODE_REVIEW.md

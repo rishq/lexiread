@@ -3,71 +3,97 @@ package com.lexiread.data.source
 import android.content.Context
 import android.util.Log
 import android.util.Xml
-import com.lexiread.data.remote.api.GutendexApi
+import com.lexiread.core.util.BookFormatSelector
+import com.lexiread.core.util.SafeDownloader
+import com.lexiread.core.util.TextEncoding
+import com.lexiread.core.util.UrlValidator
+import com.lexiread.data.mapper.toCatalogBook
+import com.lexiread.data.mapper.toDomainBook
 import com.lexiread.data.remote.api.InternetArchiveApi
 import com.lexiread.data.remote.api.StandardEbooksApi
 import com.lexiread.data.remote.dto.InternetArchiveFileDto
+import com.lexiread.data.remote.gutendex.GutendexApi
+import com.lexiread.data.remote.openlibrary.OpenLibraryApi
 import com.lexiread.domain.model.Book
+import com.lexiread.domain.model.FormatKind
 import com.lexiread.domain.repository.BookSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.xmlpull.v1.XmlPullParser
 import java.io.File
-import java.io.FileOutputStream
 
 /**
- * Project Gutenberg via the Gutendex API. Provides full plain-text downloads.
+ * Project Gutenberg via the Gutendex API. Primary reading source: everything it
+ * returns is public domain, so full text may be downloaded legally.
  */
 class GutendexBookSource(
-    private val gutendexApi: GutendexApi
+    private val gutendexApi: GutendexApi,
+    context: Context
 ) : BookSource {
 
     override val idPrefix = "gutenberg"
     override val displayName = "Project Gutenberg"
 
-    private val trustedHosts = setOf("gutenberg.org", "gutendex.com")
+    private val booksDir = File(context.applicationContext.filesDir, DOWNLOAD_DIR).apply { mkdirs() }
 
     override suspend fun search(query: String): List<Book> {
         val response = gutendexApi.searchBooks(query)
-        return response.results?.map { dto ->
-            val authorStr = dto.authors?.joinToString(", ") { it.name ?: "" } ?: "Unknown Author"
-            val cover = dto.formats?.get("image/jpeg")?.replace("http://", "https://")
-                ?: "https://www.gutenberg.org/cache/epub/${dto.id}/pg${dto.id}.cover.medium.jpg"
-
-            Book(
-                id = "${idPrefix}_${dto.id}",
-                title = dto.title,
-                author = authorStr,
-                coverUrl = cover,
-                description = dto.subjects?.joinToString(" • ")?.takeIf(String::isNotBlank)
-                    ?: "Classic English Literature",
-                fullText = null,
-                language = dto.languages?.firstOrNull() ?: "en",
-                subjects = dto.subjects ?: emptyList()
-            )
-        } ?: emptyList()
+        return response.results.orEmpty().map { dto -> dto.toCatalogBook().toDomainBook() }
     }
 
-    override fun canDownload(book: Book) =
-        book.id.removePrefix("${idPrefix}_").toIntOrNull() != null
+    override fun canDownload(book: Book): Boolean = gutenbergId(book) != null
 
-    override suspend fun downloadContent(book: Book): Book {
-        val idNum = book.id.removePrefix("${idPrefix}_").toIntOrNull()
+    /**
+     * Picks the best format purely from the MIME types Gutendex advertised, in
+     * the order EPUB, HTML, plain text. No URL is ever assembled from a
+     * template: if Gutenberg renames or drops a file the next format is used
+     * instead of a 404.
+     */
+    override suspend fun downloadContent(book: Book): Book = withContext(Dispatchers.IO) {
+        val idNum = gutenbergId(book)
             ?: throw IllegalArgumentException("Not a Gutenberg id: ${book.id}")
 
         val dto = gutendexApi.getBookById(idNum)
-        val textUrl = (dto.formats?.get("text/plain; charset=utf-8")
-            ?: dto.formats?.get("text/plain; charset=us-ascii")
-            ?: dto.formats?.get("text/plain")
-            ?: "https://www.gutenberg.org/files/$idNum/$idNum-0.txt").replace("http://", "https://")
+        val format = BookFormatSelector.pickBest(BookFormatSelector.fromGutendexFormats(dto.formats))
+            ?: throw UnsupportedOperationException(
+                "No readable EPUB, HTML or text edition is published for '${book.title}'."
+            )
 
-        val responseBody = gutendexApi.downloadTextContent(textUrl)
-        val textContent = downloadTextSafely(textUrl, responseBody, trustedHosts)
+        val url = UrlValidator.requireTrustedDownloadUrl(format.url)
+        val destination = File(booksDir, "gutenberg_$idNum.${extensionFor(format.kind)}")
+        gutendexApi.downloadFile(url).use { body ->
+            SafeDownloader.downloadToFile(body, destination, MAX_DOWNLOAD_BYTES)
+        }
 
-        return book.copy(fullText = cleanBookText(textContent), isSaved = true)
+        when (format.kind) {
+            FormatKind.EPUB -> require(SafeDownloader.isValidEpub(destination)) {
+                destination.delete()
+                "Gutenberg did not return a valid EPUB file for '${book.title}'."
+            }
+            FormatKind.TXT -> stripGutenbergBoilerplate(destination)
+            else -> Unit
+        }
+
+        book.copy(
+            filePath = destination.absolutePath,
+            format = format.kind.name,
+            isSaved = true
+        )
     }
 
+    private fun gutenbergId(book: Book): Int? =
+        book.id.removePrefix("${idPrefix}_").toIntOrNull()
+
     companion object {
+        private const val DOWNLOAD_DIR = "downloaded_books"
+        private const val MAX_DOWNLOAD_BYTES = 25L * 1024 * 1024
+
+        internal fun extensionFor(kind: FormatKind): String = when (kind) {
+            FormatKind.EPUB -> "epub"
+            FormatKind.HTML -> "html"
+            else -> "txt"
+        }
+
         internal fun cleanBookText(rawText: String): String {
             var text = rawText
             val headerIdx = text.indexOf("*** START OF THE PROJECT GUTENBERG EBOOK")
@@ -84,46 +110,49 @@ class GutendexBookSource(
             return text.trim()
         }
 
-        internal fun downloadTextSafely(
-            url: String,
-            responseBody: okhttp3.ResponseBody,
-            trustedHosts: Set<String>
-        ): String {
-            // SSRF URL Domain Validation
-            val uri = java.net.URI(url)
-            val scheme = uri.scheme?.lowercase()
-            val host = uri.host?.lowercase()
-            val isTrustedDomain = scheme == "https" && host != null &&
-                trustedHosts.any { it == host || host.endsWith(".$it") }
-
-            if (!isTrustedDomain) {
-                throw SecurityException("Download rejected: URL domain '$host' is not in allowed list.")
-            }
-
-            val maxBytes = 10 * 1024 * 1024L
-            val contentLength = responseBody.contentLength()
-            if (contentLength > maxBytes) {
-                throw IllegalArgumentException(
-                    "Book content length ($contentLength bytes) exceeds maximum 10MB limit."
-                )
-            }
-
-            responseBody.byteStream().use { inputStream ->
-                val buffer = java.io.ByteArrayOutputStream()
-                val data = ByteArray(8192)
-                var bytesRead: Int
-                var totalRead = 0L
-
-                while (inputStream.read(data).also { bytesRead = it } != -1) {
-                    totalRead += bytesRead
-                    if (totalRead > maxBytes) {
-                        throw IllegalArgumentException("Downloaded content exceeded 10MB limit.")
-                    }
-                    buffer.write(data, 0, bytesRead)
-                }
-                return String(buffer.toByteArray(), Charsets.UTF_8)
+        /**
+         * Rewrites a freshly downloaded text file without its licence header and
+         * footer, normalised to UTF-8. Doing it once at download time means the
+         * reader never has to re-scan multi-megabyte text on every open.
+         */
+        private fun stripGutenbergBoilerplate(file: File) {
+            val decoded = runCatching {
+                file.inputStream().use { TextEncoding.readText(it, MAX_DOWNLOAD_BYTES) }
+            }.getOrNull() ?: return
+            val cleaned = cleanBookText(decoded)
+            if (cleaned.length != decoded.length) {
+                runCatching { file.writeText(cleaned, Charsets.UTF_8) }
             }
         }
+    }
+}
+
+/**
+ * Open Library. Catalogue, metadata and covers — never a download source.
+ *
+ * Open Library exposes no endpoint that streams public-domain full text the way
+ * Gutendex does, so this source contributes discoverability and cover art while
+ * reading is delegated to whichever source does have a readable edition.
+ */
+class OpenLibraryBookSource(
+    private val openLibraryApi: OpenLibraryApi
+) : BookSource {
+
+    override val idPrefix = "ol"
+    override val displayName = "Open Library"
+
+    override suspend fun search(query: String): List<Book> {
+        if (query.isBlank()) return emptyList()
+        val response = openLibraryApi.searchBooks(query)
+        return response.docs.orEmpty().mapNotNull { doc -> doc.toCatalogBook()?.toDomainBook() }
+    }
+
+    override fun canDownload(book: Book): Boolean = false
+
+    override suspend fun downloadContent(book: Book): Book {
+        throw UnsupportedOperationException(
+            "Open Library provides catalogue data only. Read '${book.title}' from another source."
+        )
     }
 }
 
@@ -192,14 +221,14 @@ class InternetArchiveBookSource(
             .build()
             .toString()
 
-        val destination = archiveApi.downloadFile(downloadUrl).use { body ->
-            writeResponseToFile(
-                body = body,
-                destination = File(booksDir, "ia_${safeFileStem(identifier)}.${format.lowercase()}"),
-                maxBytes = MAX_DOWNLOAD_BYTES
-            )
+        val destination = File(booksDir, "ia_${safeFileStem(identifier)}.${format.lowercase()}")
+        archiveApi.downloadFile(downloadUrl).use { body ->
+            SafeDownloader.downloadToFile(body, destination, MAX_DOWNLOAD_BYTES)
         }
-        requireValidEpub(destination)
+        require(SafeDownloader.isValidEpub(destination)) {
+            destination.delete()
+            "Internet Archive did not return a valid EPUB file."
+        }
         book.copy(filePath = destination.absolutePath, format = format, isSaved = true)
     }
 
@@ -249,50 +278,6 @@ class InternetArchiveBookSource(
 
         private fun formatFor(name: String, format: String?): String =
             if (format.orEmpty().equals("epub", ignoreCase = true) || name.endsWith(".epub", ignoreCase = true)) "EPUB" else "TXT"
-
-        private fun writeResponseToFile(
-            body: okhttp3.ResponseBody,
-            destination: File,
-            maxBytes: Long
-        ): File {
-            require(body.contentLength() <= maxBytes || body.contentLength() == -1L) {
-                "Book content exceeds the ${maxBytes / (1024 * 1024)}MB limit."
-            }
-
-            try {
-                body.byteStream().use { input ->
-                    FileOutputStream(destination).use { output ->
-                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                        var totalBytes = 0L
-                        while (true) {
-                            val read = input.read(buffer)
-                            if (read == -1) break
-                            totalBytes += read
-                            require(totalBytes <= maxBytes) {
-                                "Book content exceeds the ${maxBytes / (1024 * 1024)}MB limit."
-                            }
-                            output.write(buffer, 0, read)
-                        }
-                    }
-                }
-                return destination
-            } catch (error: Throwable) {
-                destination.delete()
-                throw error
-            }
-        }
-
-        private fun requireValidEpub(file: File) {
-            val isValid = runCatching {
-                java.util.zip.ZipFile(file).use { zip ->
-                    zip.getEntry("META-INF/container.xml") != null
-                }
-            }.getOrDefault(false)
-            if (!isValid) {
-                file.delete()
-                throw IllegalArgumentException("Internet Archive did not return a valid EPUB file.")
-            }
-        }
     }
 }
 
@@ -347,56 +332,17 @@ class StandardEbooksBookSource(
         val epubUrl = entry.epubUrl
             ?: throw UnsupportedOperationException("No EPUB available for ${book.title}")
 
-        requireValidUrl(epubUrl)
-        val responseBody = seApi.downloadFile(epubUrl)
-        responseBody.use { rb ->
-            require(rb.contentLength() <= MAX_EPUB_BYTES || rb.contentLength() == -1L) {
-                "EPUB exceeds ${MAX_EPUB_BYTES} limit."
-            }
-            val safeId = shortId.replace(Regex("[^A-Za-z0-9._-]"), "_").take(96)
-            val destFile = File(booksDir, "se_$safeId.epub")
-            try {
-                rb.byteStream().use { ins ->
-                    FileOutputStream(destFile).use { fos ->
-                        val buffer = ByteArray(8192)
-                        var totalRead = 0L
-                        while (true) {
-                            val read = ins.read(buffer)
-                            if (read == -1) break
-                            totalRead += read
-                            if (totalRead > MAX_EPUB_BYTES) {
-                                throw IllegalArgumentException("EPUB exceeds ${MAX_EPUB_BYTES} limit.")
-                            }
-                            fos.write(buffer, 0, read)
-                        }
-                    }
-                }
-                requireValidEpub(destFile)
-                book.copy(filePath = destFile.absolutePath, format = "EPUB", isSaved = true)
-            } catch (error: Throwable) {
-                destFile.delete()
-                throw error
-            }
+        UrlValidator.requireTrustedDownloadUrl(epubUrl)
+        val safeId = shortId.replace(Regex("[^A-Za-z0-9._-]"), "_").take(96)
+        val destFile = File(booksDir, "se_$safeId.epub")
+        seApi.downloadFile(epubUrl).use { rb ->
+            SafeDownloader.downloadToFile(rb, destFile, MAX_EPUB_BYTES)
         }
-    }
-
-    private fun requireValidUrl(url: String) {
-        val uri = java.net.URI(url)
-        val ok = uri.scheme?.lowercase() == "https" &&
-            uri.host?.lowercase()?.let { it == HOST || it.endsWith(".$HOST") } == true
-        if (!ok) throw SecurityException("Download rejected: URL '$url' is not a $HOST link.")
-    }
-
-    private fun requireValidEpub(file: File) {
-        val isValid = runCatching {
-            java.util.zip.ZipFile(file).use { zip ->
-                zip.getEntry("META-INF/container.xml") != null
-            }
-        }.getOrDefault(false)
-        if (!isValid) {
-            file.delete()
-            throw IllegalArgumentException("Standard Ebooks did not return a valid EPUB file.")
+        require(SafeDownloader.isValidEpub(destFile)) {
+            destFile.delete()
+            "Standard Ebooks did not return a valid EPUB file."
         }
+        book.copy(filePath = destFile.absolutePath, format = "EPUB", isSaved = true)
     }
 
     private data class OpdsEntry(

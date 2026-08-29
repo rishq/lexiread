@@ -35,8 +35,8 @@ import com.lexiread.presentation.navigation.Screen
 import com.lexiread.presentation.navigation.bottomNavItems
 import com.lexiread.presentation.reader.ReaderScreen
 import com.lexiread.presentation.reader.ReaderViewModel
-import com.lexiread.presentation.search.SearchScreen
-import com.lexiread.presentation.search.SearchViewModel
+import com.lexiread.presentation.catalog.CatalogScreen
+import com.lexiread.presentation.catalog.CatalogViewModel
 import com.lexiread.presentation.settings.SettingsScreen
 import com.lexiread.presentation.settings.SettingsViewModel
 import com.lexiread.presentation.vocabulary.VocabularyScreen
@@ -164,11 +164,17 @@ fun LexiReadApp(container: AppContainer, onSetVolumeKeyListener: (((Int) -> Bool
       }
 
       composable(Screen.Search.route) {
-        val searchViewModel: SearchViewModel = viewModel(
-          factory = SearchViewModel.Factory(container.bookRepository)
+        val catalogViewModel: CatalogViewModel = viewModel(
+          factory = CatalogViewModel.Factory(
+            searchBooks = container.searchBooksUseCase,
+            getPopularBooks = container.getPopularBooksUseCase,
+            getBooksByCategory = container.getBooksByCategoryUseCase,
+            openBookForReading = container.openBookForReadingUseCase,
+            bookRepository = container.bookRepository
+          )
         )
-        SearchScreen(
-          viewModel = searchViewModel,
+        CatalogScreen(
+          viewModel = catalogViewModel,
           onBookClick = { bookId -> navController.navigate(Screen.BookDetails.createRoute(bookId)) },
           onReadClick = { bookId -> navController.navigate(Screen.Reader.createRoute(bookId)) }
         )

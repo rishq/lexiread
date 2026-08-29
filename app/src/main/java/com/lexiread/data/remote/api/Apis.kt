@@ -5,8 +5,6 @@ import com.lexiread.data.remote.dto.ClaudeMessagesResponseDto
 import com.lexiread.data.remote.dto.DictionaryDto
 import com.lexiread.data.remote.dto.GeminiRequestDto
 import com.lexiread.data.remote.dto.GeminiResponseDto
-import com.lexiread.data.remote.dto.GutendexBookDto
-import com.lexiread.data.remote.dto.GutendexResponse
 import com.lexiread.data.remote.dto.InternetArchiveMetadataResponse
 import com.lexiread.data.remote.dto.InternetArchiveSearchResponse
 import com.lexiread.data.remote.dto.MyMemoryResponse
@@ -21,16 +19,10 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 import retrofit2.http.Url
 
-interface GutendexApi {
-    @GET("books")
-    suspend fun searchBooks(@Query("search") query: String): GutendexResponse
-
-    @GET("books/{id}")
-    suspend fun getBookById(@Path("id") id: Int): GutendexBookDto
-
-    @GET
-    suspend fun downloadTextContent(@Url url: String): ResponseBody
-}
+/**
+ * Gutendex lives in `data.remote.gutendex` together with its DTOs; every
+ * catalogue now owns a self-contained package.
+ */
 
 /** Standard Ebooks exposes an OPDS (Atom XML) catalog. */
 interface StandardEbooksApi {

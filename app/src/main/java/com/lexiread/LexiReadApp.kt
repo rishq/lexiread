@@ -3,6 +3,7 @@
 import android.app.Application
 import android.util.Log
 import com.lexiread.core.util.CrashLogger
+import com.lexiread.data.remote.RetrofitClient
 import com.lexiread.presentation.di.AppContainer
 
 class LexiReadApp : Application() {
@@ -12,6 +13,9 @@ class LexiReadApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Must happen before any service is built, otherwise the catalogue
+        // clients are constructed without a disk cache and never retry.
+        RetrofitClient.installCache(this)
         CrashLogger.install(this)
         // Surface the previous crash in logcat so it is easy to report.
         // Truncated: logcat drops very long messages, and a stack trace can

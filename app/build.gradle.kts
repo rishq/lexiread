@@ -1,4 +1,19 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.util.Properties
+
+/**
+ * Google Books works without a key, but anonymous quotas are low. The key is
+ * read from an untracked file so it never lands in version control.
+ */
+fun readOptionalSecret(name: String): String {
+  System.getenv(name)?.takeIf { it.isNotBlank() }?.let { return it }
+  val properties = Properties()
+  val file = rootProject.file("local.properties")
+  if (file.exists()) {
+    file.inputStream().use { properties.load(it) }
+  }
+  return properties.getProperty(name)?.trim().orEmpty()
+}
 
 plugins {
   alias(libs.plugins.android.application)
@@ -20,6 +35,8 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    buildConfigField("String", "GOOGLE_BOOKS_API_KEY", "\"${readOptionalSecret("GOOGLE_BOOKS_API_KEY")}\"")
   }
 
   signingConfigs {

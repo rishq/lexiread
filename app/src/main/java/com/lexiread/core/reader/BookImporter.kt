@@ -5,6 +5,7 @@ import android.net.Uri
 import android.util.Log
 import com.lexiread.core.reader.parsers.EpubParser
 import com.lexiread.core.reader.parsers.Fb2Parser
+import com.lexiread.core.reader.parsers.HtmlParser
 import com.lexiread.core.reader.parsers.PdfParser
 import com.lexiread.core.reader.parsers.TxtParser
 import com.lexiread.domain.model.Book
@@ -22,6 +23,7 @@ class BookImporter(private val context: Context) {
 
     private val parsers: List<BookParser> = listOf(
         EpubParser(),
+        HtmlParser(),
         PdfParser(),
         Fb2Parser(),
         TxtParser()
