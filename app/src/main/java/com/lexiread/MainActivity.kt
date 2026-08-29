@@ -72,6 +72,15 @@ class MainActivity : ComponentActivity() {
     }
     return super.onKeyDown(keyCode, event)
   }
+
+  override fun onDestroy() {
+    // Release the TextToSpeech engine binding instead of leaking it for the
+    // lifetime of the process.
+    if (::container.isInitialized) {
+      runCatching { container.ttsHelper.shutdown() }
+    }
+    super.onDestroy()
+  }
 }
 
 @Composable

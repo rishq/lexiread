@@ -17,7 +17,8 @@ interface BookRepository {
     fun getFinishedBooks(): Flow<List<Book>>
     suspend fun getBookById(id: String): Book?
     suspend fun searchBooksOnline(query: String): Result<List<Book>>
-    suspend fun fetchAndSaveFullBook(book: Book): Result<Book>
+    /** Re-download content when a previously cached file is corrupt or unreadable. */
+    suspend fun fetchAndSaveFullBook(book: Book, forceRefresh: Boolean = false): Result<Book>
     suspend fun addBookToLibrary(book: Book)
     suspend fun deleteBook(id: String)
     suspend fun toggleFavorite(bookId: String, isFavorite: Boolean)

@@ -63,7 +63,7 @@ fun VocabularyScreen(
 
     if (state.isReviewMode) {
         WordReviewDialog(
-            words = state.words,
+            words = state.reviewWords,
             currentIndex = state.currentReviewIndex,
             isFlipped = state.isCardFlipped,
             onFlip = { viewModel.flipCard() },
@@ -102,6 +102,23 @@ fun VocabularyScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            // Entry point for the flashcard trainer (previously unreachable).
+            Button(
+                onClick = { viewModel.startReviewMode() },
+                enabled = state.words.isNotEmpty(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Refresh,
+                    contentDescription = "Start review",
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Review")
             }
         }
 

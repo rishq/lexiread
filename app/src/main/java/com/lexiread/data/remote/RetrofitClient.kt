@@ -3,7 +3,7 @@
 import com.lexiread.BuildConfig
 import com.lexiread.data.remote.api.ClaudeApi
 import com.lexiread.data.remote.api.DictionaryApi
-import com.lexiread.data.remote.api.OpenLibraryApi
+import com.lexiread.data.remote.api.InternetArchiveApi
 import com.lexiread.data.remote.api.StandardEbooksApi
 import com.lexiread.data.remote.api.GeminiApi
 import com.lexiread.data.remote.api.GutendexApi
@@ -62,21 +62,21 @@ object RetrofitClient {
             .create(GutendexApi::class.java)
     }
 
-    val openLibraryApi: OpenLibraryApi by lazy {
-        Retrofit.Builder()
-            .baseUrl("https://openlibrary.org/")
-            .client(apiOkHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
-            .build()
-            .create(OpenLibraryApi::class.java)
-    }
-
     val standardEbooksApi: StandardEbooksApi by lazy {
         Retrofit.Builder()
             .baseUrl("https://standardebooks.org/")
             .client(downloadOkHttpClient)
             .build()
             .create(StandardEbooksApi::class.java)
+    }
+
+    val internetArchiveApi: InternetArchiveApi by lazy {
+        Retrofit.Builder()
+            .baseUrl("https://archive.org/")
+            .client(downloadOkHttpClient)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+            .create(InternetArchiveApi::class.java)
     }
 
     val dictionaryApi: DictionaryApi by lazy {

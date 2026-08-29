@@ -5,6 +5,7 @@ import android.util.Xml
 import com.lexiread.core.reader.BookParser
 import com.lexiread.core.reader.ChapterParser
 import com.lexiread.core.reader.ParsedBookMetadata
+import com.lexiread.core.util.TextEncoding
 import com.lexiread.domain.model.BookChapter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -12,6 +13,8 @@ import org.xmlpull.v1.XmlPullParser
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
+import java.io.StringReader
+import java.nio.charset.Charset
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 
@@ -35,78 +38,73 @@ class EpubParser : BookParser {
 
         try {
             ZipFile(file).use { zipFile ->
-            val opfPath = findOpfPath(zipFile) ?: return@withContext emptyList()
-            val opfEntry = zipFile.getEntry(opfPath) ?: return@withContext emptyList()
+                val opfPath = findOpfPath(zipFile) ?: return@withContext emptyList()
+                val opfEntry = zipFile.getEntry(opfPath) ?: return@withContext emptyList()
 
-            // Guard against large opf entry
-            if (opfEntry.size > MAX_ENTRY_SIZE_BYTES) {
-                Log.w(TAG, "OPF entry exceeds size limit: ${opfEntry.size}")
-                return@withContext emptyList()
-            }
-            
-            val (manifestItems, spineItemRefs) = parseOpf(zipFile.getInputStream(opfEntry))
-            val baseDir = if (opfPath.contains("/")) opfPath.substringBeforeLast("/") + "/" else ""
-
-            var chapterIndex = 0
-            for ((processedCount, idref) in spineItemRefs.withIndex()) {
-                if (processedCount >= MAX_ENTRIES_TO_PROCESS || totalBytesRead >= MAX_TOTAL_UNCOMPRESSED_BYTES) {
-                    Log.w(TAG, "Reached safety limits for EPUB extraction: $totalBytesRead bytes read")
-                    break
+                // Guard against large opf entry
+                if (opfEntry.size > MAX_ENTRY_SIZE_BYTES) {
+                    Log.w(TAG, "OPF entry exceeds size limit: ${opfEntry.size}")
+                    return@withContext emptyList()
                 }
 
-                val href = manifestItems[idref] ?: continue
-                // Some EPUBs percent-encode or relativize hrefs; normalize both attempts
-                val decodedHref = android.net.Uri.decode(href)
-                val normalizedHref = decodedHref.removePrefix("./")
-                val fullPath = (baseDir + normalizedHref).removePrefix("/")
-                val entry = zipFile.getEntry(fullPath)
-                    ?: zipFile.getEntry(baseDir + decodedHref)
-                    ?: zipFile.getEntry(decodedHref)
-                    ?: continue
+                val opfBytes = readEntryBytes(zipFile, opfEntry)
+                totalBytesRead += opfBytes.size
+                val (manifestItems, spineItemRefs) = parseOpf(String(opfBytes, detectXmlCharset(opfBytes)))
+                val baseDir = if (opfPath.contains("/")) opfPath.substringBeforeLast("/") + "/" else ""
 
-                if (entry.size > MAX_ENTRY_SIZE_BYTES) {
-                    Log.w(TAG, "Skipping oversize EPUB entry: $fullPath (${entry.size} bytes)")
-                    continue
-                }
-                
-                val htmlContent = zipFile.getInputStream(entry).use { inputStream ->
-                    val buffer = ByteArray(8192)
-                    val out = StringBuilder()
-                    var bytesForThisEntry = 0L
-                    var read: Int
-                    while (inputStream.read(buffer).also { read = it } != -1) {
-                        bytesForThisEntry += read
-                        totalBytesRead += read
-                        if (bytesForThisEntry > MAX_ENTRY_SIZE_BYTES || totalBytesRead > MAX_TOTAL_UNCOMPRESSED_BYTES) {
-                            break
-                        }
-                        out.append(String(buffer, 0, read, Charsets.UTF_8))
+                var chapterIndex = 0
+                for ((processedCount, idref) in spineItemRefs.withIndex()) {
+                    if (processedCount >= MAX_ENTRIES_TO_PROCESS || totalBytesRead >= MAX_TOTAL_UNCOMPRESSED_BYTES) {
+                        Log.w(TAG, "Reached safety limits for EPUB extraction: $totalBytesRead bytes read")
+                        break
                     }
-                    out.toString()
-                }
 
-                val cleanText = ChapterParser.cleanHtmlText(htmlContent)
+                    val href = manifestItems[idref] ?: continue
+                    // Some EPUBs percent-encode or relativize hrefs; normalize both attempts
+                    val decodedHref = android.net.Uri.decode(href)
+                    val normalizedHref = decodedHref.removePrefix("./")
+                    val fullPath = (baseDir + normalizedHref).removePrefix("/")
+                    val entry = zipFile.getEntry(fullPath)
+                        ?: zipFile.getEntry(baseDir + decodedHref)
+                        ?: zipFile.getEntry(decodedHref)
+                        ?: continue
 
-                if (cleanText.isNotBlank()) {
-                    val chapterTitle = extractChapterTitle(htmlContent) ?: "Chapter ${chapterIndex + 1}"
-                    chapters.add(
-                        BookChapter(
-                            title = chapterTitle,
-                            content = cleanText,
-                            index = chapterIndex
+                    if (entry.size > MAX_ENTRY_SIZE_BYTES) {
+                        Log.w(TAG, "Skipping oversize EPUB entry: $fullPath (${entry.size} bytes)")
+                        continue
+                    }
+
+                    // Read the whole entry and decode it in ONE pass. Decoding per
+                    // 8 KiB chunk used to split multi-byte characters at buffer
+                    // boundaries and litter the book with U+FFFD replacement chars.
+                    val entryBytes = readEntryBytes(zipFile, entry)
+                    totalBytesRead += entryBytes.size
+                    if (entryBytes.isEmpty()) continue
+
+                    val htmlContent = TextEncoding.decode(entryBytes)
+                    val cleanText = ChapterParser.cleanHtmlText(htmlContent)
+
+                    if (cleanText.isNotBlank()) {
+                        val chapterTitle = extractChapterTitle(htmlContent) ?: "Chapter ${chapterIndex + 1}"
+                        chapters.add(
+                            BookChapter(
+                                title = chapterTitle,
+                                content = cleanText,
+                                index = chapterIndex
+                            )
                         )
-                    )
-                    chapterIndex++
+                        chapterIndex++
+                    }
                 }
-            }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing EPUB chapters", e)
         }
 
         if (chapters.isEmpty()) {
-            val fallbackText = file.nameWithoutExtension
-            return@withContext listOf(BookChapter("Chapter 1", fallbackText, 0))
+            // Never show the generated filename as if it were book text. A
+            // malformed EPUB must be reported to the reader as unreadable.
+            return@withContext emptyList()
         }
         chapters
     }
@@ -119,49 +117,48 @@ class EpubParser : BookParser {
 
         try {
             ZipFile(file).use { zipFile ->
-            val opfPath = findOpfPath(zipFile)
-            if (opfPath != null) {
-                val opfEntry = zipFile.getEntry(opfPath)
-                if (opfEntry != null) {
-                    // Guard against unknown (-1) and oversize OPF entries
-                    if (opfEntry.size > MAX_ENTRY_SIZE_BYTES) {
-                        Log.w(TAG, "OPF entry exceeds size limit: ${opfEntry.size}")
-                        return@withContext ParsedBookMetadata(
-                            title = title,
-                            author = author,
-                            description = "Imported EPUB book.",
-                            coverPath = null
-                        )
-                    }
-                    val meta = zipFile.getInputStream(opfEntry).use { stream ->
-                        parseOpfMetadata(stream)
-                    }
-                    if (!meta.title.isNullOrBlank()) title = meta.title
-                    if (!meta.author.isNullOrBlank()) author = meta.author
-                    description = meta.description
+                val opfPath = findOpfPath(zipFile)
+                if (opfPath != null) {
+                    val opfEntry = zipFile.getEntry(opfPath)
+                    if (opfEntry != null) {
+                        // Guard against unknown (-1) and oversize OPF entries
+                        if (opfEntry.size > MAX_ENTRY_SIZE_BYTES) {
+                            Log.w(TAG, "OPF entry exceeds size limit: ${opfEntry.size}")
+                            return@withContext ParsedBookMetadata(
+                                title = title,
+                                author = author,
+                                description = "Imported EPUB book.",
+                                coverPath = null
+                            )
+                        }
+                        val opfBytes = readEntryBytes(zipFile, opfEntry)
+                        val meta = parseOpfMetadata(String(opfBytes, detectXmlCharset(opfBytes)))
+                        if (!meta.title.isNullOrBlank()) title = meta.title
+                        if (!meta.author.isNullOrBlank()) author = meta.author
+                        description = meta.description
 
-                    // Extract cover with a hard size cap to avoid OOM on malicious files
-                    if (!meta.coverHref.isNullOrBlank()) {
-                        val baseDir = if (opfPath.contains("/")) opfPath.substringBeforeLast("/") + "/" else ""
-                        val fullCoverPath = baseDir + meta.coverHref
-                        val coverEntry = zipFile.getEntry(fullCoverPath) ?: zipFile.getEntry(meta.coverHref)
-                        if (coverEntry != null && coverEntry.size in 1L..MAX_COVER_SIZE_BYTES) {
-                            val coverBytes = zipFile.getInputStream(coverEntry).use { ins ->
-                                ins.readNBytes(MAX_COVER_SIZE_BYTES.toInt() + 1)
-                            }
-                            if (coverBytes.size <= MAX_COVER_SIZE_BYTES) {
-                                val coverFile = File(file.parentFile, "${file.nameWithoutExtension}_cover.jpg")
-                                FileOutputStream(coverFile).use { fos ->
-                                    fos.write(coverBytes)
+                        // Extract cover with a hard size cap to avoid OOM on malicious files
+                        if (!meta.coverHref.isNullOrBlank()) {
+                            val baseDir = if (opfPath.contains("/")) opfPath.substringBeforeLast("/") + "/" else ""
+                            val fullCoverPath = baseDir + meta.coverHref
+                            val coverEntry = zipFile.getEntry(fullCoverPath) ?: zipFile.getEntry(meta.coverHref)
+                            if (coverEntry != null && coverEntry.size in 1L..MAX_COVER_SIZE_BYTES) {
+                                val coverBytes = zipFile.getInputStream(coverEntry).use { ins ->
+                                    ins.readNBytes(MAX_COVER_SIZE_BYTES.toInt() + 1)
                                 }
-                                coverPath = coverFile.absolutePath
-                            } else {
-                                Log.w(TAG, "Skipping oversize EPUB cover")
+                                if (coverBytes.size <= MAX_COVER_SIZE_BYTES) {
+                                    val coverFile = File(file.parentFile, "${file.nameWithoutExtension}_cover.jpg")
+                                    FileOutputStream(coverFile).use { fos ->
+                                        fos.write(coverBytes)
+                                    }
+                                    coverPath = coverFile.absolutePath
+                                } else {
+                                    Log.w(TAG, "Skipping oversize EPUB cover")
+                                }
                             }
                         }
                     }
                 }
-            }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error extracting EPUB metadata", e)
@@ -175,13 +172,29 @@ class EpubParser : BookParser {
         )
     }
 
+    /**
+     * Reads an entry into memory with the global per-entry cap applied.
+     * Unknown declared sizes (-1) are still capped by [TextEncoding.readCappedBytes].
+     */
+    private fun readEntryBytes(zipFile: ZipFile, entry: ZipEntry): ByteArray {
+        return zipFile.getInputStream(entry).use { stream ->
+            TextEncoding.readCappedBytes(stream, MAX_ENTRY_SIZE_BYTES)
+        }
+    }
+
+    /**
+     * XML documents declare their own encoding. Honour the prolog instead of
+     * assuming UTF-8, otherwise windows-1251 books decode into mojibake.
+     */
+    private fun detectXmlCharset(bytes: ByteArray): Charset =
+        TextEncoding.detectCharset(bytes)
 
     private fun findOpfPath(zipFile: ZipFile): String? {
         val containerEntry = zipFile.getEntry("META-INF/container.xml") ?: return null
-        zipFile.getInputStream(containerEntry).use { stream ->
-            val parser = Xml.newPullParser()
-            parser.setInput(stream, "UTF-8")
+        val containerBytes = readEntryBytes(zipFile, containerEntry)
+        if (containerBytes.isEmpty()) return null
 
+        newPullParser(String(containerBytes, detectXmlCharset(containerBytes))).let { parser ->
             var eventType = parser.eventType
             while (eventType != XmlPullParser.END_DOCUMENT) {
                 if (eventType == XmlPullParser.START_TAG && parser.name == "rootfile") {
@@ -196,6 +209,16 @@ class EpubParser : BookParser {
         return null
     }
 
+    /**
+     * Parsing from a decoded String keeps the declared encoding intact.
+     * `setInput(stream, "UTF-8")` would re-introduce the mojibake bug here.
+     */
+    private fun newPullParser(document: String): XmlPullParser {
+        val parser = Xml.newPullParser()
+        parser.setInput(StringReader(document))
+        return parser
+    }
+
     private data class OpfMetadata(
         val title: String?,
         val author: String?,
@@ -203,7 +226,7 @@ class EpubParser : BookParser {
         val coverHref: String?
     )
 
-    private fun parseOpfMetadata(inputStream: InputStream): OpfMetadata {
+    private fun parseOpfMetadata(document: String): OpfMetadata {
         var title: String? = null
         var author: String? = null
         var description: String? = null
@@ -211,8 +234,7 @@ class EpubParser : BookParser {
         var coverHref: String? = null
         val manifest = mutableMapOf<String, String>()
 
-        val parser = Xml.newPullParser()
-        parser.setInput(inputStream, "UTF-8")
+        val parser = newPullParser(document)
 
         var eventType = parser.eventType
         var currentTag = ""
@@ -260,12 +282,11 @@ class EpubParser : BookParser {
         return OpfMetadata(title, author, description, coverHref)
     }
 
-    private fun parseOpf(inputStream: InputStream): Pair<Map<String, String>, List<String>> {
+    private fun parseOpf(document: String): Pair<Map<String, String>, List<String>> {
         val manifest = mutableMapOf<String, String>()
         val spine = mutableListOf<String>()
 
-        val parser = Xml.newPullParser()
-        parser.setInput(inputStream, "UTF-8")
+        val parser = newPullParser(document)
 
         var eventType = parser.eventType
         while (eventType != XmlPullParser.END_DOCUMENT) {

@@ -1,12 +1,10 @@
 ﻿package com.lexiread.data.source
 
 import com.lexiread.data.remote.api.GutendexApi
-import com.lexiread.data.remote.api.OpenLibraryApi
 import com.lexiread.data.remote.dto.GutendexBookDto
 import com.lexiread.data.remote.dto.GutendexPersonDto
 import com.lexiread.data.remote.dto.GutendexResponse
-import com.lexiread.data.remote.dto.OpenLibraryDocDto
-import com.lexiread.data.remote.dto.OpenLibrarySearchResponse
+import com.lexiread.data.remote.dto.InternetArchiveFileDto
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -63,30 +61,25 @@ class BookSourcesTest {
     }
 
     @Test
-    fun `open library maps docs and reports non-downloadable`() = runBlocking {
-        val api = object : OpenLibraryApi {
-            override suspend fun searchBooks(query: String, limit: Int, fields: String) =
-                OpenLibrarySearchResponse(
-                    numFound = 1,
-                    docs = listOf(
-                        OpenLibraryDocDto(
-                            key = "/works/OL1168083W",
-                            title = "Emma",
-                            author_name = listOf("Jane Austen"),
-                            first_publish_year = 1815,
-                            cover_i = 42
-                        )
-                    )
-                )
-        }
-        val source = OpenLibraryBookSource(api)
+    fun `internet archive chooses public epub ahead of text and ignores private files`() {
+        val selected = InternetArchiveBookSource.selectReadableFile(
+            listOf(
+                InternetArchiveFileDto(name = "restricted.epub", format = "EPUB", private = "true"),
+                InternetArchiveFileDto(name = "book_djvu.txt", format = "DjVuTXT"),
+                InternetArchiveFileDto(name = "book.epub", format = "EPUB"),
+                InternetArchiveFileDto(name = "metadata.xml", format = "Metadata")
+            )
+        )
 
-        val books = source.search("emma")
+        assertEquals("book.epub", selected?.name)
+    }
 
-        assertEquals(1, books.size)
-        assertEquals("ol_OL1168083W", books[0].id)
-        assertEquals("Jane Austen", books[0].author)
-        assertEquals("https://covers.openlibrary.org/b/id/42-M.jpg", books[0].coverUrl)
-        assertFalse(source.canDownload(books[0]))
+    @Test
+    fun `internet archive rejects OCR text when no epub is available`() {
+        val selected = InternetArchiveBookSource.selectReadableFile(
+            listOf(InternetArchiveFileDto(name = "book_djvu.txt", format = "DjVuTXT"))
+        )
+
+        assertEquals(null, selected)
     }
 }

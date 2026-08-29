@@ -27,9 +27,9 @@ class DictionaryRepositoryImpl(
             return Result.failure(IllegalArgumentException("Word is empty"))
         }
 
-        // 1. Check Room cache first
+        // 1. Check Room cache first, honouring the same TTL used for cache purges.
         val cached = cacheDao.getDictionaryCache(cleanWord)
-        if (cached != null) {
+        if (cached != null && cached.timestamp >= System.currentTimeMillis() - CACHE_TTL_MS) {
             try {
                 val parsed = adapter.fromJson(cached.jsonResult)
                 if (parsed != null) return Result.success(parsed)
@@ -39,7 +39,7 @@ class DictionaryRepositoryImpl(
         }
 
         // 2. Fetch from Free Dictionary API
-        return runSuspendCatching {
+        val result = runSuspendCatching {
             val responseList = dictionaryApi.getDefinition(cleanWord)
             val firstEntry = responseList.firstOrNull()
                 ?: throw NoSuchElementException("No definition found for $cleanWord")
@@ -77,21 +77,34 @@ class DictionaryRepositoryImpl(
             )
 
             entry
-        }.recoverSuspendCatching {
-            // Fallback for offline mode or unknown words
+        }
+
+        // A word that genuinely has no entry must surface as "not found";
+        // inventing a definition for it hides real lookups that failed.
+        if (result.exceptionOrNull() is NoSuchElementException) {
+            return result
+        }
+
+        // Offline / transient failure: degrade to a clearly-labelled stub so the
+        // reader screen still has something to show.
+        return result.recoverSuspendCatching {
             DictionaryEntry(
                 word = cleanWord,
                 phonetics = "/$cleanWord/",
                 audioUrl = null,
                 meanings = listOf(
                     DefinitionMeaning(
-                        partOfSpeech = "word",
-                        definitions = listOf("A word from English literature: '$cleanWord'."),
-                        example = "Contextual reading in LexiRead.",
+                        partOfSpeech = "unknown",
+                        definitions = listOf("Definition unavailable offline for '$cleanWord'."),
+                        example = null,
                         synonyms = emptyList()
                     )
                 )
             )
         }
+    }
+
+    private companion object {
+        const val CACHE_TTL_MS = 30L * 24 * 60 * 60 * 1000
     }
 }

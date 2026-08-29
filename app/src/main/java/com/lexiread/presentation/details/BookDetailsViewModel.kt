@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.lexiread.domain.model.Book
 import com.lexiread.domain.repository.BookRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,13 +32,23 @@ class BookDetailsViewModel(
     private fun loadBookDetails() {
         viewModelScope.launch {
             _uiState.value = BookDetailsUiState(isLoading = true)
-            val book = bookRepository.getBookById(bookId)
-            if (book != null) {
-                _uiState.value = BookDetailsUiState(book = book, isLoading = false)
-            } else {
+            try {
+                val book = bookRepository.getBookById(bookId)
+                if (book != null) {
+                    _uiState.value = BookDetailsUiState(book = book, isLoading = false)
+                } else {
+                    _uiState.value = BookDetailsUiState(
+                        isLoading = false,
+                        errorMessage = "Book not found in database."
+                    )
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                // Without this the screen would spin forever on a database error.
                 _uiState.value = BookDetailsUiState(
                     isLoading = false,
-                    errorMessage = "Book not found in database."
+                    errorMessage = error.message ?: "Unable to load this book."
                 )
             }
         }
@@ -46,17 +57,20 @@ class BookDetailsViewModel(
     fun toggleFavorite() {
         val current = _uiState.value.book ?: return
         viewModelScope.launch {
-            val newFav = !current.isFavorite
-            bookRepository.toggleFavorite(current.id, newFav)
-            _uiState.value = _uiState.value.copy(book = current.copy(isFavorite = newFav))
+            runCatching { bookRepository.toggleFavorite(current.id, !current.isFavorite) }
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(book = current.copy(isFavorite = !current.isFavorite))
+                }
         }
     }
 
     fun addToLibrary() {
         val current = _uiState.value.book ?: return
         viewModelScope.launch {
-            bookRepository.addBookToLibrary(current)
-            _uiState.value = _uiState.value.copy(book = current.copy(isSaved = true))
+            runCatching { bookRepository.addBookToLibrary(current) }
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(book = current.copy(isSaved = true))
+                }
         }
     }
 

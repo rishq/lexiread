@@ -68,6 +68,15 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.graphicsLayer
 
+/** Only the formats BookImporter can actually parse. */
+private val SUPPORTED_IMPORT_MIME_TYPES = arrayOf(
+    "application/epub+zip",
+    "application/pdf",
+    "text/plain",
+    "application/x-fictionbook+xml",
+    "application/xml"
+)
+
 @Composable
 fun LibraryScreen(
     viewModel: LibraryViewModel,
@@ -85,9 +94,12 @@ fun LibraryScreen(
     }
 
     LaunchedEffect(state.importMessage) {
-        val msg = state.importMessage
-        if (msg != null) {
+        val msg = state.importMessage ?: return@LaunchedEffect
+        try {
             snackbarHostState.showSnackbar(msg)
+        } finally {
+            // Always reset, otherwise a thrown snackbar leaves the message set
+            // and the same snackbar re-fires on the next recomposition.
             viewModel.clearImportMessage()
         }
     }
@@ -117,9 +129,9 @@ fun LibraryScreen(
 
                 Button(
                     onClick = {
-                        filePickerLauncher.launch(
-                            arrayOf("*/*")
-                        )
+                        // Restrict to the formats the importer can actually parse
+                        // instead of letting the user pick any file on the device.
+                        filePickerLauncher.launch(SUPPORTED_IMPORT_MIME_TYPES)
                     },
                     shape = RoundedCornerShape(20.dp),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),

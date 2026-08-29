@@ -34,20 +34,44 @@ data class GutendexBookDto(
     val download_count: Int?
 )
 
-// --- OpenLibrary DTOs ---
+// --- Internet Archive DTOs ---
 @JsonClass(generateAdapter = true)
-data class OpenLibrarySearchResponse(
-    val numFound: Int? = null,
-    val docs: List<OpenLibraryDocDto>? = null
+data class InternetArchiveSearchResponse(
+    val response: InternetArchiveSearchResult? = null
 )
 
 @JsonClass(generateAdapter = true)
-data class OpenLibraryDocDto(
-    val key: String?,
-    val title: String,
-    val author_name: List<String>? = null,
-    val first_publish_year: Int? = null,
-    val cover_i: Int? = null
+data class InternetArchiveSearchResult(
+    val numFound: Int? = null,
+    val docs: List<InternetArchiveSearchDocDto>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class InternetArchiveSearchDocDto(
+    val identifier: String? = null,
+    val title: String? = null,
+    // Archive returns this field as either a string or a list, depending on
+    // the uploaded item. Moshi's Any adapter preserves both representations.
+    val creator: Any? = null,
+    val year: Any? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class InternetArchiveMetadataResponse(
+    val metadata: InternetArchiveItemMetadataDto? = null,
+    val files: List<InternetArchiveFileDto>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class InternetArchiveItemMetadataDto(
+    @Json(name = "access-restricted") val accessRestricted: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class InternetArchiveFileDto(
+    val name: String? = null,
+    val format: String? = null,
+    val private: String? = null
 )
 
 // --- Free Dictionary API DTOs ---

@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 enum class VocabularyFilter {
@@ -24,6 +25,12 @@ enum class VocabularyFilter {
 data class VocabularyUiState(
     val filter: VocabularyFilter = VocabularyFilter.ALL,
     val words: List<SavedWord> = emptyList(),
+    /**
+     * Frozen card queue captured when review started. It is resolved by word id,
+     * so changing a status mid-session (which re-filters [words]) can never shift
+     * a card out from under the current index.
+     */
+    val reviewWords: List<SavedWord> = emptyList(),
     val isReviewMode: Boolean = false,
     val currentReviewIndex: Int = 0,
     val isCardFlipped: Boolean = false,
@@ -35,18 +42,26 @@ class VocabularyViewModel(
     private val ttsHelper: TTSHelper
 ) : ViewModel() {
 
+    /**
+     * All flashcard state lives in one flow: keeping it in separate flows made
+     * partial updates observable (e.g. a new index with a stale queue) and
+     * exceeded the arity Kotlin's `combine` supports.
+     */
+    private data class ReviewState(
+        val isActive: Boolean = false,
+        val queueIds: List<Int> = emptyList(),
+        val index: Int = 0,
+        val isFlipped: Boolean = false
+    )
+
     private val _filter = MutableStateFlow(VocabularyFilter.ALL)
-    private val _isReviewMode = MutableStateFlow(false)
-    private val _reviewIndex = MutableStateFlow(0)
-    private val _isCardFlipped = MutableStateFlow(false)
+    private val _review = MutableStateFlow(ReviewState())
 
     val uiState: StateFlow<VocabularyUiState> = combine(
         _filter,
         vocabularyRepository.getSavedWords(),
-        _isReviewMode,
-        _reviewIndex,
-        _isCardFlipped
-    ) { filter, allWords, isReview, reviewIdx, isFlipped ->
+        _review
+    ) { filter, allWords, review ->
         val filtered = when (filter) {
             VocabularyFilter.ALL -> allWords
             VocabularyFilter.NEW -> allWords.filter { it.learningStatus == LearningStatus.NEW }
@@ -54,12 +69,18 @@ class VocabularyViewModel(
             VocabularyFilter.KNOWN -> allWords.filter { it.learningStatus == LearningStatus.KNOWN }
         }
 
+        // Resolve the frozen queue by id so the review order stays stable even
+        // when a status change re-filters the live list.
+        val byId = allWords.associateBy { it.id }
+        val reviewQueue = review.queueIds.mapNotNull { byId[it] }
+
         VocabularyUiState(
             filter = filter,
             words = filtered,
-            isReviewMode = isReview,
-            currentReviewIndex = reviewIdx.coerceIn(0, (filtered.size - 1).coerceAtLeast(0)),
-            isCardFlipped = isFlipped,
+            reviewWords = reviewQueue,
+            isReviewMode = review.isActive,
+            currentReviewIndex = review.index.coerceIn(0, (reviewQueue.size - 1).coerceAtLeast(0)),
+            isCardFlipped = review.isFlipped,
             isLoading = false
         )
     }.stateIn(
@@ -89,36 +110,40 @@ class VocabularyViewModel(
     }
 
     fun startReviewMode() {
-        _isReviewMode.value = true
-        _reviewIndex.value = 0
-        _isCardFlipped.value = false
+        // Snapshot the queue so later status changes cannot reorder it.
+        val queue = uiState.value.words.map { it.id }
+        if (queue.isEmpty()) return // Nothing to review; never enter a dead-end state.
+        _review.value = ReviewState(isActive = true, queueIds = queue, index = 0, isFlipped = false)
     }
 
     fun exitReviewMode() {
-        _isReviewMode.value = false
+        _review.value = ReviewState()
     }
 
     fun flipCard() {
-        _isCardFlipped.value = !_isCardFlipped.value
+        _review.update { it.copy(isFlipped = !it.isFlipped) }
     }
 
     fun nextReviewCard(markAsKnown: Boolean = false) {
-        val currentWords = uiState.value.words
-        if (currentWords.isNotEmpty() && _reviewIndex.value < currentWords.size) {
-            val currentWord = currentWords[_reviewIndex.value]
-            if (markAsKnown) {
-                updateStatus(currentWord.id, LearningStatus.KNOWN)
-            } else {
-                updateStatus(currentWord.id, LearningStatus.LEARNING)
-            }
+        // Iterate the frozen queue, not the live filtered list: marking a card
+        // KNOWN removes it from the filtered list and would otherwise skip the
+        // next card.
+        val review = _review.value
+        val queue = uiState.value.reviewWords
+
+        if (review.index in queue.indices) {
+            val currentWord = queue[review.index]
+            updateStatus(
+                currentWord.id,
+                if (markAsKnown) LearningStatus.KNOWN else LearningStatus.LEARNING
+            )
         }
 
-        if (_reviewIndex.value + 1 < currentWords.size) {
-            _reviewIndex.value += 1
-            _isCardFlipped.value = false
+        if (review.index + 1 < queue.size) {
+            _review.update { it.copy(index = it.index + 1, isFlipped = false) }
         } else {
             // Finished review
-            _isReviewMode.value = false
+            exitReviewMode()
         }
     }
 

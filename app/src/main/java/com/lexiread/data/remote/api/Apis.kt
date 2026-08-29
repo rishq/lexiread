@@ -7,10 +7,11 @@ import com.lexiread.data.remote.dto.GeminiRequestDto
 import com.lexiread.data.remote.dto.GeminiResponseDto
 import com.lexiread.data.remote.dto.GutendexBookDto
 import com.lexiread.data.remote.dto.GutendexResponse
+import com.lexiread.data.remote.dto.InternetArchiveMetadataResponse
+import com.lexiread.data.remote.dto.InternetArchiveSearchResponse
 import com.lexiread.data.remote.dto.MyMemoryResponse
 import com.lexiread.data.remote.dto.OpenAiChatRequestDto
 import com.lexiread.data.remote.dto.OpenAiChatResponseDto
-import com.lexiread.data.remote.dto.OpenLibrarySearchResponse
 import okhttp3.ResponseBody
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -31,19 +32,31 @@ interface GutendexApi {
     suspend fun downloadTextContent(@Url url: String): ResponseBody
 }
 
-interface OpenLibraryApi {
-    @GET("search.json")
-    suspend fun searchBooks(
-        @Query("q") query: String,
-        @Query("limit") limit: Int = 20,
-        @Query("fields") fields: String = "key,title,author_name,cover_i,first_publish_year,ia"
-    ): OpenLibrarySearchResponse
-}
-
 /** Standard Ebooks exposes an OPDS (Atom XML) catalog. */
 interface StandardEbooksApi {
     @GET
     suspend fun searchOpds(@Url url: String): ResponseBody
+
+    @GET
+    suspend fun downloadFile(@Url url: String): ResponseBody
+}
+
+/**
+ * Public Internet Archive endpoints. The source searches for records that
+ * advertise EPUB and checks metadata before it downloads a concrete file.
+ */
+interface InternetArchiveApi {
+    @GET("advancedsearch.php")
+    suspend fun searchBooks(
+        @Query("q") query: String,
+        @Query("fl[]") fields: String = "identifier,title,creator,year",
+        @Query("rows") rows: Int = 20,
+        @Query("page") page: Int = 1,
+        @Query("output") output: String = "json"
+    ): InternetArchiveSearchResponse
+
+    @GET("metadata/{identifier}")
+    suspend fun getMetadata(@Path("identifier") identifier: String): InternetArchiveMetadataResponse
 
     @GET
     suspend fun downloadFile(@Url url: String): ResponseBody

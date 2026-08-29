@@ -76,11 +76,23 @@ interface ReadingProgressDao {
     @Query("SELECT * FROM reading_progress WHERE bookId = :bookId")
     fun getProgressByBookId(bookId: String): Flow<ReadingProgressEntity?>
 
-    @Query("SELECT * FROM reading_progress ORDER BY lastReadTimestamp DESC LIMIT 1")
+    // INNER JOIN books: a progress row whose book was deleted must never be
+    // surfaced as "continue reading", otherwise the home screen attributes the
+    // percentage to a different book.
+    @Query(
+        """
+        SELECT r.* FROM reading_progress r
+        INNER JOIN books b ON r.bookId = b.id
+        ORDER BY r.lastReadTimestamp DESC LIMIT 1
+        """
+    )
     fun getLatestProgress(): Flow<ReadingProgressEntity?>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveProgress(progress: ReadingProgressEntity)
+
+    @Query("DELETE FROM reading_progress WHERE bookId = :bookId")
+    suspend fun deleteProgressForBook(bookId: String)
 }
 
 @Dao
@@ -114,6 +126,9 @@ interface BookmarkDao {
 
     @Query("DELETE FROM bookmarks WHERE id = :id")
     suspend fun deleteBookmark(id: Int)
+
+    @Query("DELETE FROM bookmarks WHERE bookId = :bookId")
+    suspend fun deleteBookmarksForBook(bookId: String)
 }
 
 @Dao

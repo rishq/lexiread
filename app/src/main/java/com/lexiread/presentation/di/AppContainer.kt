@@ -9,7 +9,7 @@ import com.lexiread.core.util.TTSHelper
 import com.lexiread.data.local.AppDatabase
 import com.lexiread.data.remote.RetrofitClient
 import com.lexiread.data.source.GutendexBookSource
-import com.lexiread.data.source.OpenLibraryBookSource
+import com.lexiread.data.source.InternetArchiveBookSource
 import com.lexiread.data.source.StandardEbooksBookSource
 import com.lexiread.data.repository.AiRepositoryImpl
 import com.lexiread.data.repository.BookRepositoryImpl
@@ -63,7 +63,7 @@ class AppContainer(private val context: Context) {
             bookmarkDao = database.bookmarkDao(),
             sources = listOf(
                 GutendexBookSource(RetrofitClient.gutendexApi),
-                OpenLibraryBookSource(RetrofitClient.openLibraryApi),
+                InternetArchiveBookSource(RetrofitClient.internetArchiveApi, context),
                 StandardEbooksBookSource(RetrofitClient.standardEbooksApi, context)
             )
         )

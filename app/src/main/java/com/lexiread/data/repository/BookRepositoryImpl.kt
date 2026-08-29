@@ -13,6 +13,10 @@ import com.lexiread.domain.model.Book
 import com.lexiread.domain.model.Bookmark
 import com.lexiread.domain.model.ReadingProgress
 import com.lexiread.domain.repository.BookRepository
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -72,26 +76,43 @@ class BookRepositoryImpl(
     }
 
     override suspend fun searchBooksOnline(query: String): Result<List<Book>> {
-        // Aggregate results across all registered sources; a failing source
-        // degrades gracefully instead of failing the whole search.
-        val results = sources.flatMap { source ->
-            runSuspendCatching { source.search(query) }
-                .onFailure { android.util.Log.w("BookRepository", "Source ${source.displayName} failed", it) }
-                .getOrDefault(emptyList())
+        if (query.isBlank()) return Result.success(emptyList())
+
+        // Catalogues are independent remote calls. Run them concurrently, while
+        // allowing one failed provider to degrade to an empty result set.
+        val results = supervisorScope {
+            sources.map { source ->
+                async {
+                    val sourceResults = withTimeoutOrNull(CATALOG_SEARCH_TIMEOUT_MS) {
+                        runSuspendCatching { source.search(query) }
+                            .onFailure { error ->
+                                android.util.Log.w("BookRepository", "Source ${source.displayName} failed", error)
+                            }
+                            .getOrDefault(emptyList())
+                    }
+                    if (sourceResults == null) {
+                        android.util.Log.w(
+                            "BookRepository",
+                            "Source ${source.displayName} exceeded ${CATALOG_SEARCH_TIMEOUT_MS}ms"
+                        )
+                    }
+                    sourceResults.orEmpty()
+                }
+            }.awaitAll().flatten()
         }
         return Result.success(results.distinctBy { it.id })
     }
 
-    override suspend fun fetchAndSaveFullBook(book: Book): Result<Book> {
+    override suspend fun fetchAndSaveFullBook(book: Book, forceRefresh: Boolean): Result<Book> {
         return runSuspendCatching {
             val existing = bookDao.getBookById(book.id)
-            if (existing != null &&
+            if (!forceRefresh && existing != null &&
                 (!existing.fullText.isNullOrBlank() || !existing.filePath.isNullOrBlank())
             ) {
                 return@runSuspendCatching existing.toDomain()
             }
 
-            val source = sources.firstOrNull { it.owns(book) || it.canDownload(book) }
+            val source = sources.firstOrNull { it.owns(book) && it.canDownload(book) }
                 ?: throw UnsupportedOperationException(
                     "No online source provides content for '${book.title}' (${book.id})."
                 )
@@ -116,6 +137,12 @@ class BookRepositoryImpl(
         if (book?.filePath != null) {
             runCatching { java.io.File(book.filePath).delete() }
         }
+        // Remove dependent rows first: deleting the book alone would leave
+        // orphaned reading progress and bookmarks behind forever.
+        runCatching { readingProgressDao.deleteProgressForBook(id) }
+            .onFailure { android.util.Log.w("BookRepository", "Failed to clear progress for $id", it) }
+        runCatching { bookmarkDao.deleteBookmarksForBook(id) }
+            .onFailure { android.util.Log.w("BookRepository", "Failed to clear bookmarks for $id", it) }
         bookDao.deleteBook(id)
     }
 
@@ -149,6 +176,11 @@ class BookRepositoryImpl(
 
     override suspend fun deleteBookmark(id: Int) {
         bookmarkDao.deleteBookmark(id)
+    }
+
+    private companion object {
+        // A slow optional catalogue must not hold the whole search screen open.
+        private const val CATALOG_SEARCH_TIMEOUT_MS = 5_000L
     }
 }
 

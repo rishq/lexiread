@@ -14,10 +14,16 @@ class LexiReadApp : Application() {
         super.onCreate()
         CrashLogger.install(this)
         // Surface the previous crash in logcat so it is easy to report.
-        CrashLogger.consumeLastCrash(this)?.let {
-            Log.e("LexiReadApp", "Previous crash:\n$it")
+        // Truncated: logcat drops very long messages, and a stack trace can
+        // otherwise embed excerpts of the user's book text.
+        CrashLogger.consumeLastCrash(this)?.let { crash ->
+            Log.e("LexiReadApp", "Previous crash:\n${crash.take(MAX_LOGGED_CRASH_CHARS)}")
         }
         container = AppContainer(this)
         container.initialize()
+    }
+
+    private companion object {
+        const val MAX_LOGGED_CRASH_CHARS = 4_000
     }
 }

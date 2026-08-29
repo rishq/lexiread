@@ -26,6 +26,7 @@ import com.lexiread.domain.repository.VocabularyRepository
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -97,17 +98,48 @@ class ReaderViewModel(
 
     private fun loadBookAndChapters() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoadingBook = true) }
-            var book = bookRepository.getBookById(bookId)
-            if (book == null || (book.fullText.isNullOrBlank() && book.filePath.isNullOrBlank())) {
-                val fetchResult = bookRepository.fetchAndSaveFullBook(
-                    book ?: Book(id = bookId, title = "Classic Book", author = "Unknown")
-                )
-                book = fetchResult.getOrNull() ?: book
-            }
+            try {
+                _uiState.update { it.copy(isLoadingBook = true) }
+                val stored = bookRepository.getBookById(bookId)
+                val needsDownload = stored == null ||
+                    (stored.fullText.isNullOrBlank() && stored.filePath.isNullOrBlank())
 
-            if (book != null) {
-                val chapters = bookImporter.getChaptersForBook(book)
+                val book = if (needsDownload) {
+                    val fetchResult = bookRepository.fetchAndSaveFullBook(
+                        stored ?: Book(id = bookId, title = "Classic Book", author = "Unknown")
+                    )
+                    fetchResult.getOrNull() ?: run {
+                        _uiState.value = _uiState.value.copy(
+                            isLoadingBook = false,
+                            errorMessage = fetchResult.exceptionOrNull()?.message
+                                ?: "This book could not be downloaded."
+                        )
+                        return@launch
+                    }
+                } else {
+                    stored
+                }
+
+                var chapters = bookImporter.getChaptersForBook(book)
+                if (chapters.isEmpty() && !book.isImported) {
+                    // Older app versions could cache a failed EPUB response.
+                    // Give online books one clean re-download before reporting
+                    // an error; imported personal files are never replaced.
+                    val refreshed = bookRepository.fetchAndSaveFullBook(
+                        book = book,
+                        forceRefresh = true
+                    ).getOrNull()
+                    if (refreshed != null) {
+                        chapters = bookImporter.getChaptersForBook(refreshed)
+                    }
+                }
+                if (chapters.isEmpty()) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoadingBook = false,
+                        errorMessage = "The downloaded file is not a readable EPUB or text book. Please choose another edition."
+                    )
+                    return@launch
+                }
 
                 // Read saved progress ONCE, synchronously before the first pagination,
                 // so restoring the position can never race with pagination.
@@ -125,15 +157,18 @@ class ReaderViewModel(
                 _uiState.value = _uiState.value.copy(
                     book = book,
                     chapters = chapters,
-                    isLoadingBook = false
+                    isLoadingBook = false,
+                    errorMessage = null
                 )
 
                 // Trigger initial pagination if container size is ready
                 repaginateCurrentChapter()
-            } else {
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoadingBook = false,
-                    errorMessage = "Failed to load book text."
+                    errorMessage = error.message ?: "Failed to open this book."
                 )
             }
         }

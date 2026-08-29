@@ -6,6 +6,7 @@ import android.util.Xml
 import com.lexiread.core.reader.BookParser
 import com.lexiread.core.reader.ChapterParser
 import com.lexiread.core.reader.ParsedBookMetadata
+import com.lexiread.core.util.TextEncoding
 import com.lexiread.domain.model.BookChapter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -18,7 +19,12 @@ class Fb2Parser : BookParser {
 
     companion object {
         private const val TAG = "Fb2Parser"
+        private const val MAX_FILE_SIZE_BYTES = 40L * 1024 * 1024
     }
+
+    /** Reads an FB2 file honouring its declared encoding instead of assuming UTF-8. */
+    private fun readDocument(file: File): String =
+        file.inputStream().use { TextEncoding.readText(it, MAX_FILE_SIZE_BYTES) }
 
     override fun canParse(format: String, file: File): Boolean {
         return format.lowercase() == "fb2" || file.extension.lowercase() == "fb2"
@@ -28,7 +34,7 @@ class Fb2Parser : BookParser {
         val chapters = mutableListOf<BookChapter>()
 
         try {
-            val fileText = file.readText(Charsets.UTF_8)
+            val fileText = readDocument(file)
             val parser = Xml.newPullParser()
             parser.setInput(StringReader(fileText))
 
@@ -116,7 +122,7 @@ class Fb2Parser : BookParser {
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing FB2 with XmlPullParser, using regex fallback", e)
             try {
-                val text = file.readText(Charsets.UTF_8)
+                val text = readDocument(file)
                 val cleanAll = ChapterParser.cleanHtmlText(text)
                 val split = ChapterParser.splitIntoChapters(cleanAll)
                 if (split.isNotEmpty()) {
@@ -129,7 +135,7 @@ class Fb2Parser : BookParser {
 
         if (chapters.isEmpty()) {
             val cleanAll = try {
-                val text = file.readText(Charsets.UTF_8)
+                val text = readDocument(file)
                 ChapterParser.cleanHtmlText(text)
             } catch (e: Exception) {
                 file.nameWithoutExtension
@@ -147,7 +153,7 @@ class Fb2Parser : BookParser {
         var coverPath: String? = null
 
         try {
-            val text = file.readText(Charsets.UTF_8)
+            val text = readDocument(file)
             val parser = Xml.newPullParser()
             parser.setInput(StringReader(text))
 

@@ -167,8 +167,8 @@ fun SearchScreen(
                     items(state.searchResults, key = { it.id }) { book ->
                         SearchResultCard(
                             book = book,
-                            onCardClick = { onBookClick(book.id) },
-                            onReadClick = { onReadClick(book.id) },
+                            onCardClick = { viewModel.openBook(book, onBookClick) },
+                            onReadClick = { viewModel.openBook(book, onReadClick) },
                             onAddLibrary = { viewModel.addToLibrary(book) }
                         )
                     }

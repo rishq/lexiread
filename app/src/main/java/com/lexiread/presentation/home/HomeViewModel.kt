@@ -35,12 +35,15 @@ class HomeViewModel(
         vocabularyRepository.getSavedWords()
     ) { allBooks, progress, savedWords ->
         val continueBook = allBooks.find { it.id == progress?.bookId } ?: allBooks.firstOrNull()
+        // Only reuse the progress if it actually belongs to the highlighted book,
+        // otherwise the card would show another book's percentage.
+        val matchedProgress = progress?.takeIf { it.bookId == continueBook?.id }
         val recs = allBooks.filter { it.id != continueBook?.id }
         val known = savedWords.count { it.learningStatus == com.lexiread.domain.model.LearningStatus.KNOWN }
 
         HomeUiState(
             continueReadingBook = continueBook,
-            latestProgress = progress,
+            latestProgress = matchedProgress,
             recentBooks = allBooks.take(5),
             recommendedBooks = recs,
             savedWordsCount = savedWords.size,

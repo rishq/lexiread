@@ -66,7 +66,7 @@ class ReaderViewModelTest {
         override fun getFinishedBooks() = flowOf(emptyList<Book>())
         override suspend fun getBookById(id: String) = book
         override suspend fun searchBooksOnline(query: String) = Result.success(emptyList<Book>())
-        override suspend fun fetchAndSaveFullBook(book: Book) = Result.success(book)
+        override suspend fun fetchAndSaveFullBook(book: Book, forceRefresh: Boolean) = Result.success(book)
         override suspend fun addBookToLibrary(book: Book) {}
         override suspend fun deleteBook(id: String) {}
         override suspend fun toggleFavorite(bookId: String, isFavorite: Boolean) {}

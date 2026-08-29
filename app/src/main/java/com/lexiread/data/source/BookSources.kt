@@ -4,8 +4,9 @@ import android.content.Context
 import android.util.Log
 import android.util.Xml
 import com.lexiread.data.remote.api.GutendexApi
-import com.lexiread.data.remote.api.OpenLibraryApi
+import com.lexiread.data.remote.api.InternetArchiveApi
 import com.lexiread.data.remote.api.StandardEbooksApi
+import com.lexiread.data.remote.dto.InternetArchiveFileDto
 import com.lexiread.domain.model.Book
 import com.lexiread.domain.repository.BookSource
 import kotlinx.coroutines.Dispatchers
@@ -24,7 +25,7 @@ class GutendexBookSource(
     override val idPrefix = "gutenberg"
     override val displayName = "Project Gutenberg"
 
-    private val trustedHosts = setOf("gutenberg.org", "gutendex.com", "openlibrary.org", "archive.org")
+    private val trustedHosts = setOf("gutenberg.org", "gutendex.com")
 
     override suspend fun search(query: String): List<Book> {
         val response = gutendexApi.searchBooks(query)
@@ -38,7 +39,8 @@ class GutendexBookSource(
                 title = dto.title,
                 author = authorStr,
                 coverUrl = cover,
-                description = dto.subjects?.joinToString(" • ") ?: "Classic English Literature",
+                description = dto.subjects?.joinToString(" • ")?.takeIf(String::isNotBlank)
+                    ?: "Classic English Literature",
                 fullText = null,
                 language = dto.languages?.firstOrNull() ?: "en",
                 subjects = dto.subjects ?: emptyList()
@@ -126,38 +128,172 @@ class GutendexBookSource(
 }
 
 /**
- * Open Library metadata catalog. Search only — content is not downloadable
- * here; books are added to the library as saved metadata.
+ * Internet Archive texts that advertise a downloadable EPUB. Metadata is
+ * checked to reject borrow-only records and to obtain the exact file name.
  */
-class OpenLibraryBookSource(
-    private val openLibraryApi: OpenLibraryApi
+class InternetArchiveBookSource(
+    private val archiveApi: InternetArchiveApi,
+    context: Context
 ) : BookSource {
 
-    override val idPrefix = "ol"
-    override val displayName = "Open Library"
+    override val idPrefix = "ia"
+    override val displayName = "Internet Archive"
+
+    private val booksDir = File(context.applicationContext.filesDir, "downloaded_books").apply { mkdirs() }
 
     override suspend fun search(query: String): List<Book> {
-        val response = openLibraryApi.searchBooks(query)
-        return response.docs?.map { doc ->
-            val olKey = doc.key.orEmpty().removePrefix("/works/")
+        val normalizedQuery = query.trim()
+        if (normalizedQuery.isBlank()) return emptyList()
+
+        val response = archiveApi.searchBooks(
+            query = buildSearchQuery(normalizedQuery),
+            rows = SEARCH_RESULT_LIMIT
+        )
+        return response.response?.docs.orEmpty().mapNotNull { doc ->
+            val identifier = doc.identifier?.takeIf(::isSafeIdentifier) ?: return@mapNotNull null
+            val title = doc.title?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+            val year = doc.year.toDisplayText()
+
             Book(
-                id = "${idPrefix}_$olKey",
-                title = doc.title,
-                author = doc.author_name?.joinToString(", ") ?: "Unknown Author",
-                coverUrl = doc.cover_i?.let { "https://covers.openlibrary.org/b/id/$it-M.jpg" },
-                description = doc.first_publish_year?.let { "First published in $it." }
-                    ?: "Open Library record.",
+                id = "${idPrefix}_$identifier",
+                title = title,
+                author = doc.creator.toDisplayText() ?: "Unknown Author",
+                coverUrl = "https://archive.org/services/img/$identifier",
+                description = listOfNotNull("Internet Archive EPUB edition", year?.let { "published $it" })
+                    .joinToString("; ") + ".",
                 fullText = null,
-                language = "en",
-                subjects = emptyList()
+                format = "EPUB",
+                subjects = listOf("Internet Archive", "Downloadable EPUB")
             )
-        } ?: emptyList()
+        }
     }
 
-    override fun canDownload(book: Book) = false
+    override fun canDownload(book: Book): Boolean = owns(book) && isSafeIdentifier(identifierFrom(book))
 
-    override suspend fun downloadContent(book: Book): Book =
-        throw UnsupportedOperationException("Open Library does not provide direct book files.")
+    override suspend fun downloadContent(book: Book): Book = withContext(Dispatchers.IO) {
+        val identifier = identifierFrom(book)
+        require(isSafeIdentifier(identifier)) { "Invalid Internet Archive identifier." }
+
+        val item = archiveApi.getMetadata(identifier)
+        require(item.metadata?.accessRestricted?.equals("true", ignoreCase = true) != true) {
+            "This Internet Archive item is available only through borrowing."
+        }
+        val file = item.files.orEmpty()
+            .let(::selectReadableFile)
+            ?: throw UnsupportedOperationException("No public EPUB or text file is available for '${book.title}'.")
+        val fileName = file.name.orEmpty()
+        val format = formatFor(fileName, file.format)
+        val downloadUrl = okhttp3.HttpUrl.Builder()
+            .scheme("https")
+            .host(ARCHIVE_HOST)
+            .addPathSegment("download")
+            .addPathSegment(identifier)
+            .addPathSegment(fileName)
+            .build()
+            .toString()
+
+        val destination = archiveApi.downloadFile(downloadUrl).use { body ->
+            writeResponseToFile(
+                body = body,
+                destination = File(booksDir, "ia_${safeFileStem(identifier)}.${format.lowercase()}"),
+                maxBytes = MAX_DOWNLOAD_BYTES
+            )
+        }
+        requireValidEpub(destination)
+        book.copy(filePath = destination.absolutePath, format = format, isSaved = true)
+    }
+
+    private fun identifierFrom(book: Book): String = book.id.removePrefix("${idPrefix}_")
+
+    private fun buildSearchQuery(query: String): String {
+        val escaped = query.replace("\\", "\\\\").replace("\"", "\\\"")
+        return "mediatype:texts AND format:EPUB AND (title:\"$escaped\" OR creator:\"$escaped\")"
+    }
+
+    private fun isSafeIdentifier(identifier: String): Boolean =
+        identifier.matches(IDENTIFIER_PATTERN)
+
+    private fun Any?.toDisplayText(): String? = when (this) {
+        is String -> trim().takeIf(String::isNotBlank)
+        is List<*> -> mapNotNull { it as? String }.joinToString(", ").takeIf(String::isNotBlank)
+        is Number -> toString()
+        else -> null
+    }
+
+    private fun safeFileStem(identifier: String): String =
+        identifier.replace(Regex("[^A-Za-z0-9._-]"), "_").take(96)
+
+    companion object {
+        private const val ARCHIVE_HOST = "archive.org"
+        private const val SEARCH_RESULT_LIMIT = 20
+        private const val MAX_DOWNLOAD_BYTES = 40L * 1024 * 1024
+        private val IDENTIFIER_PATTERN = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+
+        internal fun selectReadableFile(files: List<InternetArchiveFileDto>): InternetArchiveFileDto? =
+            files.asSequence()
+                .filter { it.private?.equals("true", ignoreCase = true) != true }
+                .filter { file ->
+                    val name = file.name.orEmpty()
+                    name.isNotBlank() && '/' !in name && '\\' !in name
+                }
+                .firstOrNull { fileRank(it.name.orEmpty(), it.format) == 0 }
+
+        private fun fileRank(name: String, format: String?): Int {
+            val normalizedFormat = format.orEmpty().lowercase()
+            val normalizedName = name.lowercase()
+            return when {
+                normalizedFormat == "epub" || normalizedName.endsWith(".epub") -> 0
+                else -> Int.MAX_VALUE
+            }
+        }
+
+        private fun formatFor(name: String, format: String?): String =
+            if (format.orEmpty().equals("epub", ignoreCase = true) || name.endsWith(".epub", ignoreCase = true)) "EPUB" else "TXT"
+
+        private fun writeResponseToFile(
+            body: okhttp3.ResponseBody,
+            destination: File,
+            maxBytes: Long
+        ): File {
+            require(body.contentLength() <= maxBytes || body.contentLength() == -1L) {
+                "Book content exceeds the ${maxBytes / (1024 * 1024)}MB limit."
+            }
+
+            try {
+                body.byteStream().use { input ->
+                    FileOutputStream(destination).use { output ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        var totalBytes = 0L
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read == -1) break
+                            totalBytes += read
+                            require(totalBytes <= maxBytes) {
+                                "Book content exceeds the ${maxBytes / (1024 * 1024)}MB limit."
+                            }
+                            output.write(buffer, 0, read)
+                        }
+                    }
+                }
+                return destination
+            } catch (error: Throwable) {
+                destination.delete()
+                throw error
+            }
+        }
+
+        private fun requireValidEpub(file: File) {
+            val isValid = runCatching {
+                java.util.zip.ZipFile(file).use { zip ->
+                    zip.getEntry("META-INF/container.xml") != null
+                }
+            }.getOrDefault(false)
+            if (!isValid) {
+                file.delete()
+                throw IllegalArgumentException("Internet Archive did not return a valid EPUB file.")
+            }
+        }
+    }
 }
 
 /**
@@ -205,7 +341,7 @@ class StandardEbooksBookSource(
         // search by title again and match the id.
         val body = seApi.searchOpds("$SEARCH_URL${java.net.URLEncoder.encode(book.title, "UTF-8")}")
         val entry = body.use { parseOpdsEntries(it.byteStream()) }
-            .firstOrNull { it.id == shortId }
+            .firstOrNull { it.id == shortId || it.id.substringAfterLast("~") == shortId }
             ?: throw IllegalStateException("Standard Ebooks entry not found for ${book.title}")
 
         val epubUrl = entry.epubUrl
@@ -214,23 +350,32 @@ class StandardEbooksBookSource(
         requireValidUrl(epubUrl)
         val responseBody = seApi.downloadFile(epubUrl)
         responseBody.use { rb ->
-            rb.byteStream().use { ins ->
-                val destFile = File(booksDir, "se_$shortId.epub")
-                FileOutputStream(destFile).use { fos ->
-                    val buffer = ByteArray(8192)
-                    var totalRead = 0L
-                    while (true) {
-                        val read = ins.read(buffer)
-                        if (read == -1) break
-                        totalRead += read
-                        if (totalRead > MAX_EPUB_BYTES) {
-                            destFile.delete()
-                            throw IllegalArgumentException("EPUB exceeds ${MAX_EPUB_BYTES} limit.")
+            require(rb.contentLength() <= MAX_EPUB_BYTES || rb.contentLength() == -1L) {
+                "EPUB exceeds ${MAX_EPUB_BYTES} limit."
+            }
+            val safeId = shortId.replace(Regex("[^A-Za-z0-9._-]"), "_").take(96)
+            val destFile = File(booksDir, "se_$safeId.epub")
+            try {
+                rb.byteStream().use { ins ->
+                    FileOutputStream(destFile).use { fos ->
+                        val buffer = ByteArray(8192)
+                        var totalRead = 0L
+                        while (true) {
+                            val read = ins.read(buffer)
+                            if (read == -1) break
+                            totalRead += read
+                            if (totalRead > MAX_EPUB_BYTES) {
+                                throw IllegalArgumentException("EPUB exceeds ${MAX_EPUB_BYTES} limit.")
+                            }
+                            fos.write(buffer, 0, read)
                         }
-                        fos.write(buffer, 0, read)
                     }
                 }
+                requireValidEpub(destFile)
                 book.copy(filePath = destFile.absolutePath, format = "EPUB", isSaved = true)
+            } catch (error: Throwable) {
+                destFile.delete()
+                throw error
             }
         }
     }
@@ -240,6 +385,18 @@ class StandardEbooksBookSource(
         val ok = uri.scheme?.lowercase() == "https" &&
             uri.host?.lowercase()?.let { it == HOST || it.endsWith(".$HOST") } == true
         if (!ok) throw SecurityException("Download rejected: URL '$url' is not a $HOST link.")
+    }
+
+    private fun requireValidEpub(file: File) {
+        val isValid = runCatching {
+            java.util.zip.ZipFile(file).use { zip ->
+                zip.getEntry("META-INF/container.xml") != null
+            }
+        }.getOrDefault(false)
+        if (!isValid) {
+            file.delete()
+            throw IllegalArgumentException("Standard Ebooks did not return a valid EPUB file.")
+        }
     }
 
     private data class OpdsEntry(
@@ -308,8 +465,12 @@ class StandardEbooksBookSource(
                     val text = parser.text?.trim().orEmpty()
                     when (tag) {
                         "id" -> {
-                            // OPDS ids look like "https://standardebooks.org/ebooks/author/title"
-                            currentId = (currentId + text).substringAfterLast('/')
+                            // OPDS ids look like "https://standardebooks.org/ebooks/author/title".
+                            // Retain the author because titles can repeat across authors.
+                            currentId = (currentId + text)
+                                .substringAfter("/ebooks/")
+                                .trimEnd('/')
+                                .replace("/", "~")
                         }
                         "title" -> currentTitle += text
                         "name" -> if (currentAuthor.isNullOrBlank()) {
@@ -321,7 +482,10 @@ class StandardEbooksBookSource(
                 }
                 XmlPullParser.END_TAG -> {
                     when (parser.name.lowercase()) {
-                        "entry" -> flush()
+                        "entry" -> {
+                            flush()
+                            inEntry = false
+                        }
                         "id", "title", "name", "summary" -> tag = null
                     }
                 }
