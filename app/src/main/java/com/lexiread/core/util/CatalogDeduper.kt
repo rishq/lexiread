@@ -14,18 +14,27 @@ import com.lexiread.domain.model.CatalogBook
 object CatalogDeduper {
 
     fun dedupe(books: List<CatalogBook>): List<CatalogBook> {
-        val byKey = LinkedHashMap<String, CatalogBook>()
+        // A cluster owns every key its members have ever advertised, not just
+        // the strongest one. Storing a book under a single key would miss
+        // matches: a Gutenberg record keyed only by its Gutenberg id never
+        // meets an Open Library record keyed only by its work key, even though
+        // both carry the same id.
+        val clusterKeys = ArrayList<MutableSet<String>>()
+        val clusterBooks = ArrayList<CatalogBook>()
 
         for (book in books) {
-            val keys = keysFor(book)
-            val anchor = keys.firstOrNull { byKey.containsKey(it) }
-            if (anchor == null) {
-                byKey[keys.first()] = book
+            val keys = keysFor(book).toSet()
+            val index = clusterKeys.indexOfFirst { cluster -> cluster.any { it in keys } }
+            if (index < 0) {
+                clusterKeys += keys.toMutableSet()
+                clusterBooks += book
             } else {
-                byKey[anchor] = merge(byKey.getValue(anchor), book)
+                val merged = merge(clusterBooks[index], book)
+                clusterBooks[index] = merged
+                clusterKeys[index] += keysFor(merged)
             }
         }
-        return byKey.values.toList()
+        return clusterBooks
     }
 
     /** Ordered strongest-first. The first key is also the storage key. */
@@ -44,14 +53,15 @@ object CatalogDeduper {
 
     /**
      * Author strings differ wildly between catalogues ("Doyle, Arthur Conan",
-     * "Arthur Conan Doyle", "Sir Arthur Conan Doyle"). Sorting the surviving
-     * tokens makes the comparison order-independent.
+     * "Arthur Conan Doyle", "Sir Arthur Conan Doyle"). Dropping honorifics and
+     * sorting the surviving tokens makes the comparison both title- and
+     * order-independent.
      */
     fun normalizeAuthor(author: String): String =
         author.lowercase()
             .replace(Regex("[^a-z0-9 ]+"), "")
             .split(Regex("\\s+"))
-            .filter { it.length > 1 }
+            .filter { it.length > 1 && it !in HONORIFICS }
             .sorted()
             .joinToString(" ")
 
@@ -102,4 +112,14 @@ object CatalogDeduper {
             book.subjects.size * 10 +
             (if (book.coverUrl != null) 50 else 0) +
             (if (book.publishedYear != null) 20 else 0)
+
+    /**
+     * Titles and styles one catalogue adds and another omits. They carry no
+     * identifying information, so keeping them would only split one author
+     * into two.
+     */
+    private val HONORIFICS = setOf(
+        "sir", "dame", "lord", "lady", "dr", "mr", "mrs", "ms", "prof",
+        "rev", "hon", "capt", "col", "lt", "gen", "adm"
+    )
 }

@@ -2,7 +2,7 @@
 
 import com.lexiread.core.util.SafeDownloader
 import com.lexiread.core.util.UrlValidator
-import okhttp3.ResponseBody
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -83,7 +83,7 @@ class GutendexBookSourceDownloadTest {
 
     // --- streaming download ---
 
-    private fun body(content: String) = ResponseBody.create(null, content)
+    private fun body(content: String) = content.toResponseBody(null)
 
     @Test
     fun `streams response to disk`() {

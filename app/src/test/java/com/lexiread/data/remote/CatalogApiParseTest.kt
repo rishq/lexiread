@@ -4,7 +4,7 @@ import com.lexiread.data.mapper.toCatalogBook
 import com.lexiread.data.remote.googlebooks.GoogleBooksApi
 import com.lexiread.data.remote.gutendex.GutendexApi
 import com.lexiread.data.remote.openlibrary.OpenLibraryApi
-import com.lexiread.data.remote.openlibrary.openLibraryCoverUrl
+import com.lexiread.data.mapper.openLibraryCoverUrl
 import com.lexiread.domain.model.FormatKind
 import com.lexiread.domain.model.SourceKind
 import com.squareup.moshi.Moshi
@@ -246,7 +246,7 @@ class CatalogApiParseTest {
         googleBooks.searchVolumes("x", apiKey = "secret-key")
         val withKey = server.takeRequest()
 
-        assertTrue(withoutKey.path.indexOf("key=") == -1)
-        assertTrue(withKey.path.contains("key=secret-key"))
+        assertTrue("no key parameter when unconfigured", withoutKey.path.orEmpty().indexOf("key=") == -1)
+        assertTrue("key parameter present when configured", withKey.path.orEmpty().contains("key=secret-key"))
     }
 }

@@ -27,7 +27,7 @@ fun GutendexBookDto.toCatalogBook(): CatalogBook = CatalogBook(
     title = title.trim(),
     authors = authors.orEmpty().mapNotNull { person ->
         person.name?.trim()?.takeIf { it.isNotBlank() }
-            ?.let { Author(it, person.birth_year, person.death_year) }
+            ?.let { Author(displayAuthorName(it), person.birth_year, person.death_year) }
     },
     coverUrl = BookFormatSelector.coverUrl(formats),
     description = (summaries?.firstOrNull() ?: subjects?.take(DESCRIPTION_SUBJECT_LIMIT)?.joinToString(" • "))
@@ -158,6 +158,22 @@ fun CatalogBook.toDomainBook(): Book = Book(
 // --- shared helpers ---
 
 internal fun String.normalizeIsbn(): String = replace("-", "").replace(" ", "").trim()
+
+/**
+ * Gutendex stores names the way a library catalogue does — "Austen, Jane" —
+ * while Open Library and Google Books use "Jane Austen". Flipping the two parts
+ * here means cards read the same whichever catalogue supplied them; it also
+ * removes a formatting difference the dedupe layer would otherwise have to
+ * compensate for.
+ *
+ * Only the plain "surname, forename" shape is rewritten. Names carrying extra
+ * suffixes ("Doyle, Arthur Conan, Sir") or no comma at all are left untouched
+ * rather than guesswork-mangled.
+ */
+internal fun displayAuthorName(raw: String): String {
+    val parts = raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
+    return if (parts.size == 2) "${parts[1]} ${parts[0]}" else raw
+}
 
 /**
  * Google Books descriptions contain markup. The catalogue only needs readable

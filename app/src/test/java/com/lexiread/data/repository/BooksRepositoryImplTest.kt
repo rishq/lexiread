@@ -28,8 +28,16 @@ import okhttp3.ResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 import java.io.IOException
 
+/**
+ * Robolectric rather than plain JUnit: the repository is part of the app
+ * module, so [android.util.Log] is a real (shadowed) call and the failure paths
+ * can be exercised instead of blowing up on an unmocked Android stub.
+ */
+@RunWith(RobolectricTestRunner::class)
 class BooksRepositoryImplTest {
 
     // --- fakes -------------------------------------------------------------
@@ -133,7 +141,8 @@ class BooksRepositoryImplTest {
                 author_name = listOf("Jane Austen"),
                 cover_i = 1_234,
                 first_publish_year = 1813,
-                isbn = listOf("9780141439518")
+                isbn = listOf("9780141439518"),
+                id_gutenberg = listOf("1342")
             )
 
         fun googleVolume(id: String = "abc", title: String = "Pride and Prejudice") =
