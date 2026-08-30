@@ -15,6 +15,7 @@ class PdfParser : BookParser {
 
     companion object {
         private const val TAG = "PdfParser"
+        private const val MAX_PDF_BYTES = 80 * 1024 * 1024L // 80 MB cap
     }
 
     override fun canParse(format: String, file: File): Boolean {
@@ -26,6 +27,20 @@ class PdfParser : BookParser {
         var pageCount = 0
 
         try {
+            // Guard against OOM: refuse files larger than the cap.
+            if (file.length() > MAX_PDF_BYTES) {
+                Log.w(TAG, "PDF file too large: ${file.length()} bytes (max $MAX_PDF_BYTES)")
+                chapters.add(
+                    BookChapter(
+                        title = file.nameWithoutExtension.replace("_", " "),
+                        content = "This PDF is too large to read (${file.length() / (1024 * 1024)} MB). " +
+                            "Maximum supported size is ${MAX_PDF_BYTES / (1024 * 1024)} MB.",
+                        index = 0
+                    )
+                )
+                return@withContext chapters
+            }
+
             val fileBytes = file.readBytes()
             pageCount = extractPageCountFromBytes(fileBytes)
             val extractedText = extractTextFromPdfBytes(fileBytes)

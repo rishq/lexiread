@@ -92,9 +92,12 @@ class ReaderViewModelTest {
     private class FakeVocabRepo : VocabularyRepository {
         override fun getSavedWords() = flowOf(emptyList<SavedWord>())
         override fun getWordsByStatus(status: LearningStatus) = flowOf(emptyList<SavedWord>())
+        override fun getDueWords() = flowOf(emptyList<SavedWord>())
+        override fun getDueWordCount() = flowOf(0)
         override suspend fun isWordSaved(word: String) = false
         override suspend fun saveWord(savedWord: SavedWord) {}
         override suspend fun updateStatus(id: Int, status: LearningStatus) {}
+        override suspend fun reviewWord(id: Int, rating: com.lexiread.core.util.SrsScheduler.ReviewRating) {}
         override suspend fun deleteWord(id: Int) {}
     }
 

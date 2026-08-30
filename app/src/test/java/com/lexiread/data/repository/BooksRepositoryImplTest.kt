@@ -2,6 +2,10 @@ package com.lexiread.data.repository
 
 import com.lexiread.data.local.dao.CatalogCacheDao
 import com.lexiread.data.local.entity.CatalogCacheEntity
+import com.lexiread.data.remote.api.InternetArchiveApi
+import com.lexiread.data.remote.api.StandardEbooksApi
+import com.lexiread.data.remote.dto.InternetArchiveMetadataResponse
+import com.lexiread.data.remote.dto.InternetArchiveSearchResponse
 import com.lexiread.data.remote.googlebooks.GoogleBooksApi
 import com.lexiread.data.remote.googlebooks.GoogleBooksIdentifierDto
 import com.lexiread.data.remote.googlebooks.GoogleBooksSearchResponseDto
@@ -73,6 +77,21 @@ class BooksRepositoryImplTest {
             searchResponse.also { if (fail) throw IOException("google books down") }
 
         override suspend fun getVolume(volumeId: String, apiKey: String?) = throw UnsupportedOperationException()
+    }
+
+    private class FakeInternetArchiveApi : InternetArchiveApi {
+        override suspend fun searchBooks(
+            query: String, fields: String, rows: Int, page: Int, output: String
+        ) = InternetArchiveSearchResponse()
+
+        override suspend fun getMetadata(identifier: String) = InternetArchiveMetadataResponse()
+
+        override suspend fun downloadFile(url: String): ResponseBody = throw UnsupportedOperationException()
+    }
+
+    private class FakeStandardEbooksApi : StandardEbooksApi {
+        override suspend fun searchOpds(url: String): ResponseBody = throw UnsupportedOperationException()
+        override suspend fun downloadFile(url: String): ResponseBody = throw UnsupportedOperationException()
     }
 
     private class FakeCatalogCacheDao : CatalogCacheDao {
@@ -166,6 +185,8 @@ class BooksRepositoryImplTest {
         gutendexApi = gutendex,
         openLibraryApi = openLibrary,
         googleBooksApi = google,
+        internetArchiveApi = FakeInternetArchiveApi(),
+        standardEbooksApi = FakeStandardEbooksApi(),
         catalogCacheDao = cache,
         bookRepository = library,
         sources = listOf(FakeBookSource("gutenberg")),
@@ -209,12 +230,18 @@ class BooksRepositoryImplTest {
 
     @Test
     fun `a total outage raises an error rather than an empty list`() = runBlocking {
+        // Only the original three catalogues are faked with failure modes;
+        // IA and SE are noop fakes that return empty results. Querying only
+        // the three faked sources ensures the outage is total across all
+        // queried sources, so gather() has no survivors and must throw.
         val result = runCatching {
             repository(
                 gutendex = FakeGutendexApi().apply { fail = true },
                 openLibrary = FakeOpenLibraryApi().apply { fail = true },
                 google = FakeGoogleBooksApi().apply { fail = true }
-            ).search("pride", 1, allSources())
+            ).search("pride", 1, setOf(
+                SourceKind.GUTENDEX, SourceKind.OPEN_LIBRARY, SourceKind.GOOGLE_BOOKS
+            ))
         }
 
         assertTrue(result.isFailure)

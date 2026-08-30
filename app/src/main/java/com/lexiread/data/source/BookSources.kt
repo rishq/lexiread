@@ -292,13 +292,6 @@ class StandardEbooksBookSource(
     override val idPrefix = "se"
     override val displayName = "Standard Ebooks"
 
-    companion object {
-        private const val TAG = "StandardEbooksSource"
-        private const val SEARCH_URL = "https://standardebooks.org/opds/search?query="
-        private const val HOST = "standardebooks.org"
-        private const val MAX_EPUB_BYTES = 40 * 1024 * 1024L
-    }
-
     private val booksDir = File(context.applicationContext.filesDir, "imported_books").apply { mkdirs() }
 
     override suspend fun search(query: String): List<Book> {
@@ -345,105 +338,112 @@ class StandardEbooksBookSource(
         book.copy(filePath = destFile.absolutePath, format = "EPUB", isSaved = true)
     }
 
-    private data class OpdsEntry(
-        val id: String,
-        val title: String,
-        val author: String?,
-        val summary: String?,
-        val coverUrl: String?,
-        val epubUrl: String?
-    )
+    companion object {
+        private const val TAG = "StandardEbooksSource"
+        private const val SEARCH_URL = "https://standardebooks.org/opds/search?query="
+        private const val HOST = "standardebooks.org"
+        private const val MAX_EPUB_BYTES = 40 * 1024 * 1024L
 
-    private fun parseOpdsEntries(stream: java.io.InputStream): List<OpdsEntry> {
-        val parser = Xml.newPullParser()
-        parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
-        parser.setInput(stream, null)
+        data class OpdsEntry(
+            val id: String,
+            val title: String,
+            val author: String?,
+            val summary: String?,
+            val coverUrl: String?,
+            val epubUrl: String?
+        )
 
-        val entries = mutableListOf<OpdsEntry>()
-        var currentId = ""
-        var currentTitle = ""
-        var currentAuthor: String? = null
-        var currentSummary: String? = null
-        var currentCover: String? = null
-        var currentEpub: String? = null
-        var inEntry = false
-        var tag: String? = null
-        var authorDone = false
+        fun parseOpdsEntries(stream: java.io.InputStream): List<OpdsEntry> {
+            val parser = Xml.newPullParser()
+            parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
+            parser.setInput(stream, null)
 
-        fun flush() {
-            if (inEntry && currentTitle.isNotBlank()) {
-                entries.add(OpdsEntry(currentId, currentTitle, currentAuthor, currentSummary, currentCover, currentEpub))
+            val entries = mutableListOf<OpdsEntry>()
+            var currentId = ""
+            var currentTitle = ""
+            var currentAuthor: String? = null
+            var currentSummary: String? = null
+            var currentCover: String? = null
+            var currentEpub: String? = null
+            var inEntry = false
+            var tag: String? = null
+            var authorDone = false
+
+            fun flush() {
+                if (inEntry && currentTitle.isNotBlank()) {
+                    entries.add(OpdsEntry(currentId, currentTitle, currentAuthor, currentSummary, currentCover, currentEpub))
+                }
             }
-        }
 
-        var event = parser.eventType
-        while (event != XmlPullParser.END_DOCUMENT) {
-            when (event) {
-                XmlPullParser.START_TAG -> {
-                    when (parser.name.lowercase()) {
-                        "entry" -> {
-                            flush()
-                            inEntry = true
-                            currentId = ""; currentTitle = ""; currentAuthor = null
-                            currentSummary = null; currentCover = null; currentEpub = null
-                            authorDone = false
-                        }
-                        "id" -> if (inEntry) { tag = "id"; currentId = "" }
-                        "title" -> if (inEntry) { tag = "title"; currentTitle = "" }
-                        "name" -> if (inEntry && !authorDone) tag = "name"
-                        "summary" -> if (inEntry) { tag = "summary"; currentSummary = "" }
-                        "link" -> if (inEntry) {
-                            val rel = parser.getAttributeValue(null, "rel") ?: ""
-                            val href = parser.getAttributeValue(null, "href")
-                            val type = parser.getAttributeValue(null, "type") ?: ""
-                            if (href != null) {
-                                when {
-                                    rel.contains("/image") && currentCover == null ->
-                                        currentCover = absolutize(href)
-                                    type.contains("epub+zip") && currentEpub == null ->
-                                        currentEpub = absolutize(href)
+            var event = parser.eventType
+            while (event != XmlPullParser.END_DOCUMENT) {
+                when (event) {
+                    XmlPullParser.START_TAG -> {
+                        when (parser.name.lowercase()) {
+                            "entry" -> {
+                                flush()
+                                inEntry = true
+                                currentId = ""; currentTitle = ""; currentAuthor = null
+                                currentSummary = null; currentCover = null; currentEpub = null
+                                authorDone = false
+                            }
+                            "id" -> if (inEntry) { tag = "id"; currentId = "" }
+                            "title" -> if (inEntry) { tag = "title"; currentTitle = "" }
+                            "name" -> if (inEntry && !authorDone) tag = "name"
+                            "summary" -> if (inEntry) { tag = "summary"; currentSummary = "" }
+                            "link" -> if (inEntry) {
+                                val rel = parser.getAttributeValue(null, "rel") ?: ""
+                                val href = parser.getAttributeValue(null, "href")
+                                val type = parser.getAttributeValue(null, "type") ?: ""
+                                if (href != null) {
+                                    when {
+                                        rel.contains("/image") && currentCover == null ->
+                                            currentCover = absolutize(href)
+                                        type.contains("epub+zip") && currentEpub == null ->
+                                            currentEpub = absolutize(href)
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                XmlPullParser.TEXT -> {
-                    val text = parser.text?.trim().orEmpty()
-                    when (tag) {
-                        "id" -> {
-                            // OPDS ids look like "https://standardebooks.org/ebooks/author/title".
-                            // Retain the author because titles can repeat across authors.
-                            currentId = (currentId + text)
-                                .substringAfter("/ebooks/")
-                                .trimEnd('/')
-                                .replace("/", "~")
+                    XmlPullParser.TEXT -> {
+                        val text = parser.text?.trim().orEmpty()
+                        when (tag) {
+                            "id" -> {
+                                // OPDS ids look like "https://standardebooks.org/ebooks/author/title".
+                                // Retain the author because titles can repeat across authors.
+                                currentId = (currentId + text)
+                                    .substringAfter("/ebooks/")
+                                    .trimEnd('/')
+                                    .replace("/", "~")
+                            }
+                            "title" -> currentTitle += text
+                            "name" -> if (currentAuthor.isNullOrBlank()) {
+                                currentAuthor = text
+                                authorDone = true
+                            }
+                            "summary" -> currentSummary = (currentSummary ?: "") + text
                         }
-                        "title" -> currentTitle += text
-                        "name" -> if (currentAuthor.isNullOrBlank()) {
-                            currentAuthor = text
-                            authorDone = true
+                    }
+                    XmlPullParser.END_TAG -> {
+                        when (parser.name.lowercase()) {
+                            "entry" -> {
+                                flush()
+                                inEntry = false
+                            }
+                            "id", "title", "name", "summary" -> tag = null
                         }
-                        "summary" -> currentSummary = (currentSummary ?: "") + text
                     }
                 }
-                XmlPullParser.END_TAG -> {
-                    when (parser.name.lowercase()) {
-                        "entry" -> {
-                            flush()
-                            inEntry = false
-                        }
-                        "id", "title", "name", "summary" -> tag = null
-                    }
-                }
+                event = parser.next()
             }
-            event = parser.next()
+            flush()
+
+            Log.d(TAG, "Parsed ${entries.size} OPDS entries")
+            return entries
         }
-        flush()
 
-        Log.d(TAG, "Parsed ${entries.size} OPDS entries")
-        return entries
+        private fun absolutize(href: String): String =
+            if (href.startsWith("http")) href else "https://$HOST$href"
     }
-
-    private fun absolutize(href: String): String =
-        if (href.startsWith("http")) href else "https://$HOST$href"
 }

@@ -1,5 +1,6 @@
 ﻿package com.lexiread.data.repository
 
+import com.lexiread.core.util.SrsScheduler
 import com.lexiread.data.local.dao.SavedWordDao
 import com.lexiread.data.local.entity.SavedWordEntity
 import com.lexiread.domain.model.LearningStatus
@@ -20,16 +21,60 @@ class VocabularyRepositoryImpl(
         return savedWordDao.getWordsByStatus(status.name).map { entities -> entities.map { it.toDomain() } }
     }
 
+    override fun getDueWords(): Flow<List<SavedWord>> {
+        val now = System.currentTimeMillis()
+        return savedWordDao.getDueWords(now).map { entities -> entities.map { it.toDomain() } }
+    }
+
+    override fun getDueWordCount(): Flow<Int> {
+        val now = System.currentTimeMillis()
+        return savedWordDao.getDueWordCount(now)
+    }
+
     override suspend fun isWordSaved(word: String): Boolean {
         return savedWordDao.getWordByText(word.trim().lowercase()) != null
     }
 
     override suspend fun saveWord(savedWord: SavedWord) {
-        savedWordDao.insertWord(savedWord.toEntity())
+        val now = System.currentTimeMillis()
+        val srs = SrsScheduler.initialState(now)
+        savedWordDao.insertWord(savedWord.toEntity(srs))
     }
 
     override suspend fun updateStatus(id: Int, status: LearningStatus) {
         savedWordDao.updateStatus(id, status.name)
+    }
+
+    override suspend fun reviewWord(id: Int, rating: SrsScheduler.ReviewRating) {
+        val entity = savedWordDao.getWordById(id) ?: return
+        val word = entity.toDomain()
+        val now = System.currentTimeMillis()
+        val current = SrsScheduler.SrsState(
+            reps = word.srsReps,
+            ease = word.srsEase,
+            intervalDays = word.srsIntervalDays,
+            lastReviewEpoch = word.lastReviewEpoch,
+            nextReviewEpoch = word.nextReviewEpoch
+        )
+        val next = SrsScheduler.review(current, rating, now)
+        val status = when {
+            next.reps == 0 -> LearningStatus.NEW
+            next.intervalDays >= 21 -> LearningStatus.KNOWN
+            else -> LearningStatus.LEARNING
+        }
+        savedWordDao.updateSrs(
+            id = id,
+            reps = next.reps,
+            ease = next.ease,
+            intervalDays = next.intervalDays,
+            lastReview = next.lastReviewEpoch,
+            nextReview = next.nextReviewEpoch,
+            status = status.name
+        )
+    }
+
+    suspend fun reviewWord(word: SavedWord, rating: SrsScheduler.ReviewRating) {
+        reviewWord(word.id, rating)
     }
 
     override suspend fun deleteWord(id: Int) {
@@ -54,10 +99,15 @@ fun SavedWordEntity.toDomain() = SavedWord(
         LearningStatus.valueOf(learningStatus)
     } catch (e: Exception) {
         LearningStatus.NEW
-    }
+    },
+    srsReps = srsReps,
+    srsEase = srsEase,
+    srsIntervalDays = srsIntervalDays,
+    lastReviewEpoch = lastReviewEpoch,
+    nextReviewEpoch = nextReviewEpoch
 )
 
-fun SavedWord.toEntity() = SavedWordEntity(
+fun SavedWord.toEntity(srs: SrsScheduler.SrsState? = null) = SavedWordEntity(
     id = id,
     word = word,
     translation = translation,
@@ -69,5 +119,10 @@ fun SavedWord.toEntity() = SavedWordEntity(
     sourceBookTitle = sourceBookTitle,
     sourceSentence = sourceSentence,
     dateAdded = dateAdded,
-    learningStatus = learningStatus.name
+    learningStatus = learningStatus.name,
+    srsReps = srs?.reps ?: srsReps,
+    srsEase = srs?.ease ?: srsEase,
+    srsIntervalDays = srs?.intervalDays ?: srsIntervalDays,
+    lastReviewEpoch = srs?.lastReviewEpoch ?: lastReviewEpoch,
+    nextReviewEpoch = srs?.nextReviewEpoch ?: nextReviewEpoch
 )

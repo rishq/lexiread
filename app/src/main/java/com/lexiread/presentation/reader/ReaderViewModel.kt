@@ -53,6 +53,7 @@ data class SelectedWordState(
 data class ReaderUiState(
     val book: Book? = null,
     val chapters: List<BookChapter> = emptyList(),
+    val totalChapterCount: Int = 0,
     val currentChapterIndex: Int = 0,
     val currentPageIndex: Int = 0,
     val pagesForCurrentChapter: List<ReaderPage> = emptyList(),
@@ -66,6 +67,7 @@ data class ReaderUiState(
     val showAiExplanationDialog: Boolean = false,
     val isLoadingBook: Boolean = false,
     val isPaginating: Boolean = false,
+    val isLoadingNextChapter: Boolean = false,
     val errorMessage: String? = null
 )
 
@@ -88,8 +90,22 @@ class ReaderViewModel(
     private var availableWidthPx: Int = 0
     private var availableHeightPx: Int = 0
     private var paginationJob: kotlinx.coroutines.Job? = null
+    private var prefetchJob: kotlinx.coroutines.Job? = null
     private val progressWriteDispatcher = Dispatchers.Default.limitedParallelism(1)
     private var progressRestored: Boolean = false
+
+    /**
+     * LRU pagination cache: chapter index -> list of pages.
+     * Prevents re-pagination when navigating back to a previously visited
+     * chapter. Capped to [PAGINATION_CACHE_SIZE] entries.
+     */
+    private val paginationCache = object : LinkedHashMap<Int, List<ReaderPage>>(
+        PAGINATION_CACHE_SIZE, 0.75f, true
+    ) {
+        override fun removeEldestEntry(eldest: Map.Entry<Int, List<ReaderPage>>): Boolean {
+            return size > PAGINATION_CACHE_SIZE
+        }
+    }
 
     init {
         loadBookAndChapters()
@@ -101,75 +117,91 @@ class ReaderViewModel(
             try {
                 _uiState.update { it.copy(isLoadingBook = true) }
                 val stored = bookRepository.getBookById(bookId)
-                val needsDownload = stored == null ||
-                    (stored.fullText.isNullOrBlank() && stored.filePath.isNullOrBlank())
+                val needsDownload = stored == null || stored.filePath.isNullOrBlank()
 
                 val book = if (needsDownload) {
                     val fetchResult = bookRepository.fetchAndSaveFullBook(
                         stored ?: Book(id = bookId, title = "Classic Book", author = "Unknown")
                     )
                     fetchResult.getOrNull() ?: run {
-                        _uiState.value = _uiState.value.copy(
-                            isLoadingBook = false,
-                            errorMessage = fetchResult.exceptionOrNull()?.message
-                                ?: "This book could not be downloaded."
-                        )
+                        _uiState.update {
+                            it.copy(
+                                isLoadingBook = false,
+                                errorMessage = fetchResult.exceptionOrNull()?.message
+                                    ?: "This book could not be downloaded."
+                            )
+                        }
                         return@launch
                     }
                 } else {
                     stored
                 }
 
-                var chapters = bookImporter.getChaptersForBook(book)
+                // Read saved progress before loading chapters so we know which
+                // chapter to load first.
+                val progress = bookRepository.getReadingProgress(bookId).first()
+                val targetChapter = progress?.currentChapter?.coerceAtLeast(0) ?: 0
+
+                // Lazy loading: load only the target chapter initially.
+                // For books with a file path or chapters in DB, this loads one
+                // chapter; for legacy fullText books, it loads all (fallback).
+                var chapters = bookImporter.getChaptersForBook(book, limit = 1, offset = targetChapter)
+                val totalChapters = bookImporter.getChapterCount(book.id)
+                    .let { count -> if (count > 0) count else chapters.size }
+
                 if (chapters.isEmpty() && !book.isImported) {
-                    // Older app versions could cache a failed EPUB response.
-                    // Give online books one clean re-download before reporting
-                    // an error; imported personal files are never replaced.
+                    // One clean re-download before reporting an error.
                     val refreshed = bookRepository.fetchAndSaveFullBook(
                         book = book,
                         forceRefresh = true
                     ).getOrNull()
                     if (refreshed != null) {
-                        chapters = bookImporter.getChaptersForBook(refreshed)
+                        chapters = bookImporter.getChaptersForBook(book, limit = 1, offset = targetChapter)
                     }
                 }
                 if (chapters.isEmpty()) {
-                    _uiState.value = _uiState.value.copy(
-                        isLoadingBook = false,
-                        errorMessage = "The downloaded file is not a readable EPUB or text book. Please choose another edition."
-                    )
+                    _uiState.update {
+                        it.copy(
+                            isLoadingBook = false,
+                            errorMessage = "The downloaded file is not a readable EPUB or text book. Please choose another edition."
+                        )
+                    }
                     return@launch
                 }
 
-                // Read saved progress ONCE, synchronously before the first pagination,
-                // so restoring the position can never race with pagination.
-                val progress = bookRepository.getReadingProgress(bookId).first()
-                if (!progressRestored && progress != null && chapters.isNotEmpty()) {
+                if (!progressRestored && progress != null) {
                     progressRestored = true
                     _uiState.update {
                         it.copy(
-                            currentChapterIndex = progress.currentChapter.coerceIn(0, chapters.size - 1),
+                            currentChapterIndex = targetChapter,
                             currentPageIndex = progress.currentPage
                         )
                     }
                 }
 
-                _uiState.value = _uiState.value.copy(
-                    book = book,
-                    chapters = chapters,
-                    isLoadingBook = false,
-                    errorMessage = null
-                )
+                _uiState.update {
+                    it.copy(
+                        book = book,
+                        chapters = chapters,
+                        totalChapterCount = totalChapters,
+                        isLoadingBook = false,
+                        errorMessage = null
+                    )
+                }
 
                 // Trigger initial pagination if container size is ready
                 repaginateCurrentChapter()
+                // Prefetch the next chapter in the background
+                prefetchNextChapter()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isLoadingBook = false,
-                    errorMessage = error.message ?: "Failed to open this book."
-                )
+                _uiState.update {
+                    it.copy(
+                        isLoadingBook = false,
+                        errorMessage = error.message ?: "Failed to open this book."
+                    )
+                }
             }
         }
     }
@@ -191,6 +223,8 @@ class ReaderViewModel(
                     )
                 }
                 if (prevSettings != settings) {
+                    // Settings changed: all cached pages are now stale.
+                    paginationCache.clear()
                     repaginateCurrentChapter()
                 }
             }
@@ -214,21 +248,28 @@ class ReaderViewModel(
         paginationJob = viewModelScope.launch {
             _uiState.update { it.copy(isPaginating = true) }
             try {
-                // Read state INSIDE the coroutine so we never paginate stale values.
                 val currentState = _uiState.value
                 val settings = currentState.readerSettings
                 val chapterIdx = currentState.currentChapterIndex.coerceIn(0, chapters.size - 1)
                 val chapter = chapters[chapterIdx]
 
-                val pages = paginationEngine.paginateChapter(
-                    chapter = chapter,
-                    settings = settings,
-                    availableWidthPx = availableWidthPx,
-                    availableHeightPx = availableHeightPx
-                )
+                // Check the cache first: if we've already paginated this chapter
+                // with the same settings and screen size, reuse the result.
+                val cacheKey = chapterIdx
+                val cached = paginationCache[cacheKey]
+                val pages = if (cached != null) {
+                    cached
+                } else {
+                    val fresh = paginationEngine.paginateChapter(
+                        chapter = chapter,
+                        settings = settings,
+                        availableWidthPx = availableWidthPx,
+                        availableHeightPx = availableHeightPx
+                    )
+                    paginationCache[cacheKey] = fresh
+                    fresh
+                }
 
-                // Re-clamp against the CURRENT index: the user may have turned pages
-                // while this pagination was running.
                 _uiState.update {
                     it.copy(
                         pagesForCurrentChapter = pages,
@@ -238,16 +279,72 @@ class ReaderViewModel(
                 }
 
                 saveCurrentProgress()
+                // After pagination, prefetch the next chapter if not cached
+                prefetchNextChapter()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                // Never crash the app on pagination failure; show an error instead.
                 _uiState.update {
                     it.copy(
                         isPaginating = false,
                         errorMessage = "Failed to render page: ${e.message}"
                     )
                 }
+            }
+        }
+    }
+
+    /**
+     * Background prefetch: loads the next chapter's pages so that turning
+     * forward is instant. Cancelled when the user navigates away.
+     */
+    private fun prefetchNextChapter() {
+        val state = _uiState.value
+        val book = state.book ?: return
+        val nextIdx = state.currentChapterIndex + 1
+        val total = state.totalChapterCount
+        if (total > 0 && nextIdx >= total) return
+        if (paginationCache.containsKey(nextIdx)) return // Already cached
+
+        prefetchJob?.cancel()
+        prefetchJob = viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoadingNextChapter = true) }
+
+                // Load the next chapter from DB/file if we don't have it.
+                val currentChapters = _uiState.value.chapters
+                val nextChapter = currentChapters.getOrNull(nextIdx)
+                    ?: run {
+                        // Try loading from importer with lazy fetch
+                        val loaded = bookImporter.getChaptersForBook(book, limit = 1, offset = nextIdx)
+                        if (loaded.isNotEmpty()) {
+                            // Merge the loaded chapter into the chapters list
+                            val updated = _uiState.value.chapters.toMutableList()
+                            while (updated.size <= nextIdx) {
+                                updated.add(BookChapter(title = "", content = "", index = updated.size))
+                            }
+                            updated[nextIdx] = loaded[0]
+                            _uiState.update { it.copy(chapters = updated) }
+                            loaded[0]
+                        } else {
+                            null
+                        }
+                    } ?: return@launch
+
+                if (availableWidthPx <= 0 || availableHeightPx <= 0) return@launch
+
+                val pages = paginationEngine.paginateChapter(
+                    chapter = nextChapter,
+                    settings = _uiState.value.readerSettings,
+                    availableWidthPx = availableWidthPx,
+                    availableHeightPx = availableHeightPx
+                )
+                paginationCache[nextIdx] = pages
+                _uiState.update { it.copy(isLoadingNextChapter = false) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoadingNextChapter = false) }
             }
         }
     }
@@ -289,25 +386,71 @@ class ReaderViewModel(
     fun goToChapter(chapterIndex: Int, targetPageIndex: Int = 0) {
         val chapters = _uiState.value.chapters
         if (chapters.isEmpty()) return
-        val validChapterIdx = chapterIndex.coerceIn(0, chapters.size - 1)
+        val total = _uiState.value.totalChapterCount.let { if (it > 0) it else chapters.size }
+        val validChapterIdx = chapterIndex.coerceIn(0, (total - 1).coerceAtLeast(0))
 
-        _uiState.value = _uiState.value.copy(
-            currentChapterIndex = validChapterIdx,
-            currentPageIndex = 0,
-            showTocDialog = false
-        )
+        _uiState.update {
+            it.copy(
+                currentChapterIndex = validChapterIdx,
+                currentPageIndex = 0,
+                showTocDialog = false
+            )
+        }
 
         paginationJob?.cancel()
         paginationJob = viewModelScope.launch {
             _uiState.update { it.copy(isPaginating = true) }
             try {
-                val chapter = chapters[validChapterIdx]
+                // Check cache first
+                val cached = paginationCache[validChapterIdx]
+                if (cached != null) {
+                    val pageIdx = if (targetPageIndex == Int.MAX_VALUE) {
+                        (cached.size - 1).coerceAtLeast(0)
+                    } else {
+                        targetPageIndex.coerceIn(0, (cached.size - 1).coerceAtLeast(0))
+                    }
+                    _uiState.update {
+                        it.copy(
+                            pagesForCurrentChapter = cached,
+                            currentPageIndex = pageIdx,
+                            isPaginating = false
+                        )
+                    }
+                    saveCurrentProgress()
+                    prefetchNextChapter()
+                    return@launch
+                }
+
+                // Need the chapter loaded: if not in the list, fetch it
+                val chapter = chapters.getOrNull(validChapterIdx)
+                    ?: run {
+                        val book = _uiState.value.book ?: return@run null
+                        val loaded = bookImporter.getChaptersForBook(book, limit = 1, offset = validChapterIdx)
+                        if (loaded.isNotEmpty()) {
+                            val updated = chapters.toMutableList()
+                            while (updated.size <= validChapterIdx) {
+                                updated.add(BookChapter(title = "", content = "", index = updated.size))
+                            }
+                            updated[validChapterIdx] = loaded[0]
+                            _uiState.update { it.copy(chapters = updated) }
+                            loaded[0]
+                        } else null
+                    }
+
+                if (chapter == null) {
+                    _uiState.update {
+                        it.copy(isPaginating = false, errorMessage = "Chapter $validChapterIdx not found.")
+                    }
+                    return@launch
+                }
+
                 val pages = paginationEngine.paginateChapter(
                     chapter = chapter,
                     settings = _uiState.value.readerSettings,
                     availableWidthPx = availableWidthPx,
                     availableHeightPx = availableHeightPx
                 )
+                paginationCache[validChapterIdx] = pages
 
                 currentCoroutineContext().ensureActive()
 
@@ -317,12 +460,15 @@ class ReaderViewModel(
                     targetPageIndex.coerceIn(0, (pages.size - 1).coerceAtLeast(0))
                 }
 
-                _uiState.value = _uiState.value.copy(
-                    pagesForCurrentChapter = pages,
-                    currentPageIndex = pageIdx,
-                    isPaginating = false
-                )
+                _uiState.update {
+                    it.copy(
+                        pagesForCurrentChapter = pages,
+                        currentPageIndex = pageIdx,
+                        isPaginating = false
+                    )
+                }
                 saveCurrentProgress()
+                prefetchNextChapter()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -575,5 +721,10 @@ class ReaderViewModel(
                 paginationEngine
             ) as T
         }
+    }
+
+    private companion object {
+        /** How many chapters' paginated pages to keep in memory. */
+        const val PAGINATION_CACHE_SIZE = 10
     }
 }

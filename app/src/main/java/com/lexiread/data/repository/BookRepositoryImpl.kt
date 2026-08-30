@@ -4,12 +4,15 @@ import com.lexiread.core.util.runSuspendCatching
 import com.lexiread.data.local.PreloadedBooks
 import com.lexiread.data.local.dao.BookDao
 import com.lexiread.data.local.dao.BookmarkDao
+import com.lexiread.data.local.dao.ChapterDao
 import com.lexiread.data.local.dao.ReadingProgressDao
 import com.lexiread.data.local.entity.BookEntity
 import com.lexiread.data.local.entity.BookmarkEntity
+import com.lexiread.data.local.entity.ChapterEntity
 import com.lexiread.data.local.entity.ReadingProgressEntity
 import com.lexiread.domain.repository.BookSource
 import com.lexiread.domain.model.Book
+import com.lexiread.domain.model.BookChapter
 import com.lexiread.domain.model.Bookmark
 import com.lexiread.domain.model.ReadingProgress
 import com.lexiread.domain.repository.BookRepository
@@ -22,37 +25,30 @@ import kotlinx.coroutines.flow.map
 
 class BookRepositoryImpl(
     private val bookDao: BookDao,
+    private val chapterDao: ChapterDao,
     private val readingProgressDao: ReadingProgressDao,
     private val bookmarkDao: BookmarkDao,
     private val sources: List<BookSource>
 ) : BookRepository {
 
     suspend fun initializePreloadedBooks() {
-        // Pre-populate preloaded classic books if database is empty,
-        // or refresh them if they were stored with encoding corruption
-        // (older app versions shipped double-encoded UTF-8 strings).
-        val existing = bookDao.getBookById("gutenberg_1342")
+        val existing = bookDao.getBookMetaById("gutenberg_1342")
         if (existing == null) {
             bookDao.insertBooks(PreloadedBooks.defaultBooks)
-            // Pre-initialize initial reading progress for Pride and Prejudice
+            PreloadedBooks.preloaded.forEach { preloaded ->
+                chapterDao.insertChapters(preloaded.chapters)
+            }
             readingProgressDao.saveProgress(
                 ReadingProgressEntity(
                     bookId = "gutenberg_1342",
                     scrollOffset = 0,
                     currentChapter = 1,
-                    totalLength = PreloadedBooks.defaultBooks.first().fullText?.length ?: 1000,
+                    totalLength = 1000,
                     percentCompleted = 5f,
                     lastReadTimestamp = System.currentTimeMillis()
                 )
             )
-        } else if (containsEncodingCorruption(existing)) {
-            bookDao.insertBooks(PreloadedBooks.defaultBooks)
         }
-    }
-
-    private fun containsEncodingCorruption(entity: com.lexiread.data.local.entity.BookEntity): Boolean {
-        return listOfNotNull(entity.title, entity.author, entity.description, entity.subjects, entity.fullText)
-            .any { it.contains("вЂ") }
     }
 
     override fun getAllBooks(): Flow<List<Book>> {
@@ -72,7 +68,7 @@ class BookRepositoryImpl(
     }
 
     override suspend fun getBookById(id: String): Book? {
-        return bookDao.getBookById(id)?.toDomain()
+        return bookDao.getBookMetaById(id)?.toDomain()
     }
 
     override suspend fun searchBooksOnline(query: String): Result<List<Book>> {
@@ -105,10 +101,8 @@ class BookRepositoryImpl(
 
     override suspend fun fetchAndSaveFullBook(book: Book, forceRefresh: Boolean): Result<Book> {
         return runSuspendCatching {
-            val existing = bookDao.getBookById(book.id)
-            if (!forceRefresh && existing != null &&
-                (!existing.fullText.isNullOrBlank() || !existing.filePath.isNullOrBlank())
-            ) {
+            val existing = bookDao.getBookMetaById(book.id)
+            if (!forceRefresh && existing != null && !existing.filePath.isNullOrBlank()) {
                 return@runSuspendCatching existing.toDomain()
             }
 
@@ -118,7 +112,7 @@ class BookRepositoryImpl(
                 )
 
             val updatedBook = source.downloadContent(book.copy(isSaved = true))
-            if (updatedBook.fullText.isNullOrBlank() && updatedBook.filePath.isNullOrBlank()) {
+            if (updatedBook.filePath.isNullOrBlank()) {
                 throw IllegalStateException("Source returned no readable content for '${book.title}'.")
             }
 
@@ -133,16 +127,18 @@ class BookRepositoryImpl(
     }
 
     override suspend fun deleteBook(id: String) {
-        val book = bookDao.getBookById(id)
+        val book = bookDao.getBookMetaById(id)
         if (book?.filePath != null) {
             runCatching { java.io.File(book.filePath).delete() }
         }
         // Remove dependent rows first: deleting the book alone would leave
-        // orphaned reading progress and bookmarks behind forever.
+        // orphaned reading progress, chapters, and bookmarks behind forever.
         runCatching { readingProgressDao.deleteProgressForBook(id) }
             .onFailure { android.util.Log.w("BookRepository", "Failed to clear progress for $id", it) }
         runCatching { bookmarkDao.deleteBookmarksForBook(id) }
             .onFailure { android.util.Log.w("BookRepository", "Failed to clear bookmarks for $id", it) }
+        runCatching { chapterDao.deleteChaptersForBook(id) }
+            .onFailure { android.util.Log.w("BookRepository", "Failed to clear chapters for $id", it) }
         bookDao.deleteBook(id)
     }
 
@@ -209,7 +205,7 @@ fun BookEntity.toDomain() = Book(
     author = author,
     coverUrl = coverUrl,
     description = description,
-    fullText = fullText,
+    fullText = null,
     filePath = filePath,
     format = format,
     language = language,
@@ -227,7 +223,6 @@ fun Book.toEntity() = BookEntity(
     author = author,
     coverUrl = coverUrl,
     description = description,
-    fullText = fullText,
     filePath = filePath,
     format = format,
     language = language,

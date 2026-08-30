@@ -46,7 +46,7 @@ class AppContainer(private val context: Context) {
             context.applicationContext,
             AppDatabase::class.java,
             "lexiread_db"
-        ).addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
+        ).addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5)
             .build()
     }
 
@@ -59,7 +59,7 @@ class AppContainer(private val context: Context) {
     }
 
     val bookImporter: BookImporter by lazy {
-        BookImporter(context.applicationContext)
+        BookImporter(context.applicationContext, database.chapterDao())
     }
 
     val paginationEngine: PaginationEngine by lazy {
@@ -84,6 +84,7 @@ class AppContainer(private val context: Context) {
     val bookRepository: BookRepository by lazy {
         BookRepositoryImpl(
             bookDao = database.bookDao(),
+            chapterDao = database.chapterDao(),
             readingProgressDao = database.readingProgressDao(),
             bookmarkDao = database.bookmarkDao(),
             sources = bookSources
@@ -95,6 +96,8 @@ class AppContainer(private val context: Context) {
             gutendexApi = RetrofitClient.gutendexApi,
             openLibraryApi = RetrofitClient.openLibraryApi,
             googleBooksApi = RetrofitClient.googleBooksApi,
+            internetArchiveApi = RetrofitClient.internetArchiveApi,
+            standardEbooksApi = RetrofitClient.standardEbooksApi,
             catalogCacheDao = database.catalogCacheDao(),
             bookRepository = bookRepository,
             sources = bookSources,
@@ -108,6 +111,29 @@ class AppContainer(private val context: Context) {
     val getBooksByCategoryUseCase: GetBooksByCategoryUseCase by lazy { GetBooksByCategoryUseCase(booksRepository) }
     val getBookDetailsUseCase: GetBookDetailsUseCase by lazy { GetBookDetailsUseCase(booksRepository) }
     val openBookForReadingUseCase: OpenBookForReadingUseCase by lazy { OpenBookForReadingUseCase(booksRepository) }
+
+    // Reader & vocabulary use cases
+    val getReadingProgressUseCase: com.lexiread.domain.usecase.GetReadingProgressUseCase by lazy {
+        com.lexiread.domain.usecase.GetReadingProgressUseCase(bookRepository)
+    }
+    val saveReadingProgressUseCase: com.lexiread.domain.usecase.SaveReadingProgressUseCase by lazy {
+        com.lexiread.domain.usecase.SaveReadingProgressUseCase(bookRepository)
+    }
+    val getDueWordsUseCase: com.lexiread.domain.usecase.GetDueWordsUseCase by lazy {
+        com.lexiread.domain.usecase.GetDueWordsUseCase(vocabularyRepository)
+    }
+    val getDueWordCountUseCase: com.lexiread.domain.usecase.GetDueWordCountUseCase by lazy {
+        com.lexiread.domain.usecase.GetDueWordCountUseCase(vocabularyRepository)
+    }
+    val reviewWordUseCase: com.lexiread.domain.usecase.ReviewWordUseCase by lazy {
+        com.lexiread.domain.usecase.ReviewWordUseCase(vocabularyRepository)
+    }
+    val saveWordUseCase: com.lexiread.domain.usecase.SaveWordUseCase by lazy {
+        com.lexiread.domain.usecase.SaveWordUseCase(vocabularyRepository)
+    }
+    val isWordSavedUseCase: com.lexiread.domain.usecase.IsWordSavedUseCase by lazy {
+        com.lexiread.domain.usecase.IsWordSavedUseCase(vocabularyRepository)
+    }
 
     val dictionaryRepository: DictionaryRepository by lazy {
         DictionaryRepositoryImpl(

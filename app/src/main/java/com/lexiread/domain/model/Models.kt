@@ -78,8 +78,17 @@ data class SavedWord(
     val sourceBookTitle: String = "",
     val sourceSentence: String = "",
     val dateAdded: Long = System.currentTimeMillis(),
-    val learningStatus: LearningStatus = LearningStatus.NEW
-)
+    val learningStatus: LearningStatus = LearningStatus.NEW,
+    // SM-2 spaced repetition
+    val srsReps: Int = 0,
+    val srsEase: Double = 2.5,
+    val srsIntervalDays: Int = 0,
+    val lastReviewEpoch: Long = 0,
+    val nextReviewEpoch: Long = 0
+) {
+    val isDue: Boolean
+        get() = nextReviewEpoch == 0L || System.currentTimeMillis() >= nextReviewEpoch
+}
 
 data class Bookmark(
     val id: Int = 0,

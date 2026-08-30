@@ -10,7 +10,9 @@ package com.lexiread.domain.model
 enum class SourceKind {
     GUTENDEX,
     OPEN_LIBRARY,
-    GOOGLE_BOOKS
+    GOOGLE_BOOKS,
+    INTERNET_ARCHIVE,
+    STANDARD_EBOOKS
 }
 
 /** Physical container of a readable file. */

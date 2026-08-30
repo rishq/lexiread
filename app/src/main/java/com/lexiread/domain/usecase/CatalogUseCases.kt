@@ -73,5 +73,14 @@ class OpenBookForReadingUseCase(private val repository: BooksRepository) {
 
 internal const val FIRST_PAGE = 1
 
-/** All three catalogues are on by default; the user can narrow the selection. */
-val DEFAULT_SOURCES: Set<SourceKind> = SourceKind.entries.toSet()
+/**
+ * Only sources that provide downloadable, readable books are on by default.
+ * Open Library and Google Books are metadata-only — they flood results with
+ * books the user cannot actually read, which was the #1 complaint. They remain
+ * available as optional toggles in the UI.
+ */
+val DEFAULT_SOURCES: Set<SourceKind> = setOf(
+    SourceKind.GUTENDEX,
+    SourceKind.INTERNET_ARCHIVE,
+    SourceKind.STANDARD_EBOOKS
+)

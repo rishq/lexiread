@@ -26,6 +26,9 @@ class EpubParser : BookParser {
         private const val MAX_TOTAL_UNCOMPRESSED_BYTES = 40 * 1024 * 1024L // 40 MB total extracted text
         private const val MAX_ENTRIES_TO_PROCESS = 500
         private const val MAX_COVER_SIZE_BYTES = 5 * 1024 * 1024L // 5 MB cover cap
+        /** If the uncompressed-to-compressed ratio exceeds this, the file is
+         * treated as a potential zip bomb and parsing is aborted. */
+        private const val ZIP_BOMB_RATIO_THRESHOLD = 100
     }
 
     override fun canParse(format: String, file: File): Boolean {
@@ -72,6 +75,21 @@ class EpubParser : BookParser {
                     if (entry.size > MAX_ENTRY_SIZE_BYTES) {
                         Log.w(TAG, "Skipping oversize EPUB entry: $fullPath (${entry.size} bytes)")
                         continue
+                    }
+
+                    // Zip bomb defense: only check the ratio for entries whose
+                    // uncompressed size exceeds the per-entry cap, since smaller
+                    // entries are already bounded by [MAX_ENTRY_SIZE_BYTES].
+                    // Highly compressible text (e.g. repeated UTF-8 characters)
+                    // can legitimately achieve ratios >100, so the check must
+                    // not reject valid content.
+                    val compressedSize = entry.compressedSize
+                    if (compressedSize > 0 && entry.size > MAX_ENTRY_SIZE_BYTES) {
+                        val ratio = entry.size.toDouble() / compressedSize
+                        if (ratio > ZIP_BOMB_RATIO_THRESHOLD) {
+                            Log.w(TAG, "Potential zip bomb: $fullPath ratio=$ratio (compressed=$compressedSize, uncompressed=${entry.size})")
+                            continue
+                        }
                     }
 
                     // Read the whole entry and decode it in ONE pass. Decoding per

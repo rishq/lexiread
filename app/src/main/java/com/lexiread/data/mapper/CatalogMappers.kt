@@ -195,6 +195,8 @@ internal fun stripHtml(raw: String): String = raw
 const val GUTENDEX_PREFIX = "gutenberg_"
 const val OPEN_LIBRARY_PREFIX = "ol_"
 const val GOOGLE_BOOKS_PREFIX = "gb_"
+const val INTERNET_ARCHIVE_PREFIX = "ia_"
+const val STANDARD_EBOOKS_PREFIX = "se_"
 
 private const val SUBJECT_LIMIT = 8
 private const val DESCRIPTION_SUBJECT_LIMIT = 6

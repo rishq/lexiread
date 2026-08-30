@@ -1,17 +1,74 @@
 package com.lexiread.data.local
 
 import com.lexiread.data.local.entity.BookEntity
+import com.lexiread.data.local.entity.ChapterEntity
 
 object PreloadedBooks {
 
-    val defaultBooks = listOf(
-        BookEntity(
-            id = "gutenberg_1342",
-            title = "Pride and Prejudice",
-            author = "Jane Austen",
-            coverUrl = "https://www.gutenberg.org/cache/epub/1342/pg1342.cover.medium.jpg",
-            description = "It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife. However little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families, that he is considered the rightful property of some one or other of their daughters.",
-            fullText = """
+    data class PreloadedBook(
+        val book: BookEntity,
+        val chapters: List<ChapterEntity>
+    )
+
+    private val prideAndPrejudice = BookEntity(
+        id = "gutenberg_1342",
+        title = "Pride and Prejudice",
+        author = "Jane Austen",
+        coverUrl = "https://www.gutenberg.org/cache/epub/1342/pg1342.cover.medium.jpg",
+        description = "It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife. However little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families, that he is considered the rightful property of some one or other of their daughters.",
+        language = "en",
+        subjects = "Fiction, Romance, Classic Literature",
+        isFavorite = true,
+        isSaved = true,
+        isFinished = false,
+        addedTimestamp = System.currentTimeMillis() - 86400000L * 3
+    )
+
+    private val alicesAdventures = BookEntity(
+        id = "gutenberg_11",
+        title = "Alice's Adventures in Wonderland",
+        author = "Lewis Carroll",
+        coverUrl = "https://www.gutenberg.org/cache/epub/11/pg11.cover.medium.jpg",
+        description = "Alice was beginning to get very tired of sitting by her sister on the bank, and of having nothing to do: once or twice she had peeped into the book her sister was reading, but it had no pictures or conversations in it, 'and what is the use of a book,' thought Alice 'without pictures or conversations?'",
+        language = "en",
+        subjects = "Fantasy, Children's Literature",
+        isFavorite = false,
+        isSaved = true,
+        isFinished = false,
+        addedTimestamp = System.currentTimeMillis() - 86400000L * 2
+    )
+
+    private val sherlockHolmes = BookEntity(
+        id = "gutenberg_1661",
+        title = "The Adventures of Sherlock Holmes",
+        author = "Arthur Conan Doyle",
+        coverUrl = "https://www.gutenberg.org/cache/epub/1661/pg1661.cover.medium.jpg",
+        description = "To Sherlock Holmes she is always the woman. I have seldom heard him mention her under any other name. In his eyes she eclipses and predominates the whole of her sex. It was not that he felt any emotion akin to love for Irene Adler.",
+        language = "en",
+        subjects = "Mystery, Detective, Crime",
+        isFavorite = true,
+        isSaved = true,
+        isFinished = false,
+        addedTimestamp = System.currentTimeMillis() - 86400000L * 1
+    )
+
+    private val callOfTheWild = BookEntity(
+        id = "gutenberg_215",
+        title = "The Call of the Wild",
+        author = "Jack London",
+        coverUrl = "https://www.gutenberg.org/cache/epub/215/pg215.cover.medium.jpg",
+        description = "Buck did not read the newspapers, or he would have known that trouble was brewing, not alone for himself, but for every tide-water dog, strong of muscle and with warm, long hair, from Puget Sound to San Diego.",
+        language = "en",
+        subjects = "Adventure, Animals, Wilderness",
+        isFavorite = false,
+        isSaved = false,
+        isFinished = false,
+        addedTimestamp = System.currentTimeMillis()
+    )
+
+    val preloaded: List<PreloadedBook> = listOf(
+        PreloadedBook(prideAndPrejudice, listOf(
+            ChapterEntity(bookId = "gutenberg_1342", title = "Chapter 1", chapterIndex = 0, content = """
 Chapter 1
 
 It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.
@@ -81,73 +138,41 @@ This was invitation enough.
 "Depend upon it, my dear, when there are twenty, I will visit them all."
 
 Mr. Bennet was so odd a mixture of quick parts, sarcastic humour, reserve, and caprice, that the experience of three-and-twenty years had been insufficient to make his wife understand his character. Her mind was less difficult to develop. She was a woman of mean understanding, little information, and uncertain temper. When she was discontented, she fancied herself nervous. The business of her life was to get her daughters married; its solace was visiting and news.
-            """.trimIndent(),
-            language = "en",
-            subjects = "Fiction, Romance, Classic Literature",
-            isFavorite = true,
-            isSaved = true,
-            isFinished = false,
-            addedTimestamp = System.currentTimeMillis() - 86400000L * 3
-        ),
-        BookEntity(
-            id = "gutenberg_11",
-            title = "Alice's Adventures in Wonderland",
-            author = "Lewis Carroll",
-            coverUrl = "https://www.gutenberg.org/cache/epub/11/pg11.cover.medium.jpg",
-            description = "Alice was beginning to get very tired of sitting by her sister on the bank, and of having nothing to do: once or twice she had peeped into the book her sister was reading, but it had no pictures or conversations in it, 'and what is the use of a book,' thought Alice 'without pictures or conversations?'",
-            fullText = """
+            """.trimIndent()),
+            ChapterEntity(bookId = "gutenberg_1342", title = "Chapter 2", chapterIndex = 1, content = """
+Mr. Bennet was among the earliest of those who waited on Mr. Bingley. He had always intended to visit him, and to the last persisted in his intention of going, though every day added to the visitor's perplexity, till at last it was a settled thing that he should not visit at all.
+
+Mrs. Bennet was so much displaced by this information that she did not know which way to turn. She was continually finding fresh causes for complaint, and though she did not always complain, she never failed to be out of humour with her husband for not visiting Mr. Bingley.
+
+Names of the Bennet family: Mr. Bennet, Mrs. Bennet, and their five daughters—Jane, Elizabeth (Lizzy), Mary, Catherine (Kitty), and Lydia.
+            """.trimIndent())
+        )),
+        PreloadedBook(alicesAdventures, listOf(
+            ChapterEntity(bookId = "gutenberg_11", title = "Down the Rabbit-Hole", chapterIndex = 0, content = """
 CHAPTER I. Down the Rabbit-Hole
 
 Alice was beginning to get very tired of sitting by her sister on the bank, and of having nothing to do: once or twice she had peeped into the book her sister was reading, but it had no pictures or conversations in it, 'and what is the use of a book,' thought Alice 'without pictures or conversations?'
 
 So she was considering in her own mind (as well as she could, for the hot day made her feel very sleepy and stupid), whether the pleasure of making a daisy-chain would be worth the trouble of getting up and picking the daisies, when suddenly a White Rabbit with pink eyes ran close by her.
 
-There was nothing so VERY remarkable in that; nor did Alice think it so VERY much out of the way to hear the Rabbit say to itself, 'Oh dear! Oh dear! I shall be late!' (when she thought it over afterwards, it occurred to her that she ought to have wondered at this, but at the time it all seemed quite natural); but when the Rabbit actually TOOK A WATCH OUT OF ITS WASTECOAT-POCKET, and looked at it, and then hurried on, Alice started to her feet, for it flashed across her mind that she had never before seen a rabbit with either a waistcoat-pocket, or a watch to take out of it, and burning with curiosity, she ran across the field after it, and fortunately was just in time to see it pop down a large rabbit-hole under the hedge.
+There was nothing so VERY remarkable in that; nor did Alice think it so VERY much out of the way to hear the Rabbit say to itself, 'Oh dear! Oh dear! I shall be late!' (when she thought it over afterwards, it occurred to her that she ought to have wondered at this, but at the time it all seemed quite natural); but when the Rabbit actually TOOK A WATCH OUT OF ITS WAISTCOAT-POCKET, and looked at it, and then hurried on, Alice started to her feet, for it flashed across her mind that she had never before seen a rabbit with either a waistcoat-pocket, or a watch to take out of it, and burning with curiosity, she ran across the field after it, and fortunately was just in time to see it pop down a large rabbit-hole under the hedge.
 
 In another moment down went Alice after it, never once considering how in the world she was to get out again.
 
 The rabbit-hole went straight on like a tunnel for some way, and then dipped suddenly down, so suddenly that Alice had not a moment to think about stopping herself before she found herself falling down a very deep well.
-
-Either the well was very deep, or she fell very slowly, for she had plenty of time as she went down to look about her and to wonder what was going to happen next. First, she tried to look down and make out what she was coming to, but it was too dark to see anything; then she looked at the sides of the well, and noticed that they were filled with cupboards and book-shelves; here and there she saw maps and pictures hung upon pegs. She took down a jar from one of the shelves as she passed; it was labelled 'ORANGE MARMALADE', but to her great disappointment it was empty: she did not like to drop the jar for fear of killing somebody, so managed to put it into one of the cupboards as she fell past it.
-
-'Well!' thought Alice to herself, 'after such a fall as this, I shall think nothing of tumbling down stairs! How brave they'll all think me at home! Why, I wouldn't say anything about it, even if I fell off the top of the house!' (Which was very likely true.)
-            """.trimIndent(),
-            language = "en",
-            subjects = "Fantasy, Children's Literature",
-            isFavorite = false,
-            isSaved = true,
-            isFinished = false,
-            addedTimestamp = System.currentTimeMillis() - 86400000L * 2
-        ),
-        BookEntity(
-            id = "gutenberg_1661",
-            title = "The Adventures of Sherlock Holmes",
-            author = "Arthur Conan Doyle",
-            coverUrl = "https://www.gutenberg.org/cache/epub/1661/pg1661.cover.medium.jpg",
-            description = "To Sherlock Holmes she is always the woman. I have seldom heard him mention her under any other name. In his eyes she eclipses and predominates the whole of her sex. It was not that he felt any emotion akin to love for Irene Adler.",
-            fullText = """
+            """.trimIndent())
+        )),
+        PreloadedBook(sherlockHolmes, listOf(
+            ChapterEntity(bookId = "gutenberg_1661", title = "A Scandal in Bohemia", chapterIndex = 0, content = """
 ADVENTURE I. A SCANDAL IN BOHEMIA
 
-I.
-
-To Sherlock Holmes she is always the woman. I have seldom heard him mention her under any other name. In his eyes she eclipses and predominates the whole of her sex. It was not that he felt any emotion akin to love for Irene Adler. All emotions, and that one particularly, were abhorrent to his cold, precise but admirably balanced mind. He was, I take it, the most perfect reasoning and observing machine that the world has seen, but as a lover he would have placed himself in a false position. He never spoke of the softer passions, save with a gibe and a sneer. They were admirable things for the observer—excellent for drawing the veil from men’s motives and actions. But for the trained reasoner to admit such intrusions into his own delicate and finely adjusted temperament was to introduce a distracting factor which might throw a doubt upon all his mental results. Grit in a sensitive instrument, or a crack in one of his own high-power lenses, would not be more disturbing than a strong emotion in a nature such as his. And yet there was but one woman to him, and that woman was the late Irene Adler, of dubious and questionable memory.
+To Sherlock Holmes she is always the woman. I have seldom heard him mention her under any other name. In his eyes she eclipses and predominates the whole of her sex. It was not that he felt any emotion akin to love for Irene Adler. All emotions, and that one particularly, were abhorrent to his cold, precise but admirably balanced mind. He was, I take it, the most perfect reasoning and observing machine that the world has seen, but as a lover he would have placed himself in a false position. He never spoke of the softer passions, save with a gibe and a sneer. They were admirable things for the observer—excellent for drawing the veil from men's motives and actions. But for the trained reasoner to admit such intrusions into his own delicate and finely adjusted temperament was to introduce a distracting factor which might throw a doubt upon all his mental results. Grit in a sensitive instrument, or a crack in one of his own high-power lenses, would not be more disturbing than a strong emotion in a nature such as his. And yet there was but one woman to him, and that woman was the late Irene Adler, of dubious and questionable memory.
 
 I had seen little of Holmes lately. My marriage had drifted us away from each other. My own complete happiness, and the home-centred interests which rise up around the man who first finds himself master of his own establishment, were sufficient to absorb all my attention, while Holmes, who loathed every form of society with his whole Bohemian soul, remained in our lodgings in Baker Street, buried among his old books, and alternating from week to week between cocaine and ambition, the drowsiness of the drug, and the fierce energy of his own keen nature. He was still deeply attracted by the study of crime, and occupied his immense faculties and extraordinary powers of observation in following out those clues, and clearing up those mysteries which had been abandoned as hopeless by the official police.
-            """.trimIndent(),
-            language = "en",
-            subjects = "Mystery, Detective, Crime",
-            isFavorite = true,
-            isSaved = true,
-            isFinished = false,
-            addedTimestamp = System.currentTimeMillis() - 86400000L * 1
-        ),
-        BookEntity(
-            id = "gutenberg_215",
-            title = "The Call of the Wild",
-            author = "Jack London",
-            coverUrl = "https://www.gutenberg.org/cache/epub/215/pg215.cover.medium.jpg",
-            description = "Buck did not read the newspapers, or he would have known that trouble was brewing, not alone for himself, but for every tide-water dog, strong of muscle and with warm, long hair, from Puget Sound to San Diego.",
-            fullText = """
+            """.trimIndent())
+        )),
+        PreloadedBook(callOfTheWild, listOf(
+            ChapterEntity(bookId = "gutenberg_215", title = "Into the Primitive", chapterIndex = 0, content = """
 Chapter I. Into the Primitive
 
 "Old longings nomadic leap,
@@ -158,13 +183,14 @@ Wakens the ferine strain."
 Buck did not read the newspapers, or he would have known that trouble was brewing, not alone for himself, but for every tide-water dog, strong of muscle and with warm, long hair, from Puget Sound to San Diego. Because men, groping in the Arctic darkness, had found a yellow metal, and because steamship and transportation companies were advertising the find, thousand of men were rushing into the Northland. These men wanted dogs, and the dogs they wanted were heavy dogs, with strong muscles by which to toil, and furry coats to protect them from the frost.
 
 Buck lived at a big house in the sun-kissed Santa Clara Valley. Judge Miller's place, it was called. It stood back from the road, half hidden among the trees, through which glimpses could be caught of the wide cool veranda that ran around its four sides.
-            """.trimIndent(),
-            language = "en",
-            subjects = "Adventure, Animals, Wilderness",
-            isFavorite = false,
-            isSaved = false,
-            isFinished = false,
-            addedTimestamp = System.currentTimeMillis()
-        )
+            """.trimIndent())
+        ))
     )
+
+    /** Books without chapters, for the legacy insertBooks call. */
+    val defaultBooks: List<BookEntity> = preloaded.map { it.book }
+
+    /** All preloaded chapters keyed by bookId. */
+    fun chaptersFor(bookId: String): List<ChapterEntity> =
+        preloaded.firstOrNull { it.book.id == bookId }?.chapters ?: emptyList()
 }

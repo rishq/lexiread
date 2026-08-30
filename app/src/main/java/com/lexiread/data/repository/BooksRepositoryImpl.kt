@@ -47,6 +47,8 @@ class BooksRepositoryImpl(
     private val gutendexApi: GutendexApi,
     private val openLibraryApi: OpenLibraryApi,
     private val googleBooksApi: GoogleBooksApi,
+    private val internetArchiveApi: com.lexiread.data.remote.api.InternetArchiveApi,
+    private val standardEbooksApi: com.lexiread.data.remote.api.StandardEbooksApi,
     private val catalogCacheDao: CatalogCacheDao,
     private val bookRepository: BookRepository,
     private val sources: List<BookSource>,
@@ -66,6 +68,8 @@ class BooksRepositoryImpl(
                 if (SourceKind.GUTENDEX in active) add { fetchGutendex(normalized, page) }
                 if (SourceKind.OPEN_LIBRARY in active) add { fetchOpenLibrary(normalized, page) }
                 if (SourceKind.GOOGLE_BOOKS in active) add { fetchGoogleBooks(normalized, page) }
+                if (SourceKind.INTERNET_ARCHIVE in active) add { fetchInternetArchive(normalized, page) }
+                if (SourceKind.STANDARD_EBOOKS in active) add { fetchStandardEbooks(normalized) }
             })
         }
     }
@@ -76,6 +80,8 @@ class BooksRepositoryImpl(
                 if (SourceKind.GUTENDEX in active) add { fetchGutendexPopular(page) }
                 if (SourceKind.OPEN_LIBRARY in active) add { fetchOpenLibrary(POPULAR_OPEN_LIBRARY_QUERY, page) }
                 if (SourceKind.GOOGLE_BOOKS in active) add { fetchGoogleBooks(POPULAR_GOOGLE_BOOKS_QUERY, page) }
+                if (SourceKind.INTERNET_ARCHIVE in active) add { fetchInternetArchive(POPULAR_IA_QUERY, page) }
+                if (SourceKind.STANDARD_EBOOKS in active) add { fetchStandardEbooks(POPULAR_SE_QUERY) }
             })
         }
 
@@ -88,6 +94,8 @@ class BooksRepositoryImpl(
             if (SourceKind.GUTENDEX in active) add { fetchGutendex(category.query, page) }
             if (SourceKind.OPEN_LIBRARY in active) add { fetchOpenLibrary("subject:${category.query}", page) }
             if (SourceKind.GOOGLE_BOOKS in active) add { fetchGoogleBooks("subject:${category.query}", page) }
+            if (SourceKind.INTERNET_ARCHIVE in active) add { fetchInternetArchive(category.query, page) }
+            if (SourceKind.STANDARD_EBOOKS in active) add { fetchStandardEbooks(category.query) }
         })
     }
 
@@ -104,6 +112,30 @@ class BooksRepositoryImpl(
                     googleBooksApi.getVolume(volumeId, googleBooksApiKey).toCatalogBook()
                 }.getOrNull()
             }
+            id.startsWith(INTERNET_ARCHIVE_PREFIX) -> {
+                val identifier = id.removePrefix(INTERNET_ARCHIVE_PREFIX)
+                runSuspendCatching {
+                    val item = internetArchiveApi.getMetadata(identifier)
+                    val meta = item.metadata
+                    val creator = (item.metadata?.let { it } ?: null)
+                    CatalogBook(
+                        id = id,
+                        title = identifier, // Will be enriched from search results
+                        authors = emptyList(),
+                        source = SourceKind.INTERNET_ARCHIVE,
+                        formats = listOf(
+                            com.lexiread.domain.model.BookFormat(
+                                com.lexiread.domain.model.FormatKind.EPUB,
+                                "application/epub+zip",
+                                "https://archive.org/download/$identifier"
+                            )
+                        ),
+                        isPublicDomain = meta?.accessRestricted?.equals("true", ignoreCase = true) != true,
+                        identifiers = com.lexiread.domain.model.BookIdentifiers()
+                    )
+                }.getOrNull()
+            }
+            id.startsWith(STANDARD_EBOOKS_PREFIX) -> null // SE details resolved from search results
             else -> null
         }
     }
@@ -206,6 +238,76 @@ class BooksRepositoryImpl(
             hasMore = books.isNotEmpty() && startIndex + books.size < total
         )
     }
+
+    private suspend fun fetchInternetArchive(query: String, page: Int): CatalogPage {
+        val escaped = query.replace("\\", "\\\\").replace("\"", "\\\"")
+        val searchQuery = "mediatype:texts AND format:EPUB AND (title:\"$escaped\" OR creator:\"$escaped\")"
+        val response = internetArchiveApi.searchBooks(query = searchQuery, rows = IA_PAGE_SIZE, page = page)
+        val books = response.response?.docs.orEmpty().mapNotNull { doc ->
+            val identifier = doc.identifier?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val title = doc.title?.trim()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val author = when (val c = doc.creator) {
+                is String -> c.trim().takeIf { it.isNotBlank() }
+                is List<*> -> c.mapNotNull { it as? String }.joinToString(", ").trim()
+                    .takeIf { it.isNotBlank() }
+                else -> null
+            } ?: "Unknown Author"
+            CatalogBook(
+                id = INTERNET_ARCHIVE_PREFIX + identifier,
+                title = title,
+                authors = listOf(com.lexiread.domain.model.Author(author)),
+                coverUrl = "https://archive.org/services/img/$identifier",
+                description = "Internet Archive edition",
+                source = SourceKind.INTERNET_ARCHIVE,
+                formats = listOf(
+                    com.lexiread.domain.model.BookFormat(
+                        com.lexiread.domain.model.FormatKind.EPUB,
+                        "application/epub+zip",
+                        "https://archive.org/download/$identifier"
+                    )
+                ),
+                isPublicDomain = true,
+                identifiers = com.lexiread.domain.model.BookIdentifiers()
+            )
+        }
+        val total = response.response?.numFound ?: books.size
+        return CatalogPage(
+            books = books,
+            page = page,
+            totalResults = total,
+            hasMore = books.isNotEmpty() && page * IA_PAGE_SIZE < total
+        )
+    }
+
+    private suspend fun fetchStandardEbooks(query: String): CatalogPage =
+        withContext(dispatcher) {
+            val url = "https://standardebooks.org/opds/search?query=" +
+                java.net.URLEncoder.encode(query, "UTF-8")
+            val body = standardEbooksApi.searchOpds(url)
+            val entries = com.lexiread.data.source.StandardEbooksBookSource.parseOpdsEntries(
+                body.byteStream()
+            )
+            val books = entries.map { e ->
+                CatalogBook(
+                    id = STANDARD_EBOOKS_PREFIX + e.id,
+                    title = e.title,
+                    authors = e.author?.let { listOf(com.lexiread.domain.model.Author(it)) } ?: emptyList(),
+                    coverUrl = e.coverUrl,
+                    description = e.summary ?: "A Standard Ebooks edition.",
+                    source = SourceKind.STANDARD_EBOOKS,
+                    formats = listOf(
+                        com.lexiread.domain.model.BookFormat(
+                            com.lexiread.domain.model.FormatKind.EPUB,
+                            "application/epub+zip",
+                            e.epubUrl ?: "https://standardebooks.org/ebooks/${e.id.replace("~", "/")}"
+                        )
+                    ),
+                    isPublicDomain = true,
+                    identifiers = com.lexiread.domain.model.BookIdentifiers()
+                )
+            }
+            CatalogPage(books = books, page = 1, totalResults = books.size, hasMore = false)
+        }
 
     /**
      * Runs every source concurrently. One catalogue failing degrades the result
@@ -326,9 +428,14 @@ class BooksRepositoryImpl(
         const val GUTENDEX_PREFIX = "gutenberg_"
         const val OPEN_LIBRARY_PREFIX = "ol_"
         const val GOOGLE_BOOKS_PREFIX = "gb_"
+        const val INTERNET_ARCHIVE_PREFIX = "ia_"
+        const val STANDARD_EBOOKS_PREFIX = "se_"
         const val POPULAR_CACHE_KEY = "popular"
         const val POPULAR_OPEN_LIBRARY_QUERY = "subject:fiction"
         const val POPULAR_GOOGLE_BOOKS_QUERY = "subject:fiction"
+        const val POPULAR_IA_QUERY = "fiction"
+        const val POPULAR_SE_QUERY = "fiction"
+        const val IA_PAGE_SIZE = 20
 
         /**
          * Plain, provider-neutral terms. Each fetch wraps them into the query

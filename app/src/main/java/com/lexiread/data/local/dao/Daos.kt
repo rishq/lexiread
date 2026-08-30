@@ -8,6 +8,7 @@ import com.lexiread.data.local.entity.AiExplanationEntity
 import com.lexiread.data.local.entity.BookEntity
 import com.lexiread.data.local.entity.BookMeta
 import com.lexiread.data.local.entity.BookmarkEntity
+import com.lexiread.data.local.entity.ChapterEntity
 import com.lexiread.data.local.entity.DictionaryCacheEntity
 import com.lexiread.data.local.entity.ReadingProgressEntity
 import com.lexiread.data.local.entity.SavedWordEntity
@@ -25,8 +26,14 @@ interface BookDao {
     )
     fun getAllBooks(): Flow<List<BookMeta>>
 
-    @Query("SELECT * FROM books WHERE id = :id")
-    suspend fun getBookById(id: String): BookEntity?
+    @Query(
+        """
+        SELECT id, title, author, coverUrl, description, filePath, format, language,
+               subjects, isFavorite, isSaved, isFinished, isImported, addedTimestamp
+        FROM books WHERE id = :id
+        """
+    )
+    suspend fun getBookMetaById(id: String): BookMeta?
 
     @Query(
         """
@@ -72,6 +79,27 @@ interface BookDao {
 }
 
 @Dao
+interface ChapterDao {
+    @Query("SELECT * FROM book_chapters WHERE bookId = :bookId ORDER BY chapterIndex ASC")
+    suspend fun getChaptersForBook(bookId: String): List<ChapterEntity>
+
+    @Query("SELECT * FROM book_chapters WHERE bookId = :bookId ORDER BY chapterIndex ASC LIMIT :limit OFFSET :offset")
+    suspend fun getChaptersRange(bookId: String, limit: Int, offset: Int): List<ChapterEntity>
+
+    @Query("SELECT COUNT(*) FROM book_chapters WHERE bookId = :bookId")
+    suspend fun getChapterCount(bookId: String): Int
+
+    @Query("SELECT * FROM book_chapters WHERE bookId = :bookId AND chapterIndex = :chapterIndex LIMIT 1")
+    suspend fun getChapter(bookId: String, chapterIndex: Int): ChapterEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertChapters(chapters: List<ChapterEntity>)
+
+    @Query("DELETE FROM book_chapters WHERE bookId = :bookId")
+    suspend fun deleteChaptersForBook(bookId: String)
+}
+
+@Dao
 interface ReadingProgressDao {
     @Query("SELECT * FROM reading_progress WHERE bookId = :bookId")
     fun getProgressByBookId(bookId: String): Flow<ReadingProgressEntity?>
@@ -103,14 +131,42 @@ interface SavedWordDao {
     @Query("SELECT * FROM saved_words WHERE learningStatus = :status ORDER BY dateAdded DESC")
     fun getWordsByStatus(status: String): Flow<List<SavedWordEntity>>
 
+    @Query("""
+        SELECT * FROM saved_words
+        WHERE nextReviewEpoch = 0 OR nextReviewEpoch <= :now
+        ORDER BY nextReviewEpoch ASC, dateAdded DESC
+    """)
+    fun getDueWords(now: Long): Flow<List<SavedWordEntity>>
+
+    @Query("""
+        SELECT COUNT(*) FROM saved_words
+        WHERE nextReviewEpoch = 0 OR nextReviewEpoch <= :now
+    """)
+    fun getDueWordCount(now: Long): Flow<Int>
+
     @Query("SELECT * FROM saved_words WHERE word = :word LIMIT 1")
     suspend fun getWordByText(word: String): SavedWordEntity?
+
+    @Query("SELECT * FROM saved_words WHERE id = :id LIMIT 1")
+    suspend fun getWordById(id: Int): SavedWordEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertWord(word: SavedWordEntity)
 
     @Query("UPDATE saved_words SET learningStatus = :status WHERE id = :id")
     suspend fun updateStatus(id: Int, status: String)
+
+    @Query("""
+        UPDATE saved_words
+        SET srsReps = :reps, srsEase = :ease, srsIntervalDays = :intervalDays,
+            lastReviewEpoch = :lastReview, nextReviewEpoch = :nextReview,
+            learningStatus = :status
+        WHERE id = :id
+    """)
+    suspend fun updateSrs(
+        id: Int, reps: Int, ease: Double, intervalDays: Int,
+        lastReview: Long, nextReview: Long, status: String
+    )
 
     @Query("DELETE FROM saved_words WHERE id = :id")
     suspend fun deleteWord(id: Int)
