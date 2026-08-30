@@ -34,6 +34,7 @@ data class CatalogUiState(
     val isLoading: Boolean = false,
     val isLoadingMore: Boolean = false,
     val errorMessage: String? = null,
+    val partialFailureMessage: String? = null,
     val sources: Set<SourceKind> = DEFAULT_SOURCES,
     val activeCategory: Category? = null,
     val openingBookId: String? = null
@@ -156,7 +157,8 @@ class CatalogViewModel(
             it.copy(
                 isLoading = !append,
                 isLoadingMore = append,
-                errorMessage = null
+                errorMessage = null,
+                partialFailureMessage = null
             )
         }
 
@@ -182,7 +184,10 @@ class CatalogViewModel(
                 page = result.page,
                 hasMore = result.hasMore,
                 isLoading = false,
-                isLoadingMore = false
+                isLoadingMore = false,
+                partialFailureMessage = if (result.failedSources.isNotEmpty()) {
+                    "Some sources failed: ${result.failedSources.joinToString(", ")}"
+                } else null
             )
         }
     }

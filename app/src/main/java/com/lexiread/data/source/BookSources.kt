@@ -295,7 +295,7 @@ class StandardEbooksBookSource(
     private val booksDir = File(context.applicationContext.filesDir, "imported_books").apply { mkdirs() }
 
     override suspend fun search(query: String): List<Book> {
-        val body = seApi.searchOpds("$SEARCH_URL${java.net.URLEncoder.encode(query, "UTF-8")}")
+        val body = seApi.searchOpds("${SEARCH_URL}${java.net.URLEncoder.encode(query, "UTF-8")}&page=1&per-page=20")
         val entries = body.use { parseOpdsEntries(it.byteStream()) }
         return entries.map { e ->
             Book(
@@ -317,7 +317,7 @@ class StandardEbooksBookSource(
         val shortId = book.id.removePrefix("${idPrefix}_")
         // Standard Ebooks OPDS also offers a per-book page; simplest robust path:
         // search by title again and match the id.
-        val body = seApi.searchOpds("$SEARCH_URL${java.net.URLEncoder.encode(book.title, "UTF-8")}")
+        val body = seApi.searchOpds("$SEARCH_URL${java.net.URLEncoder.encode(book.title, "UTF-8")}&page=1&per-page=20")
         val entry = body.use { parseOpdsEntries(it.byteStream()) }
             .firstOrNull { it.id == shortId || it.id.substringAfterLast("~") == shortId }
             ?: throw IllegalStateException("Standard Ebooks entry not found for ${book.title}")
@@ -340,7 +340,7 @@ class StandardEbooksBookSource(
 
     companion object {
         private const val TAG = "StandardEbooksSource"
-        private const val SEARCH_URL = "https://standardebooks.org/opds/search?query="
+        private const val SEARCH_URL = "https://standardebooks.org/feeds/atom/all?query="
         private const val HOST = "standardebooks.org"
         private const val MAX_EPUB_BYTES = 40 * 1024 * 1024L
 
@@ -379,7 +379,7 @@ class StandardEbooksBookSource(
             while (event != XmlPullParser.END_DOCUMENT) {
                 when (event) {
                     XmlPullParser.START_TAG -> {
-                        when (parser.name.lowercase()) {
+                        when (parser.name?.lowercase()) {
                             "entry" -> {
                                 flush()
                                 inEntry = true
@@ -391,6 +391,12 @@ class StandardEbooksBookSource(
                             "title" -> if (inEntry) { tag = "title"; currentTitle = "" }
                             "name" -> if (inEntry && !authorDone) tag = "name"
                             "summary" -> if (inEntry) { tag = "summary"; currentSummary = "" }
+                            "thumbnail" -> if (inEntry) {
+                                val url = parser.getAttributeValue(null, "url")
+                                if (url != null && currentCover == null) {
+                                    currentCover = absolutize(url)
+                                }
+                            }
                             "link" -> if (inEntry) {
                                 val rel = parser.getAttributeValue(null, "rel") ?: ""
                                 val href = parser.getAttributeValue(null, "href")
@@ -426,7 +432,7 @@ class StandardEbooksBookSource(
                         }
                     }
                     XmlPullParser.END_TAG -> {
-                        when (parser.name.lowercase()) {
+                        when (parser.name?.lowercase()) {
                             "entry" -> {
                                 flush()
                                 inEntry = false

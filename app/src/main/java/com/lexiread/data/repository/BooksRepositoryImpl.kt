@@ -69,7 +69,7 @@ class BooksRepositoryImpl(
                 if (SourceKind.OPEN_LIBRARY in active) add { fetchOpenLibrary(normalized, page) }
                 if (SourceKind.GOOGLE_BOOKS in active) add { fetchGoogleBooks(normalized, page) }
                 if (SourceKind.INTERNET_ARCHIVE in active) add { fetchInternetArchive(normalized, page) }
-                if (SourceKind.STANDARD_EBOOKS in active) add { fetchStandardEbooks(normalized) }
+                if (SourceKind.STANDARD_EBOOKS in active) add { fetchStandardEbooks(normalized, page) }
             })
         }
     }
@@ -81,7 +81,7 @@ class BooksRepositoryImpl(
                 if (SourceKind.OPEN_LIBRARY in active) add { fetchOpenLibrary(POPULAR_OPEN_LIBRARY_QUERY, page) }
                 if (SourceKind.GOOGLE_BOOKS in active) add { fetchGoogleBooks(POPULAR_GOOGLE_BOOKS_QUERY, page) }
                 if (SourceKind.INTERNET_ARCHIVE in active) add { fetchInternetArchive(POPULAR_IA_QUERY, page) }
-                if (SourceKind.STANDARD_EBOOKS in active) add { fetchStandardEbooks(POPULAR_SE_QUERY) }
+                if (SourceKind.STANDARD_EBOOKS in active) add { fetchStandardEbooks(POPULAR_SE_QUERY, page) }
             })
         }
 
@@ -95,9 +95,9 @@ class BooksRepositoryImpl(
             if (SourceKind.OPEN_LIBRARY in active) add { fetchOpenLibrary("subject:${category.query}", page) }
             if (SourceKind.GOOGLE_BOOKS in active) add { fetchGoogleBooks("subject:${category.query}", page) }
             if (SourceKind.INTERNET_ARCHIVE in active) add { fetchInternetArchive(category.query, page) }
-            if (SourceKind.STANDARD_EBOOKS in active) add { fetchStandardEbooks(category.query) }
-        })
-    }
+            if (SourceKind.STANDARD_EBOOKS in active) add { fetchStandardEbooks(category.query, page) }
+            })
+        }
 
     override suspend fun getBookDetails(id: String): CatalogBook? = withContext(dispatcher) {
         when {
@@ -279,10 +279,11 @@ class BooksRepositoryImpl(
         )
     }
 
-    private suspend fun fetchStandardEbooks(query: String): CatalogPage =
+    private suspend fun fetchStandardEbooks(query: String, page: Int = 1): CatalogPage =
         withContext(dispatcher) {
-            val url = "https://standardebooks.org/opds/search?query=" +
-                java.net.URLEncoder.encode(query, "UTF-8")
+            val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+            val url = "https://standardebooks.org/feeds/atom/all?query=$encoded" +
+                "&page=$page&per-page=$SE_PAGE_SIZE"
             val body = standardEbooksApi.searchOpds(url)
             val entries = com.lexiread.data.source.StandardEbooksBookSource.parseOpdsEntries(
                 body.byteStream()
@@ -306,7 +307,12 @@ class BooksRepositoryImpl(
                     identifiers = com.lexiread.domain.model.BookIdentifiers()
                 )
             }
-            CatalogPage(books = books, page = 1, totalResults = books.size, hasMore = false)
+            CatalogPage(
+                books = books,
+                page = page,
+                totalResults = books.size,
+                hasMore = books.size >= SE_PAGE_SIZE
+            )
         }
 
     /**
@@ -331,12 +337,13 @@ class BooksRepositoryImpl(
         }
 
         val pages = results.mapNotNull { it.getOrNull() }
-        results.mapNotNull { it.exceptionOrNull() }.forEach { error ->
+        val failures = results.mapNotNull { it.exceptionOrNull() }
+        failures.forEach { error ->
             Log.w(TAG, "A book catalogue failed", error)
         }
 
         if (pages.isEmpty()) {
-            throw results.firstNotNullOfOrNull { it.exceptionOrNull() }
+            throw failures.firstOrNull()
                 ?: IOException("No book catalogue responded.")
         }
 
@@ -350,7 +357,8 @@ class BooksRepositoryImpl(
                 ),
             page = page,
             totalResults = pages.mapNotNull { it.totalResults }.maxOrNull(),
-            hasMore = pages.any { it.hasMore }
+            hasMore = pages.any { it.hasMore },
+            failedSources = failures.map { it.message ?: it::class.java.simpleName }
         )
     }
 
@@ -436,6 +444,7 @@ class BooksRepositoryImpl(
         const val POPULAR_IA_QUERY = "fiction"
         const val POPULAR_SE_QUERY = "fiction"
         const val IA_PAGE_SIZE = 20
+        const val SE_PAGE_SIZE = 20
 
         /**
          * Plain, provider-neutral terms. Each fetch wraps them into the query

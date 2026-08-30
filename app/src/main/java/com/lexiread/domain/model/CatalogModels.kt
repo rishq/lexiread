@@ -89,7 +89,9 @@ data class CatalogPage(
     val books: List<CatalogBook>,
     val page: Int,
     val totalResults: Int?,
-    val hasMore: Boolean
+    val hasMore: Boolean,
+    /** Names of sources that failed and were excluded from this page. */
+    val failedSources: List<String> = emptyList()
 ) {
     companion object {
         fun empty(page: Int = 1): CatalogPage = CatalogPage(

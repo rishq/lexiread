@@ -165,7 +165,7 @@ object RetrofitClient {
     val standardEbooksApi: StandardEbooksApi by lazy {
         Retrofit.Builder()
             .baseUrl("https://standardebooks.org/")
-            .client(downloadOkHttpClient)
+            .client(catalogOkHttpClient)
             .build()
             .create(StandardEbooksApi::class.java)
     }
@@ -173,7 +173,7 @@ object RetrofitClient {
     val internetArchiveApi: InternetArchiveApi by lazy {
         Retrofit.Builder()
             .baseUrl("https://archive.org/")
-            .client(downloadOkHttpClient)
+            .client(catalogOkHttpClient)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
             .create(InternetArchiveApi::class.java)

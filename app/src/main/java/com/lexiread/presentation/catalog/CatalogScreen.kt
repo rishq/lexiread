@@ -162,16 +162,34 @@ fun CatalogScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                else -> CatalogList(
-                    books = state.books,
-                    listState = listState,
-                    openingBookId = state.openingBookId,
-                    isLoadingMore = state.isLoadingMore,
-                    hasMore = state.hasMore,
-                    onCardClick = { viewModel.openDetails(it) },
-                    onReadClick = { viewModel.openBook(it) },
-                    onAddLibrary = { viewModel.addToLibrary(it) }
-                )
+                else -> {
+                    if (state.partialFailureMessage != null) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 4.dp),
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = state.partialFailureMessage.orEmpty(),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                    CatalogList(
+                        books = state.books,
+                        listState = listState,
+                        openingBookId = state.openingBookId,
+                        isLoadingMore = state.isLoadingMore,
+                        hasMore = state.hasMore,
+                        onCardClick = { viewModel.openDetails(it) },
+                        onReadClick = { viewModel.openBook(it) },
+                        onAddLibrary = { viewModel.addToLibrary(it) }
+                    )
+                }
             }
         }
 
