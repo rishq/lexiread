@@ -34,6 +34,17 @@ interface StandardEbooksApi {
 }
 
 /**
+ * Project Gutenberg Australia publishes a single plain-text index
+ * (`gutindex_aus.txt`) plus per-book `.txt` / `.html` files. There is no
+ * structured API, so one generic `@Url` fetcher covers the index and the
+ * individual book files alike.
+ */
+interface PgaApi {
+    @GET
+    suspend fun fetch(@Url url: String): ResponseBody
+}
+
+/**
  * Public Internet Archive endpoints. The source searches for records that
  * advertise EPUB and checks metadata before it downloads a concrete file.
  */

@@ -13,6 +13,7 @@ object UrlValidator {
     val TRUSTED_DOWNLOAD_HOSTS: Set<String> = setOf(
         "gutenberg.org",
         "gutendex.com",
+        "gutenberg.net.au",
         "archive.org",
         "standardebooks.org"
     )

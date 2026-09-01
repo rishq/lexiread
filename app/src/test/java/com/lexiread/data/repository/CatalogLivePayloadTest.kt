@@ -4,6 +4,7 @@ import com.lexiread.data.local.CatalogCacheSerializer
 import com.lexiread.data.local.dao.CatalogCacheDao
 import com.lexiread.data.local.entity.CatalogCacheEntity
 import com.lexiread.data.remote.api.InternetArchiveApi
+import com.lexiread.data.remote.api.PgaApi
 import com.lexiread.data.remote.api.StandardEbooksApi
 import com.lexiread.data.remote.dto.InternetArchiveMetadataResponse
 import com.lexiread.data.remote.dto.InternetArchiveSearchResponse
@@ -97,6 +98,10 @@ class CatalogLivePayloadTest {
         override suspend fun downloadFile(url: String): ResponseBody = throw UnsupportedOperationException()
     }
 
+    private class NoopPgaApi : PgaApi {
+        override suspend fun fetch(url: String): ResponseBody = throw UnsupportedOperationException()
+    }
+
     /** Mirrors RetrofitClient: generated adapters first, reflection as backstop. */
     private fun moshi() = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
 
@@ -136,6 +141,7 @@ class CatalogLivePayloadTest {
                 googleBooksApi = service(server, GoogleBooksApi::class.java),
                 internetArchiveApi = NoopInternetArchiveApi(),
                 standardEbooksApi = NoopStandardEbooksApi(),
+                pgaApi = NoopPgaApi(),
                 catalogCacheDao = StaticCacheDao(),
                 bookRepository = NoopBookRepository(),
                 sources = listOf(NoopSource("gutenberg")),

@@ -82,5 +82,6 @@ internal const val FIRST_PAGE = 1
 val DEFAULT_SOURCES: Set<SourceKind> = setOf(
     SourceKind.GUTENDEX,
     SourceKind.INTERNET_ARCHIVE,
-    SourceKind.STANDARD_EBOOKS
+    SourceKind.STANDARD_EBOOKS,
+    SourceKind.GUTENDEX_AUSTRALIA
 )

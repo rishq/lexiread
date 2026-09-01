@@ -12,7 +12,8 @@ enum class SourceKind {
     OPEN_LIBRARY,
     GOOGLE_BOOKS,
     INTERNET_ARCHIVE,
-    STANDARD_EBOOKS
+    STANDARD_EBOOKS,
+    GUTENDEX_AUSTRALIA
 }
 
 /** Physical container of a readable file. */

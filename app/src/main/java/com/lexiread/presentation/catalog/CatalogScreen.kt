@@ -492,6 +492,7 @@ private fun sourceLabel(kind: SourceKind): String = when (kind) {
     SourceKind.GOOGLE_BOOKS -> "Google Books"
     SourceKind.INTERNET_ARCHIVE -> "Archive"
     SourceKind.STANDARD_EBOOKS -> "Std Ebooks"
+    SourceKind.GUTENDEX_AUSTRALIA -> "Gutenberg AU"
 }
 
 private const val LOAD_MORE_THRESHOLD = 5

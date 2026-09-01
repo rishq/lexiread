@@ -3,6 +3,7 @@ package com.lexiread.data.repository
 import com.lexiread.data.local.dao.CatalogCacheDao
 import com.lexiread.data.local.entity.CatalogCacheEntity
 import com.lexiread.data.remote.api.InternetArchiveApi
+import com.lexiread.data.remote.api.PgaApi
 import com.lexiread.data.remote.api.StandardEbooksApi
 import com.lexiread.data.remote.dto.InternetArchiveMetadataResponse
 import com.lexiread.data.remote.dto.InternetArchiveSearchResponse
@@ -28,6 +29,7 @@ import com.lexiread.domain.repository.BookSource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -92,6 +94,11 @@ class BooksRepositoryImplTest {
     private class FakeStandardEbooksApi : StandardEbooksApi {
         override suspend fun searchOpds(url: String): ResponseBody = throw UnsupportedOperationException()
         override suspend fun downloadFile(url: String): ResponseBody = throw UnsupportedOperationException()
+    }
+
+    private class FakePgaApi(var index: String = "") : PgaApi {
+        override suspend fun fetch(url: String): ResponseBody =
+            ResponseBody.create("text/plain".toMediaType(), index)
     }
 
     private class FakeCatalogCacheDao : CatalogCacheDao {
@@ -173,6 +180,20 @@ class BooksRepositoryImplTest {
                     industryIdentifiers = listOf(GoogleBooksIdentifierDto("ISBN_13", "9780141439518"))
                 )
             )
+
+        const val PGA_INDEX_FIXTURE = """
+            Project Gutenberg Australia
+            List of FREE ebooks
+
+            Sep 2024 The Test Book, by Jane Author                [240026xx.xxx] 4553A
+            http://gutenberg.net.au/ebooks24/2400261.txt
+            http://gutenberg.net.au/ebooks24/2400261h.html
+
+            Aug 2001 Another Tale, by John Writer                 [010003xx.xxx] 0003A
+            [Author: John Writer]
+            http://gutenberg.net.au/ebooks01/0100031.txt
+            http://gutenberg.net.au/ebooks01/0100031h.html
+        """
     }
 
     private fun repository(
@@ -180,13 +201,15 @@ class BooksRepositoryImplTest {
         openLibrary: FakeOpenLibraryApi = FakeOpenLibraryApi(),
         google: FakeGoogleBooksApi = FakeGoogleBooksApi(),
         cache: FakeCatalogCacheDao = FakeCatalogCacheDao(),
-        library: FakeBookRepository = FakeBookRepository()
+        library: FakeBookRepository = FakeBookRepository(),
+        pgaApi: FakePgaApi = FakePgaApi()
     ) = BooksRepositoryImpl(
         gutendexApi = gutendex,
         openLibraryApi = openLibrary,
         googleBooksApi = google,
         internetArchiveApi = FakeInternetArchiveApi(),
         standardEbooksApi = FakeStandardEbooksApi(),
+        pgaApi = pgaApi,
         catalogCacheDao = cache,
         bookRepository = library,
         sources = listOf(FakeBookSource("gutenberg")),
@@ -352,6 +375,20 @@ class BooksRepositoryImplTest {
 
         assertEquals("Frankenstein", details?.title)
         assertTrue(details?.canRead == true)
+    }
+
+    @Test
+    fun `project gutenberg australia results appear when selected`() = runBlocking {
+        val pga = FakePgaApi(PGA_INDEX_FIXTURE)
+        val page = repository(pgaApi = pga)
+            .search("tale", 1, setOf(SourceKind.GUTENDEX_AUSTRALIA))
+
+        assertEquals(1, page.books.size)
+        val book = page.books.first()
+        assertEquals(SourceKind.GUTENDEX_AUSTRALIA, book.source)
+        assertEquals("pga_0100031", book.id)
+        assertEquals("Another Tale", book.title)
+        assertTrue(book.canRead)
     }
 
     private fun allSources(): Set<SourceKind> = SourceKind.entries.toSet()

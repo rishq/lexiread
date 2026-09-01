@@ -10,6 +10,7 @@ import com.lexiread.data.local.dao.CatalogCacheDao
 import com.lexiread.data.local.entity.CatalogCacheEntity
 import com.lexiread.data.mapper.toCatalogBook
 import com.lexiread.data.mapper.toDomainBook
+import com.lexiread.data.source.PgaBookSource
 import com.lexiread.data.remote.googlebooks.GoogleBooksApi
 import com.lexiread.data.remote.gutendex.GutendexApi
 import com.lexiread.data.remote.openlibrary.OpenLibraryApi
@@ -49,6 +50,7 @@ class BooksRepositoryImpl(
     private val googleBooksApi: GoogleBooksApi,
     private val internetArchiveApi: com.lexiread.data.remote.api.InternetArchiveApi,
     private val standardEbooksApi: com.lexiread.data.remote.api.StandardEbooksApi,
+    private val pgaApi: com.lexiread.data.remote.api.PgaApi,
     private val catalogCacheDao: CatalogCacheDao,
     private val bookRepository: BookRepository,
     private val sources: List<BookSource>,
@@ -70,6 +72,7 @@ class BooksRepositoryImpl(
                 if (SourceKind.GOOGLE_BOOKS in active) add { fetchGoogleBooks(normalized, page) }
                 if (SourceKind.INTERNET_ARCHIVE in active) add { fetchInternetArchive(normalized, page) }
                 if (SourceKind.STANDARD_EBOOKS in active) add { fetchStandardEbooks(normalized, page) }
+                if (SourceKind.GUTENDEX_AUSTRALIA in active) add { fetchGutenbergAustralia(normalized, page) }
             })
         }
     }
@@ -82,6 +85,7 @@ class BooksRepositoryImpl(
                 if (SourceKind.GOOGLE_BOOKS in active) add { fetchGoogleBooks(POPULAR_GOOGLE_BOOKS_QUERY, page) }
                 if (SourceKind.INTERNET_ARCHIVE in active) add { fetchInternetArchive(POPULAR_IA_QUERY, page) }
                 if (SourceKind.STANDARD_EBOOKS in active) add { fetchStandardEbooks(POPULAR_SE_QUERY, page) }
+                if (SourceKind.GUTENDEX_AUSTRALIA in active) add { fetchGutenbergAustralia(POPULAR_PGA_QUERY, page) }
             })
         }
 
@@ -96,6 +100,7 @@ class BooksRepositoryImpl(
             if (SourceKind.GOOGLE_BOOKS in active) add { fetchGoogleBooks("subject:${category.query}", page) }
             if (SourceKind.INTERNET_ARCHIVE in active) add { fetchInternetArchive(category.query, page) }
             if (SourceKind.STANDARD_EBOOKS in active) add { fetchStandardEbooks(category.query, page) }
+            if (SourceKind.GUTENDEX_AUSTRALIA in active) add { fetchGutenbergAustralia(category.query, page) }
             })
         }
 
@@ -136,6 +141,7 @@ class BooksRepositoryImpl(
                 }.getOrNull()
             }
             id.startsWith(STANDARD_EBOOKS_PREFIX) -> null // SE details resolved from search results
+            id.startsWith(PGA_PREFIX) -> null // PGA details resolved from search results
             else -> null
         }
     }
@@ -362,6 +368,54 @@ class BooksRepositoryImpl(
         )
     }
 
+    private suspend fun fetchGutenbergAustralia(query: String, page: Int): CatalogPage =
+        withContext(dispatcher) {
+            val entries = PgaBookSource.parseIndex(pgaIndex())
+            val q = query.trim().lowercase()
+            val filtered = if (q.isBlank()) {
+                entries
+            } else {
+                entries.filter { it.title.lowercase().contains(q) || it.author.lowercase().contains(q) }
+            }
+            val from = (page - 1) * PGA_PAGE_SIZE
+            val to = (from + PGA_PAGE_SIZE).coerceAtMost(filtered.size)
+            val pageEntries = if (from < filtered.size) filtered.subList(from, to) else emptyList()
+            val books = pageEntries.map { e ->
+                CatalogBook(
+                    id = PGA_PREFIX + e.number,
+                    title = e.title,
+                    authors = listOf(com.lexiread.domain.model.Author(e.author)),
+                    coverUrl = null,
+                    description = null,
+                    language = "en",
+                    subjects = emptyList(),
+                    source = SourceKind.GUTENDEX_AUSTRALIA,
+                    formats = listOf(
+                        BookFormat(
+                            com.lexiread.domain.model.FormatKind.TXT,
+                            "text/plain",
+                            e.txtUrl ?: e.htmlUrl ?: "https://gutenberg.net.au/ebooks${e.number.take(2)}/${e.number}.txt"
+                        )
+                    ),
+                    isPublicDomain = true,
+                    identifiers = com.lexiread.domain.model.BookIdentifiers()
+                )
+            }
+            CatalogPage(
+                books = books,
+                page = page,
+                totalResults = filtered.size,
+                hasMore = to < filtered.size
+            )
+        }
+
+    /** Fetches the PGA index once per session; later calls reuse the cached text. */
+    private var pgaIndexCache: String? = null
+    private suspend fun pgaIndex(): String {
+        pgaIndexCache?.let { return it }
+        return pgaApi.fetch(PGA_INDEX_URL).string().also { pgaIndexCache = it }
+    }
+
     // --- caching ------------------------------------------------------------
 
     /**
@@ -438,13 +492,17 @@ class BooksRepositoryImpl(
         const val GOOGLE_BOOKS_PREFIX = "gb_"
         const val INTERNET_ARCHIVE_PREFIX = "ia_"
         const val STANDARD_EBOOKS_PREFIX = "se_"
+        const val PGA_PREFIX = "pga_"
+        const val PGA_INDEX_URL = "https://gutenberg.net.au/gutindex_aus.txt"
         const val POPULAR_CACHE_KEY = "popular"
         const val POPULAR_OPEN_LIBRARY_QUERY = "subject:fiction"
         const val POPULAR_GOOGLE_BOOKS_QUERY = "subject:fiction"
         const val POPULAR_IA_QUERY = "fiction"
         const val POPULAR_SE_QUERY = "fiction"
+        const val POPULAR_PGA_QUERY = ""
         const val IA_PAGE_SIZE = 20
         const val SE_PAGE_SIZE = 20
+        const val PGA_PAGE_SIZE = 20
 
         /**
          * Plain, provider-neutral terms. Each fetch wraps them into the query

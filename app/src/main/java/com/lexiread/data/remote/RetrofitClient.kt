@@ -5,6 +5,7 @@ import com.lexiread.BuildConfig
 import com.lexiread.data.remote.api.ClaudeApi
 import com.lexiread.data.remote.api.DictionaryApi
 import com.lexiread.data.remote.api.InternetArchiveApi
+import com.lexiread.data.remote.api.PgaApi
 import com.lexiread.data.remote.api.StandardEbooksApi
 import com.lexiread.data.remote.api.GeminiApi
 import com.lexiread.data.remote.api.OpenAiChatApi
@@ -177,6 +178,14 @@ object RetrofitClient {
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
             .create(InternetArchiveApi::class.java)
+    }
+
+    val pgaApi: PgaApi by lazy {
+        Retrofit.Builder()
+            .baseUrl("https://gutenberg.net.au/")
+            .client(catalogOkHttpClient)
+            .build()
+            .create(PgaApi::class.java)
     }
 
     val dictionaryApi: DictionaryApi by lazy {

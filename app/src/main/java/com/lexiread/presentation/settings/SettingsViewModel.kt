@@ -116,6 +116,12 @@ class SettingsViewModel(
         }
     }
 
+    fun setVolumeKeysPageTurn(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesManager.updateVolumeKeysPageTurn(enabled)
+        }
+    }
+
     class Factory(
         private val preferencesManager: UserPreferencesManager
     ) : ViewModelProvider.Factory {
