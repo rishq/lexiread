@@ -26,7 +26,10 @@ object SrsScheduler {
         val nextReviewEpoch: Long = 0
     ) {
         val isDue: Boolean
-            get() = nextReviewEpoch == 0L || System.currentTimeMillis() >= nextReviewEpoch
+            get() = isDueAt(System.currentTimeMillis())
+
+        fun isDueAt(now: Long): Boolean =
+            nextReviewEpoch == 0L || now >= nextReviewEpoch
     }
 
     /**

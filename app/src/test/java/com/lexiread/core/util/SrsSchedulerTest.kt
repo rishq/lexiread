@@ -55,8 +55,8 @@ class SrsSchedulerTest {
 
         assertEquals(0, afterFail.reps)
         assertEquals(1, afterFail.intervalDays)
-        // Blackout (q=0) drops ease by 0.54; q=1 by 0.5.
-        assertEquals(2.5 - 0.5, afterFail.ease, 1e-9)
+        // EF' = 2.6 + (0.1 - (5-1)*(0.08 + (5-1)*0.02)) = 2.6 + (0.1 - 0.64) = 2.6 - 0.54 = 2.06
+        assertEquals(2.06, afterFail.ease, 1e-9)
     }
 
     // --- ease factor ---------------------------------------------------------
@@ -92,7 +92,8 @@ class SrsSchedulerTest {
         val next = SrsScheduler.review(SrsScheduler.SrsState(), ReviewRating.AGAIN, now)
 
         assertEquals(0, next.reps)
-        assertEquals(2.5 - 0.5, next.ease, 1e-9)
+        // AGAIN -> q=1: EF' = 2.5 + (0.1 - (5-1)*(0.08 + (5-1)*0.02)) = 2.5 - 0.54 = 1.96
+        assertEquals(1.96, next.ease, 1e-9)
     }
 
     @Test
@@ -100,7 +101,8 @@ class SrsSchedulerTest {
         val next = SrsScheduler.review(SrsScheduler.SrsState(), ReviewRating.HARD, now)
 
         assertEquals(1, next.reps)
-        assertEquals(2.5, next.ease, 1e-9)
+        // HARD -> q=3: EF' = 2.5 + (0.1 - (5-3)*(0.08 + (5-3)*0.02)) = 2.5 - 0.14 = 2.36
+        assertEquals(2.36, next.ease, 1e-9)
         assertEquals(1, next.intervalDays)
     }
 
@@ -113,13 +115,13 @@ class SrsSchedulerTest {
         assertEquals(0, state.reps)
         assertEquals(0, state.intervalDays)
         assertEquals(now, state.nextReviewEpoch)
-        assertTrue(state.isDue)
+        assertTrue(state.isDueAt(now))
     }
 
     @Test
     fun `a word scheduled in the future is not due`() {
         val state = SrsScheduler.SrsState(nextReviewEpoch = now + dayMs)
 
-        assertTrue(!state.isDue)
+        assertTrue(!state.isDueAt(now))
     }
 }

@@ -1,6 +1,7 @@
 package com.lexiread.data.local
 
 import androidx.room.testing.MigrationTestHelper
+import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -23,7 +24,8 @@ class MigrationTest {
     @get:Rule
     val helper = MigrationTestHelper(
         InstrumentationRegistry.getInstrumentation(),
-        AppDatabase::class.java
+        "schemas",
+        FrameworkSQLiteOpenHelperFactory()
     )
 
     // --- helpers --------------------------------------------------------------
@@ -69,7 +71,7 @@ class MigrationTest {
                 `isImported`, `addedTimestamp`
             ) VALUES (?, ?, ?, NULL, NULL, ?, NULL, ?, 'en', '[]', 0, 1, 0, ?, 1)
             """.trimIndent(),
-            arrayOf(id, title, fullText, if (isImported) "EPUB" else "TXT", if (isImported) 1 else 0)
+            arrayOf<Any>(id, title, fullText, if (isImported) "EPUB" else "TXT", if (isImported) 1 else 0)
         )
     }
 
