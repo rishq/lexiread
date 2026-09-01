@@ -75,7 +75,15 @@ android {
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
   sourceSets {
-    getByName("test").assets.srcDirs("schemas")
+    // Room's MigrationTestHelper reads the exported schema JSON through the
+    // *application* (target context) AssetManager. Under Robolectric that
+    // AssetManager is wired to the merged assets of the variant under test —
+    // see build/intermediates/unit_test_config_directory/**/test_config.properties
+    // (android_merged_assets) — so the schemas must be part of the debug
+    // variant's assets. Adding them to the `test` source set does NOT work:
+    // unit-test assets are never merged. Debug only, so they never ship in the
+    // release APK.
+    getByName("debug").assets.srcDir("$projectDir/schemas")
   }
   dependenciesInfo {
     includeInApk = false
