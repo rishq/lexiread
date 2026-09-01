@@ -121,6 +121,8 @@ dependencies {
   implementation(libs.retrofit)
   testImplementation(libs.androidx.room.testing)
   testImplementation(libs.androidx.junit)
+  testImplementation(libs.androidx.core)
+  testImplementation(libs.androidx.runner)
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.coroutines.test)
   testImplementation(libs.robolectric)

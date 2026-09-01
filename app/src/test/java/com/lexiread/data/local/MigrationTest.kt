@@ -2,7 +2,7 @@ package com.lexiread.data.local
 
 import androidx.room.testing.MigrationTestHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
-import androidx.test.core.app.ApplicationProvider
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -23,7 +23,7 @@ class MigrationTest {
 
     @get:Rule
     val helper = MigrationTestHelper(
-        ApplicationProvider.getApplicationContext(),
+        InstrumentationRegistry.getInstrumentation(),
         FrameworkSQLiteOpenHelperFactory()
     )
 

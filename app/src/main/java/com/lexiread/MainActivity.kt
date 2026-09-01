@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
 
   private lateinit var container: AppContainer
   var onVolumeKeyEvent: ((Int) -> Boolean)? = null
+  private var volumeKeyConsumed = false
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -67,10 +68,21 @@ class MainActivity : ComponentActivity() {
   override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
     if (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP || keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN) {
       if (onVolumeKeyEvent?.invoke(keyCode) == true) {
+        volumeKeyConsumed = true
         return true
       }
     }
     return super.onKeyDown(keyCode, event)
+  }
+
+  override fun onKeyUp(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+    if (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP || keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN) {
+      if (volumeKeyConsumed) {
+        volumeKeyConsumed = false
+        return true
+      }
+    }
+    return super.onKeyUp(keyCode, event)
   }
 
   override fun onDestroy() {
