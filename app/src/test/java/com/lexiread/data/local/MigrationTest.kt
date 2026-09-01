@@ -71,7 +71,7 @@ class MigrationTest {
                 `isImported`, `addedTimestamp`
             ) VALUES (?, ?, ?, NULL, NULL, ?, NULL, ?, 'en', '[]', 0, 1, 0, ?, 1)
             """.trimIndent(),
-            arrayOf<Any>(id, title, fullText, if (isImported) "EPUB" else "TXT", if (isImported) 1 else 0)
+            arrayOf<Any?>(id, title, fullText, if (isImported) "EPUB" else "TXT", if (isImported) 1 else 0)
         )
     }
 
