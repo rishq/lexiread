@@ -80,8 +80,21 @@ data class DefinitionDto(
 @JsonClass(generateAdapter = true)
 data class MyMemoryResponse(
     val responseData: MyMemoryData?,
-    val responseStatus: Int?
-)
+    // The MyMemory API can return responseStatus as either an Int (e.g. 200)
+    // or a String (e.g. "200" or "OK"). Typing as Any? avoids a JsonDataException
+    // crash when the API returns a non-integer value. Use [statusInt] to
+    // safely extract the numeric value.
+    val responseStatus: Any? = null
+) {
+    /** Safely extracts the HTTP-like status code, or null if it cannot be parsed. */
+    val statusInt: Int?
+        get() = when (responseStatus) {
+            is Int -> responseStatus
+            is Number -> responseStatus.toInt()
+            is String -> responseStatus.toIntOrNull()
+            else -> null
+        }
+}
 
 @JsonClass(generateAdapter = true)
 data class MyMemoryData(

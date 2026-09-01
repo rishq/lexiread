@@ -46,6 +46,23 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun catalogCacheDao(): CatalogCacheDao
 
     companion object {
+        /**
+         * Safety-net migration for the v1→v2 gap.
+         *
+         * No v1 or v2 schema was ever shipped under the `com.lexiread`
+         * package — the database was introduced at version 3. However,
+         * if any pre-release or `com.example`-packaged build happens to
+         * carry over an old database file, Room would crash with
+         * `IllegalStateException` without this migration. The migration
+         * is a no-op because v1→v2 added no schema changes that aren't
+         * already covered by `MIGRATION_2_3`.
+         */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // No schema changes between v1 and v2.
+            }
+        }
+
         val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_saved_words_word` ON `saved_words` (`word`)")
@@ -81,9 +98,12 @@ abstract class AppDatabase : RoomDatabase() {
          * SQLite cannot drop columns directly (pre-3.35), so the migration
          * recreates the books table without the column.
          *
-         * Preloaded books that stored text inline in `fullText` lose it here;
-         * [BookRepositoryImpl.initializePreloadedBooks] re-inserts them with
-         * chapters stored in the new table on first launch after migration.
+         * Before dropping `fullText`, any non-null text is migrated into the
+         * new `book_chapters` table as a single chapter so that user-imported
+         * books (EPUB, PDF, FB2, TXT) are not lost. Preloaded books that stored
+         * text inline are also migrated; [BookRepositoryImpl.initializePreloadedBooks]
+         * will skip re-inserting preloaded books because it checks for the
+         * existence of `gutenberg_1342` first.
          */
         val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -101,7 +121,19 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_book_chapters_bookId` ON `book_chapters` (`bookId`)")
 
-                // 2. Recreate books table without the fullText column.
+                // 2. Migrate existing fullText into book_chapters before the
+                //    column is dropped. Each book with non-null, non-empty text
+                //    gets a single chapter so user-imported content is preserved.
+                db.execSQL(
+                    """
+                    INSERT INTO `book_chapters` (`bookId`, `title`, `content`, `chapterIndex`)
+                    SELECT `id`, `title`, `fullText`, 0
+                    FROM `books`
+                    WHERE `fullText` IS NOT NULL AND LENGTH(`fullText`) > 0
+                    """.trimIndent()
+                )
+
+                // 3. Recreate books table without the fullText column.
                 db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `books_new` (
@@ -136,7 +168,7 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("DROP TABLE `books`")
                 db.execSQL("ALTER TABLE `books_new` RENAME TO `books`")
 
-                // 3. Add SRS fields to saved_words and create the due-words index.
+                // 4. Add SRS fields to saved_words and create the due-words index.
                 db.execSQL("ALTER TABLE `saved_words` ADD COLUMN `srsReps` INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE `saved_words` ADD COLUMN `srsEase` REAL NOT NULL DEFAULT 2.5")
                 db.execSQL("ALTER TABLE `saved_words` ADD COLUMN `srsIntervalDays` INTEGER NOT NULL DEFAULT 0")

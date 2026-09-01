@@ -18,3 +18,7 @@ local.properties
 debug.keystore
 .workbuddy-ai/
 .CODE_REVIEW.md
+CODE_REVIEW_FINAL.md
+.kilo/
+# Contains a live API key — never commit. Rotate the key if it ever was.
+opencode.json
