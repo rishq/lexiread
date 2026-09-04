@@ -7,6 +7,7 @@ import com.lexiread.core.preferences.UserPreferencesManager
 import com.lexiread.core.reader.BookImporter
 import com.lexiread.core.reader.PaginationEngine
 import com.lexiread.core.util.TTSHelper
+import com.lexiread.core.util.UserErrorMessages
 import com.lexiread.domain.model.AiExplanation
 import com.lexiread.domain.model.Book
 import com.lexiread.domain.model.BookChapter
@@ -199,7 +200,7 @@ class ReaderViewModel(
                 _uiState.update {
                     it.copy(
                         isLoadingBook = false,
-                        errorMessage = error.message ?: "Failed to open this book."
+                        errorMessage = UserErrorMessages.messageFor(error, "Failed to open this book.")
                     )
                 }
             }
@@ -287,7 +288,7 @@ class ReaderViewModel(
                 _uiState.update {
                     it.copy(
                         isPaginating = false,
-                        errorMessage = "Failed to render page: ${e.message}"
+                        errorMessage = UserErrorMessages.messageFor(e, "This page could not be displayed.")
                     )
                 }
             }
@@ -475,7 +476,7 @@ class ReaderViewModel(
                 _uiState.update {
                     it.copy(
                         isPaginating = false,
-                        errorMessage = "Failed to render page: ${e.message}"
+                        errorMessage = UserErrorMessages.messageFor(e, "This page could not be displayed.")
                     )
                 }
             }

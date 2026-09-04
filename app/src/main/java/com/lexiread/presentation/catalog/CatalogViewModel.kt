@@ -3,6 +3,7 @@ package com.lexiread.presentation.catalog
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.lexiread.core.util.UserErrorMessages
 import com.lexiread.data.mapper.toDomainBook
 import com.lexiread.domain.model.CatalogBook
 import com.lexiread.domain.model.CatalogPage
@@ -171,7 +172,7 @@ class CatalogViewModel(
                 it.copy(
                     isLoading = false,
                     isLoadingMore = false,
-                    errorMessage = error.message ?: "Could not reach any book catalogue."
+                    errorMessage = UserErrorMessages.messageFor(error, "Could not reach any book catalogue.")
                 )
             }
             return
@@ -202,7 +203,7 @@ class CatalogViewModel(
                 .onFailure { error ->
                     _effects.tryEmit(
                         CatalogEffect.ShowMessage(
-                            error.message ?: "This book could not be opened for reading."
+                            UserErrorMessages.messageFor(error, "This book could not be opened for reading.")
                         )
                     )
                 }

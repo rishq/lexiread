@@ -3,6 +3,7 @@
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.lexiread.core.util.UserErrorMessages
 import com.lexiread.domain.model.Book
 import com.lexiread.domain.repository.BookRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -77,7 +78,10 @@ class LibraryViewModel(
                 bookRepository.addBookToLibrary(book)
                 _importMessage.value = "Successfully imported '${book.title}'"
             }.onFailure { err ->
-                _importMessage.value = "Import failed: ${err.localizedMessage}"
+                _importMessage.value = UserErrorMessages.messageFor(
+                    err,
+                    "Import failed. The file may be damaged or in an unsupported format."
+                )
             }
         }
     }

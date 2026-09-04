@@ -3,6 +3,7 @@
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.lexiread.core.util.UserErrorMessages
 import com.lexiread.domain.model.Book
 import com.lexiread.domain.repository.BookRepository
 import kotlinx.coroutines.CancellationException
@@ -48,7 +49,7 @@ class BookDetailsViewModel(
                 // Without this the screen would spin forever on a database error.
                 _uiState.value = BookDetailsUiState(
                     isLoading = false,
-                    errorMessage = error.message ?: "Unable to load this book."
+                    errorMessage = UserErrorMessages.messageFor(error, "Unable to load this book.")
                 )
             }
         }
