@@ -3,6 +3,7 @@ package com.lexiread.data.repository
 import com.lexiread.data.local.dao.CatalogCacheDao
 import com.lexiread.data.local.entity.CatalogCacheEntity
 import com.lexiread.data.remote.api.InternetArchiveApi
+import com.lexiread.data.remote.api.MyLibApi
 import com.lexiread.data.remote.api.PgaApi
 import com.lexiread.data.remote.api.StandardEbooksApi
 import com.lexiread.data.remote.dto.InternetArchiveMetadataResponse
@@ -99,6 +100,15 @@ class BooksRepositoryImplTest {
     private class FakePgaApi(var index: String = "") : PgaApi {
         override suspend fun fetch(url: String): ResponseBody =
             ResponseBody.create("text/plain".toMediaType(), index)
+    }
+
+    /**
+     * Returns an empty search page: with no result rows the parser finds
+     * nothing, which is the honest answer for a catalogue that has no fixture.
+     */
+    private class FakeMyLibApi : MyLibApi {
+        override suspend fun fetch(url: String): ResponseBody =
+            ResponseBody.create("text/html".toMediaType(), "<html><body></body></html>")
     }
 
     private class FakeCatalogCacheDao : CatalogCacheDao {
@@ -202,7 +212,8 @@ class BooksRepositoryImplTest {
         google: FakeGoogleBooksApi = FakeGoogleBooksApi(),
         cache: FakeCatalogCacheDao = FakeCatalogCacheDao(),
         library: FakeBookRepository = FakeBookRepository(),
-        pgaApi: FakePgaApi = FakePgaApi()
+        pgaApi: FakePgaApi = FakePgaApi(),
+        myLibApi: MyLibApi = FakeMyLibApi()
     ) = BooksRepositoryImpl(
         gutendexApi = gutendex,
         openLibraryApi = openLibrary,
@@ -210,6 +221,7 @@ class BooksRepositoryImplTest {
         internetArchiveApi = FakeInternetArchiveApi(),
         standardEbooksApi = FakeStandardEbooksApi(),
         pgaApi = pgaApi,
+        myLibApi = myLibApi,
         catalogCacheDao = cache,
         bookRepository = library,
         sources = listOf(FakeBookSource("gutenberg")),
@@ -389,6 +401,55 @@ class BooksRepositoryImplTest {
         assertEquals("pga_0100031", book.id)
         assertEquals("Another Tale", book.title)
         assertTrue(book.canRead)
+    }
+
+    @Test
+    fun `my library results appear when selected`() = runBlocking {
+        val page = repository(myLibApi = FakeMyLibApiFixture())
+            .search("pride", 1, setOf(SourceKind.MY_LIB))
+
+        assertEquals(1, page.books.size)
+        val book = page.books.first()
+        assertEquals(SourceKind.MY_LIB, book.source)
+        assertEquals("mylib_12345", book.id)
+        assertEquals("Pride and Prejudice", book.title)
+        assertEquals("Jane Austen", book.authorLine)
+        // EPUB and TXT links were on the page, so the card is openable.
+        assertTrue(book.canRead)
+        assertEquals(431, page.totalResults)
+        assertTrue(page.hasMore)
+    }
+
+    @Test
+    fun `my library contributes nothing to the popular list`() = runBlocking {
+        // The site has no "popular" route, so a blank query must be skipped
+        // instead of asking for the whole catalogue.
+        val page = repository().getPopular(1, setOf(SourceKind.MY_LIB))
+
+        assertTrue(page.books.isEmpty())
+        assertTrue(!page.hasMore)
+    }
+
+    /** A stand-in for one scraped search page. */
+    private class FakeMyLibApiFixture : MyLibApi {
+        override suspend fun fetch(url: String): ResponseBody = ResponseBody.create(
+            "text/html".toMediaType(),
+            """
+            <html><body>
+              <div class="book-item">
+                <img class="cover" src="/covers/abc.jpg">
+                <h3 class="title"><a href="/book/12345/pride-and-prejudice">Pride and Prejudice</a></h3>
+                <span class="author">Jane Austen</span>
+                <a href="/download/12345.epub">EPUB</a>
+                <a href="/download/12345.txt">TXT</a>
+              </div>
+              <div class="pagination">
+                <span>Results 1-1 of 431</span>
+                <a href="/s/?q=pride&amp;page=2">Next</a>
+              </div>
+            </body></html>
+            """.trimIndent()
+        )
     }
 
     private fun allSources(): Set<SourceKind> = SourceKind.entries.toSet()

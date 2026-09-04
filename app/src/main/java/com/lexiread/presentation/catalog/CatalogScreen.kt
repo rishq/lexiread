@@ -486,13 +486,6 @@ private fun ErrorBlock(message: String, onRetry: () -> Unit) {
     }
 }
 
-private fun sourceLabel(kind: SourceKind): String = when (kind) {
-    SourceKind.GUTENDEX -> "Gutenberg"
-    SourceKind.OPEN_LIBRARY -> "Open Library"
-    SourceKind.GOOGLE_BOOKS -> "Google Books"
-    SourceKind.INTERNET_ARCHIVE -> "Archive"
-    SourceKind.STANDARD_EBOOKS -> "Std Ebooks"
-    SourceKind.GUTENDEX_AUSTRALIA -> "Gutenberg AU"
-}
+private fun sourceLabel(kind: SourceKind): String = kind.label
 
 private const val LOAD_MORE_THRESHOLD = 5

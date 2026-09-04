@@ -5,6 +5,7 @@ import com.lexiread.BuildConfig
 import com.lexiread.data.remote.api.ClaudeApi
 import com.lexiread.data.remote.api.DictionaryApi
 import com.lexiread.data.remote.api.InternetArchiveApi
+import com.lexiread.data.remote.api.MyLibApi
 import com.lexiread.data.remote.api.PgaApi
 import com.lexiread.data.remote.api.StandardEbooksApi
 import com.lexiread.data.remote.api.GeminiApi
@@ -186,6 +187,18 @@ object RetrofitClient {
             .client(catalogOkHttpClient)
             .build()
             .create(PgaApi::class.java)
+    }
+
+    /**
+     * Scraped HTML, so no converter: the raw body goes straight to Jsoup. The
+     * base URL only anchors relative links and is never requested directly.
+     */
+    val myLibApi: MyLibApi by lazy {
+        Retrofit.Builder()
+            .baseUrl("https://${com.lexiread.data.source.MyLibConfig.DEFAULT_HOST}/")
+            .client(catalogOkHttpClient)
+            .build()
+            .create(MyLibApi::class.java)
     }
 
     val dictionaryApi: DictionaryApi by lazy {

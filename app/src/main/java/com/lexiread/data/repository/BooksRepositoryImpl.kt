@@ -4,12 +4,15 @@ import android.util.Log
 import com.lexiread.core.util.BookFormatSelector
 import com.lexiread.core.util.CatalogDeduper
 import com.lexiread.core.util.RetryPolicy
+import com.lexiread.core.util.TextEncoding
 import com.lexiread.core.util.runSuspendCatching
 import com.lexiread.data.local.CatalogCacheSerializer
 import com.lexiread.data.local.dao.CatalogCacheDao
 import com.lexiread.data.local.entity.CatalogCacheEntity
 import com.lexiread.data.mapper.toCatalogBook
 import com.lexiread.data.mapper.toDomainBook
+import com.lexiread.data.source.MyLibBookSource
+import com.lexiread.data.source.MyLibConfig
 import com.lexiread.data.source.PgaBookSource
 import com.lexiread.data.remote.googlebooks.GoogleBooksApi
 import com.lexiread.data.remote.gutendex.GutendexApi
@@ -51,6 +54,7 @@ class BooksRepositoryImpl(
     private val internetArchiveApi: com.lexiread.data.remote.api.InternetArchiveApi,
     private val standardEbooksApi: com.lexiread.data.remote.api.StandardEbooksApi,
     private val pgaApi: com.lexiread.data.remote.api.PgaApi,
+    private val myLibApi: com.lexiread.data.remote.api.MyLibApi,
     private val catalogCacheDao: CatalogCacheDao,
     private val bookRepository: BookRepository,
     private val sources: List<BookSource>,
@@ -67,12 +71,13 @@ class BooksRepositoryImpl(
 
         return load(CacheKind.SEARCH, normalized, page, sources) { active ->
             gather(page, buildList {
-                if (SourceKind.GUTENDEX in active) add { fetchGutendex(normalized, page) }
-                if (SourceKind.OPEN_LIBRARY in active) add { fetchOpenLibrary(normalized, page) }
-                if (SourceKind.GOOGLE_BOOKS in active) add { fetchGoogleBooks(normalized, page) }
-                if (SourceKind.INTERNET_ARCHIVE in active) add { fetchInternetArchive(normalized, page) }
-                if (SourceKind.STANDARD_EBOOKS in active) add { fetchStandardEbooks(normalized, page) }
-                if (SourceKind.GUTENDEX_AUSTRALIA in active) add { fetchGutenbergAustralia(normalized, page) }
+                if (SourceKind.GUTENDEX in active) add(source(SourceKind.GUTENDEX) { fetchGutendex(normalized, page) })
+                if (SourceKind.OPEN_LIBRARY in active) add(source(SourceKind.OPEN_LIBRARY) { fetchOpenLibrary(normalized, page) })
+                if (SourceKind.GOOGLE_BOOKS in active) add(source(SourceKind.GOOGLE_BOOKS) { fetchGoogleBooks(normalized, page) })
+                if (SourceKind.INTERNET_ARCHIVE in active) add(source(SourceKind.INTERNET_ARCHIVE) { fetchInternetArchive(normalized, page) })
+                if (SourceKind.STANDARD_EBOOKS in active) add(source(SourceKind.STANDARD_EBOOKS) { fetchStandardEbooks(normalized, page) })
+                if (SourceKind.GUTENDEX_AUSTRALIA in active) add(source(SourceKind.GUTENDEX_AUSTRALIA) { fetchGutenbergAustralia(normalized, page) })
+                if (SourceKind.MY_LIB in active) add(source(SourceKind.MY_LIB) { fetchMyLib(normalized, page) })
             })
         }
     }
@@ -80,12 +85,13 @@ class BooksRepositoryImpl(
     override suspend fun getPopular(page: Int, sources: Set<SourceKind>): CatalogPage =
         load(CacheKind.POPULAR, POPULAR_CACHE_KEY, page, sources) { active ->
             gather(page, buildList {
-                if (SourceKind.GUTENDEX in active) add { fetchGutendexPopular(page) }
-                if (SourceKind.OPEN_LIBRARY in active) add { fetchOpenLibrary(POPULAR_OPEN_LIBRARY_QUERY, page) }
-                if (SourceKind.GOOGLE_BOOKS in active) add { fetchGoogleBooks(POPULAR_GOOGLE_BOOKS_QUERY, page) }
-                if (SourceKind.INTERNET_ARCHIVE in active) add { fetchInternetArchive(POPULAR_IA_QUERY, page) }
-                if (SourceKind.STANDARD_EBOOKS in active) add { fetchStandardEbooks(POPULAR_SE_QUERY, page) }
-                if (SourceKind.GUTENDEX_AUSTRALIA in active) add { fetchGutenbergAustralia(POPULAR_PGA_QUERY, page) }
+                if (SourceKind.GUTENDEX in active) add(source(SourceKind.GUTENDEX) { fetchGutendexPopular(page) })
+                if (SourceKind.OPEN_LIBRARY in active) add(source(SourceKind.OPEN_LIBRARY) { fetchOpenLibrary(POPULAR_OPEN_LIBRARY_QUERY, page) })
+                if (SourceKind.GOOGLE_BOOKS in active) add(source(SourceKind.GOOGLE_BOOKS) { fetchGoogleBooks(POPULAR_GOOGLE_BOOKS_QUERY, page) })
+                if (SourceKind.INTERNET_ARCHIVE in active) add(source(SourceKind.INTERNET_ARCHIVE) { fetchInternetArchive(POPULAR_IA_QUERY, page) })
+                if (SourceKind.STANDARD_EBOOKS in active) add(source(SourceKind.STANDARD_EBOOKS) { fetchStandardEbooks(POPULAR_SE_QUERY, page) })
+                if (SourceKind.GUTENDEX_AUSTRALIA in active) add(source(SourceKind.GUTENDEX_AUSTRALIA) { fetchGutenbergAustralia(POPULAR_PGA_QUERY, page) })
+                if (SourceKind.MY_LIB in active) add(source(SourceKind.MY_LIB) { fetchMyLib(POPULAR_MY_LIB_QUERY, page) })
             })
         }
 
@@ -95,12 +101,13 @@ class BooksRepositoryImpl(
         sources: Set<SourceKind>
     ): CatalogPage = load(CacheKind.CATEGORY, category.id, page, sources) { active ->
         gather(page, buildList {
-            if (SourceKind.GUTENDEX in active) add { fetchGutendex(category.query, page) }
-            if (SourceKind.OPEN_LIBRARY in active) add { fetchOpenLibrary("subject:${category.query}", page) }
-            if (SourceKind.GOOGLE_BOOKS in active) add { fetchGoogleBooks("subject:${category.query}", page) }
-            if (SourceKind.INTERNET_ARCHIVE in active) add { fetchInternetArchive(category.query, page) }
-            if (SourceKind.STANDARD_EBOOKS in active) add { fetchStandardEbooks(category.query, page) }
-            if (SourceKind.GUTENDEX_AUSTRALIA in active) add { fetchGutenbergAustralia(category.query, page) }
+            if (SourceKind.GUTENDEX in active) add(source(SourceKind.GUTENDEX) { fetchGutendex(category.query, page) })
+            if (SourceKind.OPEN_LIBRARY in active) add(source(SourceKind.OPEN_LIBRARY) { fetchOpenLibrary("subject:${category.query}", page) })
+            if (SourceKind.GOOGLE_BOOKS in active) add(source(SourceKind.GOOGLE_BOOKS) { fetchGoogleBooks("subject:${category.query}", page) })
+            if (SourceKind.INTERNET_ARCHIVE in active) add(source(SourceKind.INTERNET_ARCHIVE) { fetchInternetArchive(category.query, page) })
+            if (SourceKind.STANDARD_EBOOKS in active) add(source(SourceKind.STANDARD_EBOOKS) { fetchStandardEbooks(category.query, page) })
+            if (SourceKind.GUTENDEX_AUSTRALIA in active) add(source(SourceKind.GUTENDEX_AUSTRALIA) { fetchGutenbergAustralia(category.query, page) })
+            if (SourceKind.MY_LIB in active) add(source(SourceKind.MY_LIB) { fetchMyLib(category.query, page) })
             })
         }
 
@@ -142,6 +149,7 @@ class BooksRepositoryImpl(
             }
             id.startsWith(STANDARD_EBOOKS_PREFIX) -> null // SE details resolved from search results
             id.startsWith(PGA_PREFIX) -> null // PGA details resolved from search results
+            id.startsWith(MY_LIB_PREFIX) -> null // MyLib details resolved from search results
             else -> null
         }
     }
@@ -325,14 +333,20 @@ class BooksRepositoryImpl(
      * Runs every source concurrently. One catalogue failing degrades the result
      * set instead of failing the whole search; only a total failure propagates.
      */
-    private suspend fun gather(page: Int, jobs: List<suspend () -> CatalogPage>): CatalogPage {
+    /** A fetch tied to the catalogue that produced it, so a failure can be named. */
+    private class LabelledFetch(val label: String, val fetch: suspend () -> CatalogPage)
+
+    private fun source(kind: SourceKind, fetch: suspend () -> CatalogPage) =
+        LabelledFetch(kind.label, fetch)
+
+    private suspend fun gather(page: Int, jobs: List<LabelledFetch>): CatalogPage {
         if (jobs.isEmpty()) return CatalogPage.empty(page)
 
         val results = coroutineScope {
             jobs.map { job ->
                 async {
                     try {
-                        Result.success(job())
+                        Result.success(job.fetch())
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (error: Throwable) {
@@ -343,13 +357,15 @@ class BooksRepositoryImpl(
         }
 
         val pages = results.mapNotNull { it.getOrNull() }
-        val failures = results.mapNotNull { it.exceptionOrNull() }
-        failures.forEach { error ->
+        val failures = results.mapIndexedNotNull { index, result ->
+            result.exceptionOrNull()?.let { jobs[index].label to it }
+        }
+        failures.forEach { (_, error) ->
             Log.w(TAG, "A book catalogue failed", error)
         }
 
         if (pages.isEmpty()) {
-            throw failures.firstOrNull()
+            throw failures.firstOrNull()?.second
                 ?: IOException("No book catalogue responded.")
         }
 
@@ -364,7 +380,8 @@ class BooksRepositoryImpl(
             page = page,
             totalResults = pages.mapNotNull { it.totalResults }.maxOrNull(),
             hasMore = pages.any { it.hasMore },
-            failedSources = failures.map { it.message ?: it::class.java.simpleName }
+            // Names, not stack traces: the exception itself is in the log above.
+            failedSources = failures.map { it.first }
         )
     }
 
@@ -415,6 +432,57 @@ class BooksRepositoryImpl(
         pgaIndexCache?.let { return it }
         return pgaApi.fetch(PGA_INDEX_URL).string().also { pgaIndexCache = it }
     }
+
+    /**
+     * Scrapes one Mylib search page.
+     *
+     * The blank-query guard matters: `q=` asks the site for its whole catalogue,
+     * which is exactly what "Popular" would otherwise do on every app start.
+     */
+    private suspend fun fetchMyLib(query: String, page: Int): CatalogPage =
+        withContext(dispatcher) {
+            if (query.isBlank()) return@withContext CatalogPage.empty(page)
+
+            val url = MyLibBookSource.buildSearchUrl(query, page, MY_LIB_CONFIG)
+            val html = myLibApi.fetch(url).use { body ->
+                TextEncoding.readText(body.byteStream(), MY_LIB_CONFIG.maxPageBytes)
+            }
+            val parsed = MyLibBookSource.parseSearchPage(html, url, page, MY_LIB_CONFIG)
+
+            // The search page is the only place that carries direct file links,
+            // so hand them to the source that will later be asked to download one.
+            myLibSource()?.remember(parsed.entries)
+
+            CatalogPage(
+                books = parsed.entries.map { entry ->
+                    CatalogBook(
+                        id = MY_LIB_PREFIX + entry.id,
+                        title = entry.title,
+                        authors = entry.author?.let { listOf(com.lexiread.domain.model.Author(it)) }
+                            ?: emptyList(),
+                        coverUrl = entry.coverUrl,
+                        description = entry.description,
+                        language = entry.language,
+                        subjects = emptyList(),
+                        source = SourceKind.MY_LIB,
+                        formats = entry.formats,
+                        isPublicDomain = true,
+                        publishedYear = entry.year,
+                        identifiers = com.lexiread.domain.model.BookIdentifiers()
+                    )
+                },
+                page = page,
+                totalResults = parsed.totalResults,
+                hasMore = parsed.hasNextPage
+            )
+        }
+
+    /**
+     * The same instance the download path uses, so the links seen here are the
+     * ones [MyLibBookSource.downloadContent] finds later.
+     */
+    private fun myLibSource(): MyLibBookSource? =
+        sources.filterIsInstance<MyLibBookSource>().firstOrNull()
 
     // --- caching ------------------------------------------------------------
 
@@ -493,6 +561,7 @@ class BooksRepositoryImpl(
         const val INTERNET_ARCHIVE_PREFIX = "ia_"
         const val STANDARD_EBOOKS_PREFIX = "se_"
         const val PGA_PREFIX = "pga_"
+        const val MY_LIB_PREFIX = "mylib_"
         const val PGA_INDEX_URL = "https://gutenberg.net.au/gutindex_aus.txt"
         const val POPULAR_CACHE_KEY = "popular"
         const val POPULAR_OPEN_LIBRARY_QUERY = "subject:fiction"
@@ -500,6 +569,15 @@ class BooksRepositoryImpl(
         const val POPULAR_IA_QUERY = "fiction"
         const val POPULAR_SE_QUERY = "fiction"
         const val POPULAR_PGA_QUERY = ""
+        /** The site has no "popular" route, so it simply contributes nothing there. */
+        const val POPULAR_MY_LIB_QUERY = ""
+
+        /**
+         * Host, route, filters and selectors for the scraped catalogue. This is
+         * the one thing to change when the site moves or restyles — the parser
+         * itself never hardcodes any of it.
+         */
+        val MY_LIB_CONFIG = MyLibConfig()
         const val IA_PAGE_SIZE = 20
         const val SE_PAGE_SIZE = 20
         const val PGA_PAGE_SIZE = 20

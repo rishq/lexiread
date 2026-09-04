@@ -45,6 +45,16 @@ interface PgaApi {
 }
 
 /**
+ * A Mylib-style catalogue: plain HTML, no API. One generic `@Url` fetcher covers
+ * the search pages and the book files alike; parsing is done by Jsoup in
+ * `MyLibBookSource`, so this interface stays trivial.
+ */
+interface MyLibApi {
+    @GET
+    suspend fun fetch(@Url url: String): ResponseBody
+}
+
+/**
  * Public Internet Archive endpoints. The source searches for records that
  * advertise EPUB and checks metadata before it downloads a concrete file.
  */

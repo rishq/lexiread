@@ -7,13 +7,14 @@ package com.lexiread.domain.model
  */
 
 /** Which online catalogue a [CatalogBook] was found in. */
-enum class SourceKind {
-    GUTENDEX,
-    OPEN_LIBRARY,
-    GOOGLE_BOOKS,
-    INTERNET_ARCHIVE,
-    STANDARD_EBOOKS,
-    GUTENDEX_AUSTRALIA
+enum class SourceKind(val label: String) {
+    GUTENDEX("Gutenberg"),
+    OPEN_LIBRARY("Open Library"),
+    GOOGLE_BOOKS("Google Books"),
+    INTERNET_ARCHIVE("Archive"),
+    STANDARD_EBOOKS("Std Ebooks"),
+    GUTENDEX_AUSTRALIA("Gutenberg AU"),
+    MY_LIB("My Library")
 }
 
 /** Physical container of a readable file. */
