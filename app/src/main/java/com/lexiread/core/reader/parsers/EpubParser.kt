@@ -162,7 +162,10 @@ class EpubParser : BookParser {
                             val coverEntry = zipFile.getEntry(fullCoverPath) ?: zipFile.getEntry(meta.coverHref)
                             if (coverEntry != null && coverEntry.size in 1L..MAX_COVER_SIZE_BYTES) {
                                 val coverBytes = zipFile.getInputStream(coverEntry).use { ins ->
-                                    ins.readNBytes(MAX_COVER_SIZE_BYTES.toInt() + 1)
+                                    // Cap+1 so an oversize (spoofed-size) entry stays
+                                    // detectable after the read; readNBytes would do the
+                                    // same but is API 33+ while minSdk is 24.
+                                    TextEncoding.readCappedBytes(ins, MAX_COVER_SIZE_BYTES + 1)
                                 }
                                 if (coverBytes.size <= MAX_COVER_SIZE_BYTES) {
                                     val coverFile = File(file.parentFile, "${file.nameWithoutExtension}_cover.jpg")

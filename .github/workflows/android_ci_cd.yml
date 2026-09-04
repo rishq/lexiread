@@ -53,13 +53,13 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '9.3.1'
+          gradle-version: '9.7.0'
 
       - name: Ensure Gradle Wrapper Exists
         run: |
           if [ ! -f "gradlew" ]; then
             echo "Generating Gradle Wrapper..."
-            gradle wrapper --gradle-version 9.3.1 --distribution-type all
+            gradle wrapper --gradle-version 9.7.0 --distribution-type bin
           fi
           chmod +x gradlew
 
