@@ -1,4 +1,3 @@
-import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
 import java.util.Properties
 
 /**
@@ -20,7 +19,6 @@ plugins {
   alias(libs.plugins.kotlin.compose)
   alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.secrets)
-  alias(libs.plugins.google.services)
 }
 
 android {
@@ -31,7 +29,11 @@ android {
     applicationId = "com.lexiread.app"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
+    // P2-9: Play rejects a second upload with the same versionCode.
+    // CI tags releases as v1.0.<run_number>, so derive versionCode from the
+    // same counter locally via VERSION_CODE env (fallback 1 for local builds).
+    versionCode = (System.getenv("VERSION_CODE")?.toIntOrNull()
+      ?: System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1)
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -39,10 +41,18 @@ android {
     buildConfigField("String", "GOOGLE_BOOKS_API_KEY", "\"${readOptionalSecret("GOOGLE_BOOKS_API_KEY")}\"")
   }
 
+  // Release signing is optional for local builds: if the upload keystore or
+  // its passwords are missing (e.g. fresh checkout without secrets), fall
+  // back to the debug keystore so assembleRelease still works. CI provides
+  // KEYSTORE_PATH/STORE_PASSWORD/KEY_PASSWORD and gets a real signed build.
+  val releaseKeystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
+  val hasReleaseKeystore = file(releaseKeystorePath).exists()
+    && !System.getenv("STORE_PASSWORD").isNullOrBlank()
+    && !System.getenv("KEY_PASSWORD").isNullOrBlank()
+
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath)
+      storeFile = file(releaseKeystorePath)
       storePassword = System.getenv("STORE_PASSWORD")
       keyAlias = "upload"
       keyPassword = System.getenv("KEY_PASSWORD")
@@ -61,7 +71,12 @@ android {
       isMinifyEnabled = true
       isShrinkResources = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfig = signingConfigs.getByName("release")
+      signingConfig = if (hasReleaseKeystore) {
+        signingConfigs.getByName("release")
+      } else {
+        logger.warn("Release keystore not found at $releaseKeystorePath or passwords missing - signing release with debug key for local build.")
+        signingConfigs.getByName("debugConfig")
+      }
     }
     debug { signingConfig = signingConfigs.getByName("debugConfig") }
   }
@@ -97,13 +112,15 @@ ksp {
 
 // Configure the Secrets Gradle Plugin to use .env and .env.example files
 // to match the convention used in Web projects.
+// P0-3: GEMINI_API_KEY must never be packaged into the APK. Users provide
+// their own key via Settings (stored locally on device), so it is excluded
+// from BuildConfig even if present in .env.
 secrets {
   propertiesFileName = ".env"
   defaultPropertiesFileName = ".env.example"
   ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
+  ignoreList.add("GEMINI_API_KEY")
 }
-
-googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
 
 dependencies {
   implementation(platform(libs.androidx.compose.bom))
