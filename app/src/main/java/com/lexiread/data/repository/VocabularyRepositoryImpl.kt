@@ -21,15 +21,28 @@ class VocabularyRepositoryImpl(
         return savedWordDao.getWordsByStatus(status.name).map { entities -> entities.map { it.toDomain() } }
     }
 
-    override fun getDueWords(): Flow<List<SavedWord>> {
-        val now = System.currentTimeMillis()
-        return savedWordDao.getDueWords(now).map { entities -> entities.map { it.toDomain() } }
-    }
+    /**
+     * Due words, re-evaluated on every emission.
+     *
+     * The clock is read inside [map], not once when the flow is built. Room
+     * re-emits whenever the table changes, but a timestamp captured at
+     * construction time stays frozen for the life of the flow — words that
+     * become due while the screen is open would never appear, and the badge
+     * count would be wrong until the process restarted.
+     */
+    override fun getDueWords(): Flow<List<SavedWord>> =
+        savedWordDao.getAllSavedWords().map { entities ->
+            val now = System.currentTimeMillis()
+            entities.map { it.toDomain() }
+                .filter { it.nextReviewEpoch == 0L || it.nextReviewEpoch <= now }
+                .sortedWith(compareBy({ it.nextReviewEpoch }, { -it.dateAdded }))
+        }
 
-    override fun getDueWordCount(): Flow<Int> {
-        val now = System.currentTimeMillis()
-        return savedWordDao.getDueWordCount(now)
-    }
+    override fun getDueWordCount(): Flow<Int> =
+        savedWordDao.getAllSavedWords().map { entities ->
+            val now = System.currentTimeMillis()
+            entities.count { it.nextReviewEpoch == 0L || it.nextReviewEpoch <= now }
+        }
 
     override suspend fun isWordSaved(word: String): Boolean {
         return savedWordDao.getWordByText(word.trim().lowercase()) != null

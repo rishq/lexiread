@@ -15,6 +15,9 @@ LexiRead combines an e-book reader with language-learning utilities. Readers can
   - Sepia, Light, and Dark reading themes with customizable typography (Serif, Sans-Serif, Monospace).
   - Table of contents navigation and bookmark management.
 - **Instant Word Lookup & Translation**: Tap any word while reading to view definitions, phonetic transcriptions, part of speech, usage examples, and translations.
+  Cloud lookups are **off by default**: the first tap shows a consent dialog
+  (see `PRIVACY_POLICY.md` for the recipient list), and `Settings → Privacy &
+  Cloud Lookups` toggles them anytime. API keys are stored encrypted on-device.
 - **Text-to-Speech (TTS)**: Built-in audio pronunciation for words and context sentences.
 - **AI Tutor & Context Analysis**: Powered by Gemini API to provide simplified explanations, grammar breakdowns, and contextual context for challenging sentences or phrases.
 - **Vocabulary Trainer**:
@@ -40,7 +43,9 @@ LexiRead combines an e-book reader with language-learning utilities. Readers can
 - **State Management**: Kotlin Coroutines & StateFlow / SharedFlow
 - **Navigation**: Type-safe Navigation Compose
 - **Preferences**: DataStore Preferences for persistent reader customization
-- **AI Integration**: Gemini REST API via server-side AI Studio integration
+- **AI Integration**: Gemini / OpenAI / Claude / DeepSeek via user-provided keys
+  entered in Settings and stored locally on device. No API keys are packaged
+  into the APK (see `app/build.gradle.kts` secrets `ignoreList`).
 
 ## Project Structure
 
@@ -58,12 +63,24 @@ The repository includes a complete automated CI/CD workflow (`.github/workflows/
 - **Manual Trigger (`workflow_dispatch`)**: Run the workflow directly from the GitHub Actions tab with custom release tags and pre-release options.
 - **GitHub Artifacts**: All successful builds upload artifacts (`LexiRead-debug.apk`, `LexiRead-release.apk`, `LexiRead-release.aab`) accessible directly in the workflow summary.
 
-### Setting up Repository Secrets (Optional)
-To sign release APKs and enable Gemini API in production builds, configure these in **GitHub Repository Settings -> Secrets and variables -> Actions**:
-- `GEMINI_API_KEY`: Your Gemini API Key (injected into `.env`).
+### Setting up Repository Secrets
+Release signing secrets are **required** for any build that produces a release
+artifact. `app/build.gradle.kts` refuses to assemble a release variant in CI
+(`CI` env set) when they are missing, instead of silently falling back to the
+debug key — a debug-signed bundle looks like a real release but is rejected by
+Google Play. Configure these in **GitHub Repository Settings -> Secrets and
+variables -> Actions**:
 - `RELEASE_KEYSTORE_BASE64`: Base64-encoded release keystore file (`.jks`).
 - `STORE_PASSWORD`: Keystore password.
 - `KEY_PASSWORD`: Key alias password.
+
+Local builds still work without them: outside CI the release variant falls back
+to `debug.keystore`. Set `ALLOW_DEBUG_SIGNING=true` to allow that fallback in CI
+too (e.g. for a smoke-test build).
+
+AI provider keys are **not** injected at build time. `GEMINI_API_KEY` is excluded
+from `BuildConfig` on purpose (see `secrets { ignoreList }`); every provider key
+is entered by the user in Settings and stored encrypted on the device.
 
 ## License
 

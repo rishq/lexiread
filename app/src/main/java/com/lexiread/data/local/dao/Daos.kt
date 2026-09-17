@@ -15,6 +15,15 @@ import com.lexiread.data.local.entity.SavedWordEntity
 import com.lexiread.data.local.entity.TranslationCacheEntity
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * P1-3: lightweight TOC row — Room maps chapterIndex/title columns only,
+ * content is never loaded for the table of contents.
+ */
+data class ChapterTitle(
+    val chapterIndex: Int,
+    val title: String
+)
+
 @Dao
 interface BookDao {
     @Query(
@@ -88,6 +97,13 @@ interface ChapterDao {
 
     @Query("SELECT COUNT(*) FROM book_chapters WHERE bookId = :bookId")
     suspend fun getChapterCount(bookId: String): Int
+
+    /**
+     * P1-3: cheap TOC query — titles only, no content column, so the table of
+     * contents works with lazy loading instead of showing blank placeholders.
+     */
+    @Query("SELECT chapterIndex, title FROM book_chapters WHERE bookId = :bookId ORDER BY chapterIndex ASC")
+    suspend fun getChapterTitles(bookId: String): List<ChapterTitle>
 
     @Query("SELECT * FROM book_chapters WHERE bookId = :bookId AND chapterIndex = :chapterIndex LIMIT 1")
     suspend fun getChapter(bookId: String, chapterIndex: Int): ChapterEntity?

@@ -1,7 +1,6 @@
 package com.lexiread.domain.usecase
 
 import com.lexiread.domain.model.Book
-import com.lexiread.domain.model.BookFormat
 import com.lexiread.domain.model.CatalogBook
 import com.lexiread.domain.model.CatalogPage
 import com.lexiread.domain.model.Category
@@ -43,15 +42,6 @@ class GetBooksByCategoryUseCase(private val repository: BooksRepository) {
     ): CatalogPage = repository.getByCategory(category, page, sources)
 
     fun categories(): List<Category> = repository.categories()
-}
-
-class GetBookDetailsUseCase(private val repository: BooksRepository) {
-    suspend operator fun invoke(bookId: String): CatalogBook? = repository.getBookDetails(bookId)
-}
-
-class ResolveReadableFormatUseCase(private val repository: BooksRepository) {
-    suspend operator fun invoke(book: CatalogBook): BookFormat? =
-        repository.resolveReadableFormat(book)
 }
 
 /**

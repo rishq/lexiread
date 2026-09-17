@@ -46,9 +46,17 @@ object CatalogDeduper {
         add("ta:${normalizeTitle(book.title)}|${normalizeAuthor(book.authorLine)}")
     }
 
+    /**
+     * Normalizes on Unicode letters and digits, not `[a-z0-9]`.
+     *
+     * An ASCII-only class erases every non-Latin title: "Война и мир" and
+     * "Анна Каренина" both collapse to the empty string, so every Cyrillic,
+     * Greek, CJK or Arabic record produces the identical `ta:|` key and
+     * [dedupe] merges them all into a single card.
+     */
     fun normalizeTitle(title: String): String =
         title.lowercase()
-            .replace(Regex("[^a-z0-9]+"), " ")
+            .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
             .trim()
 
     /**
@@ -59,7 +67,7 @@ object CatalogDeduper {
      */
     fun normalizeAuthor(author: String): String =
         author.lowercase()
-            .replace(Regex("[^a-z0-9 ]+"), "")
+            .replace(Regex("[^\\p{L}\\p{N} ]+"), "")
             .split(Regex("\\s+"))
             .filter { it.length > 1 && it !in HONORIFICS }
             .sorted()
@@ -120,6 +128,9 @@ object CatalogDeduper {
      */
     private val HONORIFICS = setOf(
         "sir", "dame", "lord", "lady", "dr", "mr", "mrs", "ms", "prof",
-        "rev", "hon", "capt", "col", "lt", "gen", "adm"
+        "rev", "hon", "capt", "col", "lt", "gen", "adm",
+        // Non-Latin honorifics: they would otherwise survive as name tokens and
+        // split one author into two different keys.
+        "г-н", "г-жа", "проф", "докт", "сэр", "леди"
     )
 }

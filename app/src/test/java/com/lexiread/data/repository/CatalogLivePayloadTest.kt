@@ -75,6 +75,7 @@ class CatalogLivePayloadTest {
         override fun getBookmarks(bookId: String): Flow<List<Bookmark>> = emptyFlow()
         override suspend fun addBookmark(bookmark: Bookmark) = Unit
         override suspend fun deleteBookmark(id: Int) = Unit
+        override suspend fun initializePreloadedBooks() = Unit
     }
 
     private class NoopSource(override val idPrefix: String) : BookSource {

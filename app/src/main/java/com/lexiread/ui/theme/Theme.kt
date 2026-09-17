@@ -88,12 +88,3 @@ fun LexiReadTheme(
     )
 }
 
-@Composable
-fun MyApplicationTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
-    content: @Composable () -> Unit
-) {
-    LexiReadTheme(darkTheme = darkTheme, content = content)
-}
-

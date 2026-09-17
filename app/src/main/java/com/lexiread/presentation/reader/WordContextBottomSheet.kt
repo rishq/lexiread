@@ -1,6 +1,5 @@
 ﻿package com.lexiread.presentation.reader
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,11 +42,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.lexiread.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -166,8 +167,15 @@ fun WordContextBottomSheet(
                     if (selectedState.isLoadingTrans) {
                         CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                     } else {
+                        // N-3: the "cloud lookups are off" hint comes from
+                        // strings.xml so it can be localized, like the rest of
+                        // the consent UI.
                         val translationText = selectedState.translation?.translatedText
-                            ?: selectedState.translationError
+                            ?: when {
+                                selectedState.translationBlockedOffline ->
+                                    stringResource(R.string.cloud_lookups_off_hint)
+                                else -> selectedState.translationError
+                            }
                             ?: "No translation available"
                         Text(
                             text = translationText,

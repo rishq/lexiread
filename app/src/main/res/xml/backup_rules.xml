@@ -1,6 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pre-Android-12 half of the backup policy (see data_extraction_rules.xml for the
+  Android 12+ half).
+
+  N-6 (audit 2026-09-17) claimed both files were dead because
+  `android:allowBackup="false"` disables backup entirely. They are not: from
+  Android 12 on, `allowBackup` no longer covers device-to-device transfers, so
+  the 12+ rules are what actually keeps the library, the reading progress and the
+  DataStore preferences off a new device. Lint also requires both attributes for
+  a minSdk of 24, so removing them re-introduces a warning and, worse, a silent
+  privacy regression on modern devices.
+
+  Nothing is backed up or transferred: the database holds imported book text,
+  `sharedpref` holds encrypted provider keys and `file` holds downloaded books.
+-->
 <full-backup-content>
-    <exclude domain="database" path="lexiread_db" />
+    <exclude domain="database" path="." />
     <exclude domain="sharedpref" path="." />
     <exclude domain="file" path="." />
 </full-backup-content>

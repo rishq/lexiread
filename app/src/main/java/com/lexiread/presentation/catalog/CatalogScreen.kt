@@ -412,6 +412,9 @@ private fun CatalogBookCard(
  */
 @Composable
 private fun CoverImage(url: String?, title: String) {
+    // Cover URLs come from remote responses and scraped markup, so only fetch
+    // them from a host we actually trust.
+    val safeUrl = remember(url) { com.lexiread.core.util.CoverUrls.sanitize(url) }
     Box(
         modifier = Modifier
             .width(64.dp)
@@ -420,9 +423,9 @@ private fun CoverImage(url: String?, title: String) {
             .background(MaterialTheme.colorScheme.primaryContainer),
         contentAlignment = Alignment.Center
     ) {
-        if (!url.isNullOrBlank()) {
+        if (safeUrl != null) {
             AsyncImage(
-                model = url,
+                model = safeUrl,
                 contentDescription = title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()

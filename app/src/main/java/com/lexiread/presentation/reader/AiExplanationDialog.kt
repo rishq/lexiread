@@ -1,6 +1,5 @@
 package com.lexiread.presentation.reader
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -29,12 +27,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.lexiread.domain.model.AiExplanation
+import com.lexiread.R
 
 @Composable
 fun AiExplanationDialog(
@@ -211,6 +209,9 @@ fun AiExplanationDialog(
                         // No explanation: show a clear error instead of an empty window.
                         val rawError = selectedState.aiError ?: "Unknown error."
                         val message = when {
+                            // N-3: consent is off — the hint is a resource, not a
+                            // literal baked into the ViewModel.
+                            selectedState.aiBlockedOffline -> stringResource(R.string.cloud_ai_off_hint)
                             rawError.contains("API key", ignoreCase = true) ||
                                 rawError.contains("apikey", ignoreCase = true) ->
                                 "This operation requires an AI provider API key. Please add your API key in Settings and try again."

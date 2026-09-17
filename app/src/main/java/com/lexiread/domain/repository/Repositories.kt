@@ -30,6 +30,8 @@ interface BookRepository {
     fun getBookmarks(bookId: String): Flow<List<Bookmark>>
     suspend fun addBookmark(bookmark: Bookmark)
     suspend fun deleteBookmark(id: Int)
+    /** P2-7: seed preloaded books; part of the contract so DI never downcasts. */
+    suspend fun initializePreloadedBooks()
 }
 
 interface DictionaryRepository {

@@ -15,7 +15,15 @@ class PdfParser : BookParser {
 
     companion object {
         private const val TAG = "PdfParser"
-        private const val MAX_PDF_BYTES = 80 * 1024 * 1024L // 80 MB cap
+        // P1-1: 80 MB + ~2x UTF-16 String copy + StringBuilder reliably OOMs on
+        // 128-256 MB heap devices. 25 MB keeps peak (file bytes + decoded text
+        // capped below) within budget; larger files get a friendly placeholder.
+        private const val MAX_PDF_BYTES = 25 * 1024 * 1024L // 25 MB cap
+        /** Cap on a single inflated stream. The file cap cannot cover this: a
+         * few hundred KB of compressed data can inflate to gigabytes. */
+        private const val MAX_INFLATED_BYTES = 32 * 1024 * 1024L // 32 MB
+        /** P1-1: cap on total extracted text so the StringBuilder itself cannot OOM. */
+        private const val MAX_EXTRACTED_TEXT_CHARS = 5 * 1024 * 1024 // ~10 MB as UTF-16
     }
 
     override fun canParse(format: String, file: File): Boolean {
@@ -82,7 +90,9 @@ class PdfParser : BookParser {
 
         try {
             val headerText = file.inputStream().use { stream ->
-                val buffer = ByteArray(minOf(file.length().toInt(), 65536))
+                // Clamp as Long before narrowing: file.length().toInt() overflows
+                // for files over 2 GB and produces a negative array size.
+                val buffer = ByteArray(minOf(file.length(), 65536L).toInt())
                 val read = stream.read(buffer)
                 if (read > 0) String(buffer, 0, read, Charsets.ISO_8859_1) else ""
             }
@@ -164,6 +174,9 @@ class PdfParser : BookParser {
 
             val length = contentEnd - contentStart
             if (length > 0) {
+                // P1-1: stop early once the output cap is hit — no point
+                // inflating/parsing further on a low-memory device.
+                if (result.length >= MAX_EXTRACTED_TEXT_CHARS) break
                 val decompressed = tryDecompressFlate(pdfBytes, contentStart, length)
                 val textChunk = if (decompressed != null) {
                     String(decompressed, Charsets.ISO_8859_1)
@@ -173,7 +186,13 @@ class PdfParser : BookParser {
 
                 val extractedFromChunk = parsePdfTextOperators(textChunk)
                 if (extractedFromChunk.isNotBlank()) {
-                    result.append(extractedFromChunk).append("\n\n")
+                    val remaining = MAX_EXTRACTED_TEXT_CHARS - result.length
+                    if (extractedFromChunk.length + 2 <= remaining) {
+                        result.append(extractedFromChunk).append("\n\n")
+                    } else {
+                        result.append(extractedFromChunk.take(remaining.coerceAtLeast(0)))
+                        break
+                    }
                 }
             }
 
@@ -189,12 +208,14 @@ class PdfParser : BookParser {
             inflater.setInput(bytes, offset, length)
             val buffer = ByteArray(4096)
             val outputStream = ByteArrayOutputStream()
-            while (!inflater.finished()) {
+            var produced = 0
+            while (!inflater.finished() && produced < MAX_INFLATED_BYTES) {
                 val count = inflater.inflate(buffer)
-                if (count == 0) {
-                    if (inflater.needsInput() || inflater.needsDictionary()) break
-                }
+                // Zero progress with no input or dictionary requirement means the
+                // stream is stuck; looping again would spin forever on IO.
+                if (count == 0) break
                 outputStream.write(buffer, 0, count)
+                produced += count
             }
             return if (outputStream.size() > 0) outputStream.toByteArray() else null
         } catch (e: Exception) {

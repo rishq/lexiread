@@ -4,13 +4,16 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.lexiread.core.preferences.UserPreferencesManager
 import com.lexiread.core.reader.BookImporter
-import com.lexiread.core.reader.PaginationEngine
+import com.lexiread.core.reader.Paginator
 import com.lexiread.core.util.TTSHelper
 import com.lexiread.domain.model.AiExplanation
 import com.lexiread.domain.model.Book
+import com.lexiread.domain.model.BookChapter
 import com.lexiread.domain.model.Bookmark
 import com.lexiread.domain.model.DictionaryEntry
 import com.lexiread.domain.model.LearningStatus
+import com.lexiread.domain.model.ReaderPage
+import com.lexiread.domain.model.ReaderSettings
 import com.lexiread.domain.model.ReadingProgress
 import com.lexiread.domain.model.SavedWord
 import com.lexiread.domain.model.TranslationResult
@@ -19,6 +22,7 @@ import com.lexiread.domain.repository.BookRepository
 import com.lexiread.domain.repository.DictionaryRepository
 import com.lexiread.domain.repository.TranslationRepository
 import com.lexiread.domain.repository.VocabularyRepository
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -29,6 +33,8 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -43,10 +49,75 @@ class ReaderViewModelTest {
 
     private lateinit var progressFlow: MutableStateFlow<ReadingProgress?>
     private lateinit var viewModel: ReaderViewModel
+    private val paginator = FakePaginator()
+
+    /** `book` below starts at chapter index 1 (see the saved progress in setUp). */
+    private companion object {
+        const val CHAPTER_1 = 1
+        const val CHAPTER_2 = 2
+    }
 
     private val chapterText = ("lorem ipsum dolor sit amet consectetur ".repeat(200)).trim()
 
-    // NOTE: chapter markers must be followed by a blank line вЂ” cleanParagraphs
+    /**
+     * Deterministic stand-in for [com.lexiread.core.reader.PaginationEngine].
+     *
+     * The real engine is useless for these assertions under Robolectric: text
+     * metrics are faked, so every chapter collapses to a single page and the
+     * page list does not change with the viewport. A test that compares page
+     * lists across a resize could therefore never fail — which is exactly how
+     * the previous version of this suite ended up both red (one test) and
+     * vacuous (its neighbour). Here the page count is a pure function of the
+     * viewport height, so "was this chapter repaginated at the new size?" is a
+     * question the test can actually answer.
+     */
+    private class FakePaginator : Paginator {
+
+        data class Call(val chapterIndex: Int, val widthPx: Int, val heightPx: Int)
+
+        private val lock = Any()
+        private val recorded = mutableListOf<Call>()
+
+        /** Chapter index whose pagination blocks until the deferred completes. */
+        @Volatile
+        var gate: Pair<Int, CompletableDeferred<Unit>>? = null
+
+        val calls: List<Call> get() = synchronized(lock) { recorded.toList() }
+
+        fun callsFor(chapterIndex: Int): List<Call> =
+            calls.filter { it.chapterIndex == chapterIndex }
+
+        /** Pages the engine would produce for this chapter at this viewport. */
+        fun pagesFor(chapterIndex: Int, widthPx: Int, heightPx: Int): List<ReaderPage> {
+            val count = pageCount(heightPx)
+            return (0 until count).map { pageIndex ->
+                ReaderPage(
+                    chapterIndex = chapterIndex,
+                    pageIndex = pageIndex,
+                    totalPagesInChapter = count,
+                    text = "chapter-$chapterIndex-${widthPx}x$heightPx-page-$pageIndex",
+                    chapterTitle = "Chapter ${chapterIndex + 1}"
+                )
+            }
+        }
+
+        override suspend fun paginateChapter(
+            chapter: BookChapter,
+            settings: ReaderSettings,
+            availableWidthPx: Int,
+            availableHeightPx: Int
+        ): List<ReaderPage> {
+            synchronized(lock) {
+                recorded += Call(chapter.index, availableWidthPx, availableHeightPx)
+            }
+            gate?.takeIf { it.first == chapter.index }?.second?.await()
+            return pagesFor(chapter.index, availableWidthPx, availableHeightPx)
+        }
+
+        private fun pageCount(heightPx: Int) = if (heightPx >= 900) 5 else 3
+    }
+
+    // NOTE: chapter markers must be followed by a blank line — cleanParagraphs
     // glues the marker line together with the adjacent paragraph otherwise.
     private val book = Book(
         id = "b1",
@@ -77,6 +148,7 @@ class ReaderViewModelTest {
         override fun getBookmarks(bookId: String) = flowOf(emptyList<Bookmark>())
         override suspend fun addBookmark(bookmark: Bookmark) {}
         override suspend fun deleteBookmark(id: Int) {}
+        override suspend fun initializePreloadedBooks() = Unit
     }
 
     private class FakeDictRepo : DictionaryRepository {
@@ -86,7 +158,7 @@ class ReaderViewModelTest {
 
     private class FakeTransRepo : TranslationRepository {
         override suspend fun translateText(text: String, targetLang: String): Result<TranslationResult> =
-            Result.success(TranslationResult(sourceText = text, translatedText = "РїРµСЂРµРІРѕРґ"))
+            Result.success(TranslationResult(sourceText = text, translatedText = "перевод"))
     }
 
     private class FakeVocabRepo : VocabularyRepository {
@@ -135,7 +207,7 @@ class ReaderViewModelTest {
             preferencesManager = UserPreferencesManager(context),
             ttsHelper = TTSHelper(context),
             bookImporter = BookImporter(context),
-            paginationEngine = PaginationEngine(context)
+            paginationEngine = paginator
         )
     }
 
@@ -189,6 +261,70 @@ class ReaderViewModelTest {
     @Test
     fun `book finishes loading`() {
         awaitUntil { !viewModel.uiState.value.isLoadingBook }
-        assertTrue(viewModel.uiState.value.book != null || viewModel.uiState.value.errorMessage != null)
+        // The old assertion (`book != null || errorMessage != null`) was true in
+        // every case, including the failure one it was meant to exclude.
+        assertEquals("Test Book", viewModel.uiState.value.book?.title)
+        assertNull(viewModel.uiState.value.errorMessage)
+    }
+
+    @Test
+    fun `resize invalidates cached pagination and repaginates current chapter`() {
+        viewModel.onContainerDimensionsChanged(360, 600)
+        awaitUntil { viewModel.uiState.value.pagesForCurrentChapter.isNotEmpty() }
+        awaitUntil { !viewModel.uiState.value.isPaginating }
+
+        val before = viewModel.uiState.value.pagesForCurrentChapter
+        assertEquals(
+            "the first pagination must use the reported viewport",
+            paginator.pagesFor(CHAPTER_1, 360, 600),
+            before
+        )
+
+        viewModel.onContainerDimensionsChanged(500, 900)
+        awaitUntil {
+            !viewModel.uiState.value.isPaginating &&
+                viewModel.uiState.value.pagesForCurrentChapter != before
+        }
+
+        val fresh = viewModel.uiState.value.pagesForCurrentChapter
+        assertEquals(
+            "the chapter must be re-paginated for the new viewport, not reused from the cache",
+            paginator.pagesFor(CHAPTER_1, 500, 900),
+            fresh
+        )
+        assertEquals(
+            "the cache must be dropped, so the engine is asked again",
+            FakePaginator.Call(CHAPTER_1, 500, 900),
+            paginator.callsFor(CHAPTER_1).last()
+        )
+    }
+
+    @Test
+    fun `resized chapter is not served from stale prefetch cache`() {
+        viewModel.onContainerDimensionsChanged(360, 600)
+        awaitUntil { viewModel.uiState.value.pagesForCurrentChapter.isNotEmpty() }
+        // Chapter 2 is prefetched for the original viewport...
+        awaitUntil { paginator.callsFor(CHAPTER_2).any { it.heightPx == 600 } }
+        val stale = paginator.pagesFor(CHAPTER_2, 360, 600)
+
+        // ...then the viewport changes. Hold the chapter-2 pagination open so the
+        // resize lands *during* a prefetch: that is the window in which a stale
+        // page list could be written into the cache and served afterwards.
+        val release = CompletableDeferred<Unit>()
+        paginator.gate = CHAPTER_2 to release
+
+        viewModel.onContainerDimensionsChanged(500, 900)
+        awaitUntil { paginator.callsFor(CHAPTER_2).any { it.heightPx == 900 } }
+        viewModel.goToChapter(CHAPTER_2)
+        release.complete(Unit)
+
+        awaitUntil {
+            viewModel.uiState.value.currentChapterIndex == CHAPTER_2 &&
+                !viewModel.uiState.value.isPaginating
+        }
+
+        val fresh = viewModel.uiState.value.pagesForCurrentChapter
+        assertNotEquals("stale prefetched pages were served after a resize", stale, fresh)
+        assertEquals(paginator.pagesFor(CHAPTER_2, 500, 900), fresh)
     }
 }

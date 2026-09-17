@@ -2,7 +2,6 @@
 
 import android.content.Context
 import android.graphics.Typeface
-import android.os.Build
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
@@ -14,14 +13,32 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
-class PaginationEngine(private val context: Context) {
+/**
+ * Pagination contract the reader depends on.
+ *
+ * [ReaderViewModel] talks to this instead of the concrete engine so tests can
+ * supply a deterministic paginator. That matters more than usual here:
+ * Robolectric fakes text metrics, so the real engine collapses any chapter to a
+ * single page no matter the viewport — a test asserting "a resize repaginated"
+ * could never fail, and therefore never proved anything.
+ */
+interface Paginator {
+    suspend fun paginateChapter(
+        chapter: BookChapter,
+        settings: ReaderSettings,
+        availableWidthPx: Int,
+        availableHeightPx: Int
+    ): List<ReaderPage>
+}
+
+class PaginationEngine(private val context: Context) : Paginator {
 
     private companion object {
         // A single page rarely exceeds a few thousand characters; 16k is a safe bound.
         const val MEASURE_WINDOW = 16_000
     }
 
-    suspend fun paginateChapter(
+    override suspend fun paginateChapter(
         chapter: BookChapter,
         settings: ReaderSettings,
         availableWidthPx: Int,
@@ -175,17 +192,12 @@ class PaginationEngine(private val context: Context) {
         width: Int,
         spacingMult: Float
     ): StaticLayout {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
-                .setAlignment(Layout.Alignment.ALIGN_NORMAL)
-                .setLineSpacing(0f, spacingMult)
-                .setIncludePad(false)
-                .build()
-        } else {
-            @Suppress("DEPRECATION")
-            StaticLayout(
-                text, paint, width, Layout.Alignment.ALIGN_NORMAL, spacingMult, 0f, false
-            )
-        }
+        // minSdk is 24, so the builder API (23+) is always available — the old
+        // `SDK_INT >= M` branch and its deprecated constructor were dead code.
+        return StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
+            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+            .setLineSpacing(0f, spacingMult)
+            .setIncludePad(false)
+            .build()
     }
 }

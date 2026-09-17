@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- P0-2: 432x432 artwork lives in drawable-nodpi (was a 379 KB densityless JPEG). -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item
         android:width="72dp"
         android:height="72dp"
-        android:drawable="@drawable/lexiread_app_icon_1786623886711"
+        android:drawable="@drawable/lexiread_fg_432"
         android:gravity="center" />
 </layer-list>

@@ -45,15 +45,74 @@ object UrlValidator {
         return url
     }
 
+    private val extraImageHosts: MutableSet<String> =
+        java.util.Collections.synchronizedSet(mutableSetOf())
+
+    /**
+     * Registers an additional host that covers may be loaded from.
+     *
+     * Used by configurable sources whose host is not known here, so a source can
+     * opt its own host in explicitly instead of the allow-list being widened for
+     * everyone.
+     *
+     * P2-2: prefer passing [extraHosts] to [requireTrustedImageUrl] instead of
+     * mutating global state. This global registry is kept only for compat and
+     * must be reset between tests via [clearExtraImageHosts] to avoid leaks.
+     */
+    fun allowImageHost(host: String) {
+        if (host.isNotBlank()) extraImageHosts.add(host.lowercase().trim())
+    }
+
+    /** P2-2: test hook — clears hosts registered via [allowImageHost]. */
+    fun clearExtraImageHosts() {
+        extraImageHosts.clear()
+    }
+
     /** Validates a cover URL. Images are not executable, so the allow-list is broader. */
     fun requireTrustedImageUrl(url: String, extraHosts: Set<String> = emptySet()): String {
-        val allowed = TRUSTED_IMAGE_HOSTS + extraHosts
+        val allowed = TRUSTED_IMAGE_HOSTS + extraImageHosts + extraHosts
         val (scheme, host) = parse(url)
         if (scheme != "https") throw SecurityException("Image rejected: only HTTPS is allowed ($url).")
         if (!isTrustedHost(host, allowed)) {
             throw SecurityException("Image rejected: host '$host' is not in the allowed list.")
         }
         return url
+    }
+
+    /**
+     * Validates a redirect target before it is followed.
+     *
+     * OkHttp follows redirects automatically, so validating only the URL a
+     * caller passes in is not enough: an open redirect on an allow-listed host
+     * would let the app fetch from anywhere and store the response as a book.
+     * Every hop has to be re-validated.
+     *
+     * A redirect that stays on the host the request already went to is always
+     * allowed — the caller already trusted that host.
+     */
+    fun requireTrustedRedirect(fromUrl: String, toUrl: String, extraHosts: Set<String> = emptySet()): String {
+        val allowed = TRUSTED_DOWNLOAD_HOSTS + TRUSTED_IMAGE_HOSTS + extraHosts
+        val (scheme, host) = parse(toUrl)
+        if (scheme != "https") throw SecurityException("Redirect rejected: only HTTPS is allowed ($toUrl).")
+        val fromHost = parse(fromUrl).second
+        if (host != null && host == fromHost) return toUrl
+        if (!isTrustedHost(host, allowed)) {
+            throw SecurityException("Redirect rejected: host '$host' is not in the allowed list.")
+        }
+        return toUrl
+    }
+
+    /**
+     * P2-1: redirect policy for API clients (OpenAI/Gemini/...). Same-host
+     * redirects are followed; cross-host redirects are rejected without
+     * consulting the book-download allow-list.
+     */
+    fun requireSameHostRedirect(fromUrl: String, toUrl: String): String {
+        val (scheme, host) = parse(toUrl)
+        if (scheme != "https") throw SecurityException("Redirect rejected: only HTTPS is allowed ($toUrl).")
+        val fromHost = parse(fromUrl).second
+        if (host != null && host == fromHost) return toUrl
+        throw SecurityException("Redirect rejected: cross-host redirect '$fromHost' -> '$host' is not allowed for API clients.")
     }
 
     fun isTrustedHost(host: String?, allowed: Set<String>): Boolean {

@@ -75,10 +75,17 @@ object TextEncoding {
         return out.toByteArray()
     }
 
-    /** Decodes a complete byte array using the detected charset. */
+    /**
+     * Decodes a complete byte array using the detected charset.
+     *
+     * The BOM is stripped here rather than at each call site: only
+     * `ChapterParser.splitIntoChapters` used to remove it, so chapter titles and
+     * content coming from the EPUB and HTML parsers kept a leading U+FEFF that is
+     * invisible on screen but breaks prefix matching and text measurement.
+     */
     fun decode(bytes: ByteArray): String {
         if (bytes.isEmpty()) return ""
-        return String(bytes, detectCharset(bytes))
+        return String(bytes, detectCharset(bytes)).removePrefix("\uFEFF")
     }
 
     /**

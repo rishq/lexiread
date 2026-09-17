@@ -1,15 +1,16 @@
 package com.lexiread.data.source
 
 import android.content.Context
-import android.util.Log
 import com.lexiread.core.util.UrlValidator
 import com.lexiread.data.remote.api.PgaApi
 import com.lexiread.domain.model.Book
 import com.lexiread.domain.model.FormatKind
 import com.lexiread.domain.repository.BookSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import okhttp3.ResponseBody
 import java.io.File
 
 /**
@@ -32,8 +33,16 @@ class PgaBookSource(
 
     private val booksDir = File(context.applicationContext.filesDir, DOWNLOAD_DIR).apply { mkdirs() }
 
-    /** Parsed index, kept for the session so repeated searches hit the network once. */
+    /**
+     * Parsed index, kept for the session so repeated searches hit the network once.
+     *
+     * Volatile plus a mutex: sources are gathered concurrently on Dispatchers.IO,
+     * so two threads could otherwise both download and parse the ~1.5 MB index,
+     * and a plain write is not guaranteed to be visible to the other thread.
+     */
+    @Volatile
     private var cachedEntries: List<PgaEntry>? = null
+    private val entriesLock = Mutex()
 
     override suspend fun search(query: String): List<Book> = withContext(Dispatchers.IO) {
         val entries = entries()
@@ -55,11 +64,15 @@ class PgaBookSource(
         val txtUrl = "https://gutenberg.net.au/ebooks$year/$number.txt"
         val htmlUrl = "https://gutenberg.net.au/ebooks$year/${number}h.html"
 
-        val raw = runCatching {
+        val raw = try {
             // Prefer the clean plain-text edition; fall back to the HTML page
             // (recent additions only ship HTML) if no `.txt` exists.
             pgaApi.fetch(UrlValidator.requireTrustedDownloadUrl(txtUrl)).use { it.string() }
-        }.getOrElse {
+        } catch (e: CancellationException) {
+            // runCatching would swallow this and fire a second request from an
+            // already-cancelled coroutine.
+            throw e
+        } catch (e: Exception) {
             pgaApi.fetch(UrlValidator.requireTrustedDownloadUrl(htmlUrl)).use { it.string() }
                 .let(::stripHtml)
         }
@@ -73,8 +86,12 @@ class PgaBookSource(
 
     private suspend fun entries(): List<PgaEntry> {
         cachedEntries?.let { return it }
-        val text = pgaApi.fetch(INDEX_URL).string()
-        return parseIndex(text).also { cachedEntries = it }
+        return entriesLock.withLock {
+            cachedEntries?.let { return@withLock it }
+            pgaApi.fetch(INDEX_URL).use { it.string() }
+                .let(::parseIndex)
+                .also { cachedEntries = it }
+        }
     }
 
     companion object {

@@ -28,15 +28,19 @@ class UserPreferencesManager(private val context: Context) {
         val OPENAI_API_KEY = stringPreferencesKey("openai_api_key")
         val CLAUDE_API_KEY = stringPreferencesKey("claude_api_key")
         val DEEPSEEK_API_KEY = stringPreferencesKey("deepseek_api_key")
+        // P1-6: explicit consent for cloud word lookups (dictionary, translation, AI).
+        val CLOUD_LOOKUP_ENABLED = androidx.datastore.preferences.core.booleanPreferencesKey("cloud_lookup_enabled")
+        val CLOUD_CONSENT_ASKED = androidx.datastore.preferences.core.booleanPreferencesKey("cloud_consent_asked")
     }
 
+    // P1-5: keys are stored encrypted (AES-GCM, Keystore) and decrypted on read.
     val geminiApiKey: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[Keys.GEMINI_API_KEY].orEmpty()
+        ApiKeyCrypto.decrypt(prefs[Keys.GEMINI_API_KEY].orEmpty())
     }
 
     suspend fun updateGeminiApiKey(key: String) {
         context.dataStore.edit { prefs ->
-            prefs[Keys.GEMINI_API_KEY] = key.trim()
+            prefs[Keys.GEMINI_API_KEY] = ApiKeyCrypto.encrypt(key.trim())
         }
     }
 
@@ -51,32 +55,50 @@ class UserPreferencesManager(private val context: Context) {
     }
 
     val openAiApiKey: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[Keys.OPENAI_API_KEY].orEmpty()
+        ApiKeyCrypto.decrypt(prefs[Keys.OPENAI_API_KEY].orEmpty())
     }
 
     suspend fun updateOpenAiApiKey(key: String) {
         context.dataStore.edit { prefs ->
-            prefs[Keys.OPENAI_API_KEY] = key.trim()
+            prefs[Keys.OPENAI_API_KEY] = ApiKeyCrypto.encrypt(key.trim())
         }
     }
 
     val claudeApiKey: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[Keys.CLAUDE_API_KEY].orEmpty()
+        ApiKeyCrypto.decrypt(prefs[Keys.CLAUDE_API_KEY].orEmpty())
     }
 
     suspend fun updateClaudeApiKey(key: String) {
         context.dataStore.edit { prefs ->
-            prefs[Keys.CLAUDE_API_KEY] = key.trim()
+            prefs[Keys.CLAUDE_API_KEY] = ApiKeyCrypto.encrypt(key.trim())
         }
     }
 
     val deepSeekApiKey: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[Keys.DEEPSEEK_API_KEY].orEmpty()
+        ApiKeyCrypto.decrypt(prefs[Keys.DEEPSEEK_API_KEY].orEmpty())
     }
 
     suspend fun updateDeepSeekApiKey(key: String) {
         context.dataStore.edit { prefs ->
-            prefs[Keys.DEEPSEEK_API_KEY] = key.trim()
+            prefs[Keys.DEEPSEEK_API_KEY] = ApiKeyCrypto.encrypt(key.trim())
+        }
+    }
+
+    // P1-6: cloud lookup consent — recipients are disclosed in the consent
+    // dialog and Settings (dictionaryapi.dev, mymemory, Gemini/OpenAI/Claude/
+    // DeepSeek). Default OFF: no user text leaves the device until opt-in.
+    val cloudLookupEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.CLOUD_LOOKUP_ENABLED] ?: false
+    }
+
+    val cloudConsentAsked: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.CLOUD_CONSENT_ASKED] ?: false
+    }
+
+    suspend fun setCloudLookupEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.CLOUD_LOOKUP_ENABLED] = enabled
+            prefs[Keys.CLOUD_CONSENT_ASKED] = true
         }
     }
 

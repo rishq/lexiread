@@ -42,13 +42,39 @@ android {
   }
 
   // Release signing is optional for local builds: if the upload keystore or
-  // its passwords are missing (e.g. fresh checkout without secrets), fall
-  // back to the debug keystore so assembleRelease still works. CI provides
+  // its passwords are missing (e.g. fresh checkout without secrets), fall back
+  // to the debug keystore so assembleRelease still works. CI provides
   // KEYSTORE_PATH/STORE_PASSWORD/KEY_PASSWORD and gets a real signed build.
   val releaseKeystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
   val hasReleaseKeystore = file(releaseKeystorePath).exists()
     && !System.getenv("STORE_PASSWORD").isNullOrBlank()
     && !System.getenv("KEY_PASSWORD").isNullOrBlank()
+
+  // N-2 (audit 2026-09-17): the debug fallback above is a *local* convenience,
+  // but nothing stopped it from applying in CI. A missing
+  // RELEASE_KEYSTORE_BASE64 / STORE_PASSWORD / KEY_PASSWORD therefore produced a
+  // *successful*, debug-signed "release" that the workflow happily published to
+  // the GitHub Release — precisely the outcome P2-10 was meant to prevent, only
+  // harder to notice (Play rejects a bundle signed with the wrong key).
+  //
+  // So: in CI, refuse to build a release artifact without the real key. The check
+  // is driven by the requested task names, which keeps test/debug jobs working in
+  // CI without upload secrets (they never ask for a release variant).
+  // ALLOW_DEBUG_SIGNING=true is the explicit opt-out for a debug-signed release.
+  val isCi = !System.getenv("CI").isNullOrBlank()
+  val debugSigningAllowed = System.getenv("ALLOW_DEBUG_SIGNING").equals("true", ignoreCase = true)
+  val releaseRequested = gradle.startParameter.taskNames.any { requested ->
+    val taskName = requested.substringAfterLast(':')
+    taskName.contains("Release") || taskName in setOf("assemble", "build", "bundle")
+  }
+  if (isCi && releaseRequested && !hasReleaseKeystore && !debugSigningAllowed) {
+    throw GradleException(
+      "Refusing to build a release artifact: release signing is not configured. " +
+        "Expected a keystore at $releaseKeystorePath plus STORE_PASSWORD and KEY_PASSWORD " +
+        "(CI: RELEASE_KEYSTORE_BASE64). Set ALLOW_DEBUG_SIGNING=true to explicitly " +
+        "publish a debug-signed build instead."
+    )
+  }
 
   signingConfigs {
     create("release") {
@@ -74,7 +100,11 @@ android {
       signingConfig = if (hasReleaseKeystore) {
         signingConfigs.getByName("release")
       } else {
-        logger.warn("Release keystore not found at $releaseKeystorePath or passwords missing - signing release with debug key for local build.")
+        logger.warn(
+          "Release keystore not found at $releaseKeystorePath or passwords missing - " +
+            "signing the release with the debug key. This is a LOCAL-ONLY fallback: in CI " +
+            "(CI env set) the build fails instead unless ALLOW_DEBUG_SIGNING=true."
+        )
         signingConfigs.getByName("debugConfig")
       }
     }

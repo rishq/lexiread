@@ -28,7 +28,6 @@ import com.lexiread.domain.repository.BooksRepository
 import com.lexiread.domain.repository.DictionaryRepository
 import com.lexiread.domain.repository.TranslationRepository
 import com.lexiread.domain.repository.VocabularyRepository
-import com.lexiread.domain.usecase.GetBookDetailsUseCase
 import com.lexiread.domain.usecase.GetBooksByCategoryUseCase
 import com.lexiread.domain.usecase.GetPopularBooksUseCase
 import com.lexiread.domain.usecase.OpenBookForReadingUseCase
@@ -92,6 +91,7 @@ class AppContainer(private val context: Context) {
 
     val bookRepository: BookRepository by lazy {
         BookRepositoryImpl(
+            database = database,
             bookDao = database.bookDao(),
             chapterDao = database.chapterDao(),
             readingProgressDao = database.readingProgressDao(),
@@ -120,31 +120,7 @@ class AppContainer(private val context: Context) {
     val searchBooksUseCase: SearchBooksUseCase by lazy { SearchBooksUseCase(booksRepository) }
     val getPopularBooksUseCase: GetPopularBooksUseCase by lazy { GetPopularBooksUseCase(booksRepository) }
     val getBooksByCategoryUseCase: GetBooksByCategoryUseCase by lazy { GetBooksByCategoryUseCase(booksRepository) }
-    val getBookDetailsUseCase: GetBookDetailsUseCase by lazy { GetBookDetailsUseCase(booksRepository) }
     val openBookForReadingUseCase: OpenBookForReadingUseCase by lazy { OpenBookForReadingUseCase(booksRepository) }
-
-    // Reader & vocabulary use cases
-    val getReadingProgressUseCase: com.lexiread.domain.usecase.GetReadingProgressUseCase by lazy {
-        com.lexiread.domain.usecase.GetReadingProgressUseCase(bookRepository)
-    }
-    val saveReadingProgressUseCase: com.lexiread.domain.usecase.SaveReadingProgressUseCase by lazy {
-        com.lexiread.domain.usecase.SaveReadingProgressUseCase(bookRepository)
-    }
-    val getDueWordsUseCase: com.lexiread.domain.usecase.GetDueWordsUseCase by lazy {
-        com.lexiread.domain.usecase.GetDueWordsUseCase(vocabularyRepository)
-    }
-    val getDueWordCountUseCase: com.lexiread.domain.usecase.GetDueWordCountUseCase by lazy {
-        com.lexiread.domain.usecase.GetDueWordCountUseCase(vocabularyRepository)
-    }
-    val reviewWordUseCase: com.lexiread.domain.usecase.ReviewWordUseCase by lazy {
-        com.lexiread.domain.usecase.ReviewWordUseCase(vocabularyRepository)
-    }
-    val saveWordUseCase: com.lexiread.domain.usecase.SaveWordUseCase by lazy {
-        com.lexiread.domain.usecase.SaveWordUseCase(vocabularyRepository)
-    }
-    val isWordSavedUseCase: com.lexiread.domain.usecase.IsWordSavedUseCase by lazy {
-        com.lexiread.domain.usecase.IsWordSavedUseCase(vocabularyRepository)
-    }
 
     val dictionaryRepository: DictionaryRepository by lazy {
         DictionaryRepositoryImpl(
@@ -205,7 +181,10 @@ class AppContainer(private val context: Context) {
             runCatching { database.catalogCacheDao().deleteExpired(System.currentTimeMillis() - CACHE_TTL_MS) }
         }
         applicationScope.launch {
-            (bookRepository as BookRepositoryImpl).initializePreloadedBooks()
+            // P2-7: contract method — no downcast to impl, no silent swallow:
+            // seed failure is logged so a chapter-less first launch is visible.
+            runCatching { bookRepository.initializePreloadedBooks() }
+                .onFailure { android.util.Log.w("AppContainer", "Preload seed failed", it) }
         }
     }
 

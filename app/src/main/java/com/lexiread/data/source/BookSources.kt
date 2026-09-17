@@ -298,6 +298,9 @@ class StandardEbooksBookSource(
         val body = seApi.searchOpds("${SEARCH_URL}${java.net.URLEncoder.encode(query, "UTF-8")}&page=1&per-page=20")
         val entries = body.use { parseOpdsEntries(it.byteStream()) }
         return entries.map { e ->
+            // P2-6: cache the acquisition link from search so downloadContent()
+            // never has to re-search by (mutable) title and re-match ids.
+            e.epubUrl?.let { acquisitionCache["${idPrefix}_${e.id}"] = it }
             Book(
                 id = "${idPrefix}_${e.id}",
                 title = e.title,
@@ -313,7 +316,14 @@ class StandardEbooksBookSource(
     override fun canDownload(book: Book) = owns(book)
 
     override suspend fun downloadContent(book: Book): Book = withContext(Dispatchers.IO) {
-        // Re-resolve the acquisition link from the feed entry for this id.
+        // P2-6: prefer the cached acquisition URL from search results.
+        val cachedUrl = acquisitionCache[book.id]?.takeIf { it.isNotBlank() }
+        if (cachedUrl != null) {
+            UrlValidator.requireTrustedDownloadUrl(cachedUrl)
+            return@withContext downloadFromUrl(book, cachedUrl)
+        }
+        // Fallback for books created before the cache (e.g. restored library):
+        // re-resolve the acquisition link from the feed entry for this id.
         val shortId = book.id.removePrefix("${idPrefix}_")
         // Standard Ebooks OPDS also offers a per-book page; simplest robust path:
         // search by title again and match the id.
@@ -326,6 +336,12 @@ class StandardEbooksBookSource(
             ?: throw UnsupportedOperationException("No EPUB available for ${book.title}")
 
         UrlValidator.requireTrustedDownloadUrl(epubUrl)
+        acquisitionCache[book.id] = epubUrl
+        downloadFromUrl(book, epubUrl)
+    }
+
+    private suspend fun downloadFromUrl(book: Book, epubUrl: String): Book {
+        val shortId = book.id.removePrefix("${idPrefix}_")
         val safeId = shortId.replace(Regex("[^A-Za-z0-9._-]"), "_").take(96)
         val destFile = File(booksDir, "se_$safeId.epub")
         seApi.downloadFile(epubUrl).use { rb ->
@@ -335,7 +351,7 @@ class StandardEbooksBookSource(
             destFile.delete()
             "Standard Ebooks did not return a valid EPUB file."
         }
-        book.copy(filePath = destFile.absolutePath, format = "EPUB", isSaved = true)
+        return book.copy(filePath = destFile.absolutePath, format = "EPUB", isSaved = true)
     }
 
     companion object {
@@ -343,6 +359,14 @@ class StandardEbooksBookSource(
         private const val SEARCH_URL = "https://standardebooks.org/feeds/atom/all?query="
         private const val HOST = "standardebooks.org"
         private const val MAX_EPUB_BYTES = 40 * 1024 * 1024L
+        // P2-6: acquisition links resolved during search (id -> epubUrl).
+        // Bounded to avoid unbounded growth; evicts oldest on overflow.
+        private const val ACQUISITION_CACHE_MAX = 200
+        private val acquisitionCache: LinkedHashMap<String, String> =
+            object : LinkedHashMap<String, String>(ACQUISITION_CACHE_MAX, 0.75f, true) {
+                override fun removeEldestEntry(eldest: Map.Entry<String, String>): Boolean =
+                    size > ACQUISITION_CACHE_MAX
+            }
 
         data class OpdsEntry(
             val id: String,

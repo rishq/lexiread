@@ -1,5 +1,6 @@
 ﻿package com.lexiread.data.repository
 
+import androidx.room.withTransaction
 import com.lexiread.core.util.runSuspendCatching
 import com.lexiread.data.local.PreloadedBooks
 import com.lexiread.data.local.dao.BookDao
@@ -8,11 +9,9 @@ import com.lexiread.data.local.dao.ChapterDao
 import com.lexiread.data.local.dao.ReadingProgressDao
 import com.lexiread.data.local.entity.BookEntity
 import com.lexiread.data.local.entity.BookmarkEntity
-import com.lexiread.data.local.entity.ChapterEntity
 import com.lexiread.data.local.entity.ReadingProgressEntity
 import com.lexiread.domain.repository.BookSource
 import com.lexiread.domain.model.Book
-import com.lexiread.domain.model.BookChapter
 import com.lexiread.domain.model.Bookmark
 import com.lexiread.domain.model.ReadingProgress
 import com.lexiread.domain.repository.BookRepository
@@ -24,6 +23,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 class BookRepositoryImpl(
+    private val database: com.lexiread.data.local.AppDatabase,
     private val bookDao: BookDao,
     private val chapterDao: ChapterDao,
     private val readingProgressDao: ReadingProgressDao,
@@ -31,23 +31,37 @@ class BookRepositoryImpl(
     private val sources: List<BookSource>
 ) : BookRepository {
 
-    suspend fun initializePreloadedBooks() {
+    override suspend fun initializePreloadedBooks() {
         val existing = bookDao.getBookMetaById("gutenberg_1342")
-        if (existing == null) {
-            bookDao.insertBooks(PreloadedBooks.defaultBooks)
-            PreloadedBooks.preloaded.forEach { preloaded ->
-                chapterDao.insertChapters(preloaded.chapters)
+        // Gate on the chapter table too, not just the book row: inserting books
+        // and chapters as two separate statements meant a process killed in
+        // between left the preloaded books permanently chapter-less, and the book
+        // guard then blocked re-seeding on every later launch.
+        val chaptersMissing = existing != null && chapterDao.getChapterCount("gutenberg_1342") == 0
+        if (existing == null || chaptersMissing) {
+            // One transaction, so the seed is all-or-nothing.
+            database.withTransaction {
+                if (existing == null) {
+                    bookDao.insertBooks(PreloadedBooks.defaultBooks)
+                }
+                if (chaptersMissing || existing == null) {
+                    PreloadedBooks.preloaded.forEach { preloaded ->
+                        chapterDao.insertChapters(preloaded.chapters)
+                    }
+                }
+                if (existing == null) {
+                    readingProgressDao.saveProgress(
+                        ReadingProgressEntity(
+                            bookId = "gutenberg_1342",
+                            scrollOffset = 0,
+                            currentChapter = 1,
+                            totalLength = 1000,
+                            percentCompleted = 5f,
+                            lastReadTimestamp = System.currentTimeMillis()
+                        )
+                    )
+                }
             }
-            readingProgressDao.saveProgress(
-                ReadingProgressEntity(
-                    bookId = "gutenberg_1342",
-                    scrollOffset = 0,
-                    currentChapter = 1,
-                    totalLength = 1000,
-                    percentCompleted = 5f,
-                    lastReadTimestamp = System.currentTimeMillis()
-                )
-            )
         }
     }
 
@@ -96,7 +110,42 @@ class BookRepositoryImpl(
                 }
             }.awaitAll().flatten()
         }
-        return Result.success(results.distinctBy { it.id })
+        return Result.success(dedupeCrossSource(results))
+    }
+
+    /**
+     * P2-5: same cross-source dedup policy as BooksRepositoryImpl
+     * (CatalogDeduper), not just distinctBy id — different sources mint
+     * different ids for the same title/author. Keeps the first readable
+     * edition, merges subjects deterministically.
+     */
+    private fun dedupeCrossSource(books: List<Book>): List<Book> {
+        val seen = LinkedHashMap<String, Book>()
+        for (book in books) {
+            val key = buildString {
+                append(com.lexiread.core.util.CatalogDeduper.normalizeTitle(book.title))
+                append('|')
+                append(com.lexiread.core.util.CatalogDeduper.normalizeAuthor(book.author))
+            }
+            val existing = seen[key]
+            if (existing == null) {
+                seen[key] = book
+            } else {
+                val keep = when {
+                    book.filePath != null && existing.filePath == null -> book
+                    existing.filePath != null && book.filePath == null -> existing
+                    book.description.orEmpty().length > existing.description.orEmpty().length -> book
+                    else -> existing
+                }
+                val other = if (keep === book) existing else book
+                seen[key] = keep.copy(
+                    subjects = (keep.subjects + other.subjects).distinct(),
+                    description = keep.description ?: other.description,
+                    coverUrl = keep.coverUrl ?: other.coverUrl
+                )
+            }
+        }
+        return seen.values.toList()
     }
 
     override suspend fun fetchAndSaveFullBook(book: Book, forceRefresh: Boolean): Result<Book> {

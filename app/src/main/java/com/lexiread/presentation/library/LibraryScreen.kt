@@ -59,7 +59,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.getValue
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
@@ -266,9 +265,12 @@ private fun LibraryBookCard(
                     .clip(RoundedCornerShape(10.dp))
                     .background(MaterialTheme.colorScheme.primaryContainer)
             ) {
-                if (!book.coverUrl.isNullOrBlank()) {
+                val safeCover = remember(book.coverUrl) {
+                    com.lexiread.core.util.CoverUrls.sanitize(book.coverUrl)
+                }
+                if (safeCover != null) {
                     AsyncImage(
-                        model = book.coverUrl,
+                        model = safeCover,
                         contentDescription = book.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()

@@ -13,8 +13,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -23,10 +21,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -36,13 +32,14 @@ import androidx.compose.material.icons.filled.FormatListNumbered
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -69,9 +66,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lexiread.domain.model.ReaderSettings
 import com.lexiread.domain.model.ReaderThemeOption
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReaderScreen(
     viewModel: ReaderViewModel,
@@ -324,7 +322,10 @@ fun ReaderScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Chapter ${uiState.currentChapterIndex + 1} / ${uiState.chapters.size.coerceAtLeast(1)}",
+                                // `chapters` holds only the lazily loaded chapter,
+                                // so it usually has one element while the book has
+                                // dozens; the real total is `totalChapterCount`.
+                                text = "Chapter ${uiState.currentChapterIndex + 1} / ${uiState.totalChapterCount.coerceAtLeast(1)}",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -361,6 +362,14 @@ fun ReaderScreen(
                 )
             }
 
+            // P1-6: first-tap consent — which third parties receive the text.
+            if (uiState.showCloudConsentDialog) {
+                CloudConsentDialog(
+                    onAllow = { viewModel.onCloudConsentResult(true) },
+                    onStayOffline = { viewModel.onCloudConsentResult(false) }
+                )
+            }
+
             // AI Explanation Dialog
             if (uiState.showAiExplanationDialog) {
                 uiState.selectedWordState?.let { selected ->
@@ -374,8 +383,12 @@ fun ReaderScreen(
 
             // Table of Contents Sheet
             if (uiState.showTocDialog) {
+                // P1-3: TOC comes from cheap title-only query (tocTitles), not
+                // from the lazily loaded chapter window (which holds 1 chapter
+                // + blank placeholders). Falls back to chapters for legacy books.
+                val tocChapters = uiState.tocTitles.ifEmpty { uiState.chapters }
                 TableOfContentsSheet(
-                    chapters = uiState.chapters,
+                    chapters = tocChapters,
                     currentChapterIndex = uiState.currentChapterIndex,
                     onChapterSelected = { index -> viewModel.goToChapter(index) },
                     onDismiss = { viewModel.toggleTocDialog(false) }
@@ -412,6 +425,31 @@ fun ReaderScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+internal fun CloudConsentDialog(
+    onAllow: () -> Unit,
+    onStayOffline: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onStayOffline,
+        title = { Text(androidx.compose.ui.res.stringResource(com.lexiread.R.string.cloud_consent_title)) },
+        text = {
+            Text(androidx.compose.ui.res.stringResource(com.lexiread.R.string.cloud_consent_body))
+        },
+        confirmButton = {
+            TextButton(onClick = onAllow) {
+                Text(androidx.compose.ui.res.stringResource(com.lexiread.R.string.cloud_consent_allow))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onStayOffline) {
+                Text(androidx.compose.ui.res.stringResource(com.lexiread.R.string.cloud_consent_offline))
+            }
+        }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun TableOfContentsSheet(
     chapters: List<com.lexiread.domain.model.BookChapter>,
     currentChapterIndex: Int,
@@ -419,6 +457,8 @@ private fun TableOfContentsSheet(
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
+        // P1-3: drop blank lazy placeholders — TOC must show real titles only.
+        val visibleChapters = remember(chapters) { chapters.filter { it.title.isNotBlank() } }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -437,10 +477,13 @@ private fun TableOfContentsSheet(
                     .fillMaxWidth()
                     .height(350.dp)
             ) {
-                itemsIndexed(chapters) { index, chapter ->
-                    val isCurrent = index == currentChapterIndex
+                itemsIndexed(visibleChapters) { _, chapter ->
+                    // P1-3: resolve by chapter.index, not list position — the
+                    // lazy window pads placeholders whose positions != indices.
+                    val chapterIdx = chapter.index
+                    val isCurrent = chapterIdx == currentChapterIndex
                     Card(
-                        onClick = { onChapterSelected(index) },
+                        onClick = { onChapterSelected(chapterIdx) },
                         colors = CardDefaults.cardColors(
                             containerColor = if (isCurrent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                         ),
@@ -551,7 +594,8 @@ private fun ReaderSettingsSheet(
             Slider(
                 value = settings.fontSizeSp,
                 onValueChange = onUpdateFontSize,
-                valueRange = 14f..30f,
+                // M22: shared with the settings screen so the two sliders cannot drift.
+                valueRange = ReaderSettings.FONT_SIZE_RANGE,
                 modifier = Modifier.fillMaxWidth()
             )
 

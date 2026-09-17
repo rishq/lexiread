@@ -20,6 +20,10 @@ class Fb2Parser : BookParser {
     companion object {
         private const val TAG = "Fb2Parser"
         private const val MAX_FILE_SIZE_BYTES = 40L * 1024 * 1024
+        // P1-2: same 5 MB cover cap as EpubParser — a malicious <binary> must
+        // not OOM the decode or fill filesDir unbounded.
+        private const val MAX_COVER_SIZE_BYTES = 5L * 1024 * 1024
+        private const val MAX_BASE64_CHARS = (MAX_COVER_SIZE_BYTES * 4 / 3 + 4)
     }
 
     /** Reads an FB2 file honouring its declared encoding instead of assuming UTF-8. */
@@ -191,16 +195,26 @@ class Fb2Parser : BookParser {
                 eventType = parser.next()
             }
 
-            // Extract binary cover if present
+            // Extract binary cover if present (P1-2: capped at 5 MB like EPUB).
             val binaryMatch = Regex("<binary[^>]*id=\"([^\"]+)\"[^>]*>([\\s\\S]*?)</binary>", RegexOption.IGNORE_CASE).find(text)
             if (binaryMatch != null) {
                 val base64Data = binaryMatch.groupValues[2].replace("\\s".toRegex(), "")
-                val imageBytes = Base64.decode(base64Data, Base64.DEFAULT)
-                val coverFile = File(file.parentFile, "${file.nameWithoutExtension}_cover.jpg")
-                FileOutputStream(coverFile).use { fos ->
-                    fos.write(imageBytes)
+                // Check length before decode: base64 inflates ~4/3, so a huge
+                // <binary> is rejected without allocating the decoded buffer.
+                if (base64Data.length.toLong() > MAX_BASE64_CHARS) {
+                    Log.w(TAG, "Skipping oversize FB2 cover (${base64Data.length} base64 chars)")
+                } else {
+                    val imageBytes = Base64.decode(base64Data, Base64.DEFAULT)
+                    if (imageBytes.size.toLong() > MAX_COVER_SIZE_BYTES) {
+                        Log.w(TAG, "Skipping oversize FB2 cover (${imageBytes.size} bytes)")
+                    } else {
+                        val coverFile = File(file.parentFile, "${file.nameWithoutExtension}_cover.jpg")
+                        FileOutputStream(coverFile).use { fos ->
+                            fos.write(imageBytes)
+                        }
+                        coverPath = coverFile.absolutePath
+                    }
                 }
-                coverPath = coverFile.absolutePath
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse FB2 metadata", e)

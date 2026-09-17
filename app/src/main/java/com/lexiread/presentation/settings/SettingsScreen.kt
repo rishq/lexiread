@@ -1,6 +1,5 @@
 package com.lexiread.presentation.settings
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -24,11 +22,9 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Surface
@@ -49,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lexiread.domain.model.ReaderSettings
 import com.lexiread.domain.model.ReaderThemeOption
 
 @Composable
@@ -57,6 +54,7 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val apiKeySaveError by viewModel.apiKeySaveError.collectAsStateWithLifecycle()
     val reader = state.readerSettings
 
     Column(
@@ -154,15 +152,21 @@ fun SettingsScreen(
                 Slider(
                     value = reader.fontSizeSp,
                     onValueChange = { viewModel.setFontSize(it) },
-                    valueRange = 14f..28f,
-                    steps = 6,
+                    // M22: the same range as the reader sheet — a wider one there
+                    // meant a 30sp choice snapped to 28sp on the first touch here.
+                    valueRange = ReaderSettings.FONT_SIZE_RANGE,
+                    steps = 7,
                     modifier = Modifier.testTag("font_size_slider")
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    text = "Line Spacing: ${String.format("%.1f", reader.lineHeightMultiplier)}x",
+                    // N-6 (DefaultLocale): pin the locale so the decimal separator
+                    // does not flip to a comma on ru/de devices.
+                    text = "Line Spacing: ${
+                        String.format(java.util.Locale.US, "%.1f", reader.lineHeightMultiplier)
+                    }x",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Slider(
@@ -205,6 +209,50 @@ fun SettingsScreen(
                     onCheckedChange = { viewModel.setVolumeKeysPageTurn(it) },
                     modifier = Modifier.testTag("volume_keys_page_turn_switch")
                 )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 2c. Privacy — cloud lookups (P1-6). Off by default.
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = androidx.compose.ui.res.stringResource(com.lexiread.R.string.privacy_title),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = androidx.compose.ui.res.stringResource(com.lexiread.R.string.privacy_body),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = androidx.compose.ui.res.stringResource(com.lexiread.R.string.privacy_switch_label),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = androidx.compose.ui.res.stringResource(
+                                if (state.cloudLookupEnabled) com.lexiread.R.string.privacy_switch_on
+                                else com.lexiread.R.string.privacy_switch_off
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = state.cloudLookupEnabled,
+                        onCheckedChange = { viewModel.setCloudLookupEnabled(it) },
+                        modifier = Modifier.testTag("cloud_lookup_switch")
+                    )
+                }
             }
         }
 
@@ -293,6 +341,13 @@ fun SettingsScreen(
                     else -> "Gemini API Key"
                 }
                 Text(text = keyLabel, style = MaterialTheme.typography.bodyMedium)
+                apiKeySaveError?.let { message ->
+                    Text(
+                        text = message,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
                 Spacer(modifier = Modifier.height(6.dp))
                 val selectedProviderKey = when (state.aiProvider) {
                     com.lexiread.data.repository.AiProviders.CHATGPT -> state.openAiApiKey

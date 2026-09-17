@@ -12,7 +12,6 @@ import kotlinx.coroutines.withContext
 import org.xmlpull.v1.XmlPullParser
 import java.io.File
 import java.io.FileOutputStream
-import java.io.InputStream
 import java.io.StringReader
 import java.nio.charset.Charset
 import java.util.zip.ZipEntry
@@ -29,6 +28,11 @@ class EpubParser : BookParser {
         /** If the uncompressed-to-compressed ratio exceeds this, the file is
          * treated as a potential zip bomb and parsing is aborted. */
         private const val ZIP_BOMB_RATIO_THRESHOLD = 100
+        /** Only entries at least this large have a meaningful compression ratio.
+         * Must stay well below [MAX_ENTRY_SIZE_BYTES]: reusing the per-entry cap
+         * as the ratio threshold made the check unreachable, because every entry
+         * over the cap was already skipped before the ratio could be tested. */
+        private const val ZIP_BOMB_MIN_UNCOMPRESSED_BYTES = 1024 * 1024L // 1 MB
     }
 
     override fun canParse(format: String, file: File): Boolean {
@@ -84,7 +88,7 @@ class EpubParser : BookParser {
                     // can legitimately achieve ratios >100, so the check must
                     // not reject valid content.
                     val compressedSize = entry.compressedSize
-                    if (compressedSize > 0 && entry.size > MAX_ENTRY_SIZE_BYTES) {
+                    if (compressedSize > 0 && entry.size > ZIP_BOMB_MIN_UNCOMPRESSED_BYTES) {
                         val ratio = entry.size.toDouble() / compressedSize
                         if (ratio > ZIP_BOMB_RATIO_THRESHOLD) {
                             Log.w(TAG, "Potential zip bomb: $fullPath ratio=$ratio (compressed=$compressedSize, uncompressed=${entry.size})")

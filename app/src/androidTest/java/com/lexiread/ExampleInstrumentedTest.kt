@@ -14,9 +14,20 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class ExampleInstrumentedTest {
   @Test
+  fun apiKeysUseAndroidKeystoreEncryption() {
+    val plain = "instrumented-test-key"
+    val encrypted = com.lexiread.core.preferences.ApiKeyCrypto.encrypt(plain)
+    val second = com.lexiread.core.preferences.ApiKeyCrypto.encrypt(plain)
+    assertTrue(encrypted.startsWith("enc:v1:"))
+    assertFalse(encrypted.contains(plain))
+    assertNotEquals(encrypted, second)
+    assertEquals(plain, com.lexiread.core.preferences.ApiKeyCrypto.decrypt(encrypted))
+  }
+
+  @Test
   fun useAppContext() {
     // Context of the app under test.
     val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-    assertEquals("com.aistudio.lexiread.app", appContext.packageName)
+    assertEquals("com.lexiread.app", appContext.packageName)
   }
 }

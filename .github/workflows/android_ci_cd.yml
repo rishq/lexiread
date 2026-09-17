@@ -72,9 +72,12 @@ jobs:
             touch .env
           fi
           
-          # NOTE: GEMINI_API_KEY is intentionally NOT injected into the APK.
-          # Users provide their own key via the in-app Settings screen.
-          # Never package API secrets into release artifacts.
+          # GEMINI_API_KEY is never packaged into the APK (P0-3):
+          # - .env.example contains no secret value (commented out);
+          # - app/build.gradle.kts secrets { ignoreList } blocks GEMINI_API_KEY
+          #   from BuildConfig even if present in .env.
+          # Users provide their own key via the in-app Settings screen
+          # (stored locally on device). Never add real keys to .env in CI.
 
       - name: Prepare Keystore Files
         run: |
@@ -99,6 +102,14 @@ jobs:
       - name: Run Unit Tests
         run: ./gradlew testDebugUnitTest --continue
 
+      # N-4 (audit 2026-09-17): androidTest sources were never compiled in CI, so
+      # a broken instrumented test could reach main unnoticed — the same class of
+      # failure that already happened once with unit tests. Compiling the source
+      # set catches that without needing an emulator; running it on a device
+      # would be the next step.
+      - name: Compile Instrumented Tests (androidTest)
+        run: ./gradlew assembleDebugAndroidTest
+
       - name: Build Debug APK
         run: ./gradlew assembleDebug
 
@@ -106,13 +117,14 @@ jobs:
         env:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          VERSION_CODE: ${{ github.run_number }}
         run: |
-          # Try building release artifacts; fall back gracefully if signing keys are absent
-          if ./gradlew assembleRelease bundleRelease; then
-            echo "Release build succeeded."
-          else
-            echo "Release build without signing credentials failed or is unsigned. Continuing with Debug artifact..."
-          fi
+          # P2-10 + N-2: this step must fail loudly when release signing or the
+          # build is broken. app/build.gradle.kts now refuses to assemble a
+          # release artifact in CI when no upload keystore/passwords are present,
+          # so a missing secret can no longer produce a debug-signed APK that
+          # looks like a real release.
+          ./gradlew assembleRelease bundleRelease
 
       - name: Collect and Rename Artifacts
         run: |
@@ -123,11 +135,9 @@ jobs:
             cp app/build/outputs/apk/debug/app-debug.apk outputs/LexiRead-debug.apk
           fi
           
-          # Find and copy Release APK (if built)
+          # Find and copy Release APK (signed only; unsigned builds fail above per P2-10)
           if [ -f app/build/outputs/apk/release/app-release.apk ]; then
             cp app/build/outputs/apk/release/app-release.apk outputs/LexiRead-release.apk
-          elif [ -f app/build/outputs/apk/release/app-release-unsigned.apk ]; then
-            cp app/build/outputs/apk/release/app-release-unsigned.apk outputs/LexiRead-release-unsigned.apk
           fi
 
           # Find and copy Release AAB Bundle (if built)

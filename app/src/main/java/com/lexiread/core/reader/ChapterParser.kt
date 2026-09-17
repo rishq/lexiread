@@ -25,7 +25,19 @@ object ChapterParser {
             .replace("&lt;", "<")
             .replace("&gt;", ">")
             .replace("&quot;", "\"")
+            .replace("&apos;", "'")
+            // Numeric entities survive verbatim otherwise, so the fallback path
+            // renders "&#8217;" in the middle of a page.
+            .let(::decodeNumericEntities)
     }
+
+    private fun decodeNumericEntities(text: String): String =
+        text.replace(Regex("&#(\\d+);")) { match ->
+            match.groupValues[1].toIntOrNull()
+                ?.takeIf { it in 0..0x10FFFF }
+                ?.let { String(intArrayOf(it), 0, 1) }
+                ?: match.value
+        }
 
     fun cleanParagraphs(rawText: String): String {
         val lines = rawText.split("\n")

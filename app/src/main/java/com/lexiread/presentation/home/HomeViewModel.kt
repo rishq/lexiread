@@ -5,7 +5,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.lexiread.domain.model.Book
 import com.lexiread.domain.model.ReadingProgress
-import com.lexiread.domain.model.SavedWord
 import com.lexiread.domain.repository.BookRepository
 import com.lexiread.domain.repository.VocabularyRepository
 import kotlinx.coroutines.flow.SharingStarted

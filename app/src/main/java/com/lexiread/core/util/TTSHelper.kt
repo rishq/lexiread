@@ -17,6 +17,9 @@ class TTSHelper(context: Context) : TextToSpeech.OnInitListener {
     private var currentLocale: Locale = Locale.US
     private val lock = Any()
 
+    /** Utterance requested before the engine finished initializing. */
+    private var pendingUtterance: String? = null
+
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             val result = tts?.setLanguage(currentLocale)
@@ -33,6 +36,17 @@ class TTSHelper(context: Context) : TextToSpeech.OnInitListener {
         } else {
             Log.e("TTSHelper", "Failed to initialize TextToSpeech (status: $status)")
         }
+        if (isInitialized) flushPendingUtterance()
+    }
+
+    /** Speaks whatever was requested while the engine was still binding. */
+    private fun flushPendingUtterance() {
+        val pending = synchronized(lock) {
+            val text = pendingUtterance
+            pendingUtterance = null
+            text
+        } ?: return
+        tts?.speak(pending, TextToSpeech.QUEUE_FLUSH, null, "LexiReadPronunciation")
     }
 
     fun speak(text: String) {
@@ -41,9 +55,10 @@ class TTSHelper(context: Context) : TextToSpeech.OnInitListener {
         if (isInitialized && engine != null) {
             engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "LexiReadPronunciation")
         } else {
-            // First call after creation: initialization is asynchronous, so the
-            // request cannot be honoured yet.
-            Log.w("TTSHelper", "TTS called before initialization completed.")
+            // The engine is created lazily, so the very first call always arrives
+            // before onInit has run. Dropping it meant the user tapped a word and
+            // heard nothing; park the utterance and flush it once init completes.
+            synchronized(lock) { pendingUtterance = text }
         }
     }
 
@@ -71,6 +86,7 @@ class TTSHelper(context: Context) : TextToSpeech.OnInitListener {
             tts?.shutdown()
             tts = null
             isInitialized = false
+            pendingUtterance = null
         }
     }
 }

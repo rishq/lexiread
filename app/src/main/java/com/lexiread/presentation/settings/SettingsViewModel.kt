@@ -19,7 +19,9 @@ data class SettingsUiState(
     val aiProvider: String = com.lexiread.data.repository.AiProviders.GEMINI,
     val openAiApiKey: String = "",
     val claudeApiKey: String = "",
-    val deepSeekApiKey: String = ""
+    val deepSeekApiKey: String = "",
+    // P1-6: offline by default — user text never leaves the device until opt-in.
+    val cloudLookupEnabled: Boolean = false
 )
 
 class SettingsViewModel(
@@ -39,8 +41,9 @@ class SettingsViewModel(
             preferencesManager.deepSeekApiKey
         ) { provider, openAiKey, claudeKey, deepSeekKey ->
             listOf(provider, openAiKey, claudeKey, deepSeekKey)
-        }
-    ) { base, ai ->
+        },
+        preferencesManager.cloudLookupEnabled
+    ) { base, ai, cloudEnabled ->
         SettingsUiState(
             readerSettings = base.first,
             targetLanguage = base.second,
@@ -48,7 +51,8 @@ class SettingsViewModel(
             aiProvider = ai[0],
             openAiApiKey = ai[1],
             claudeApiKey = ai[2],
-            deepSeekApiKey = ai[3]
+            deepSeekApiKey = ai[3],
+            cloudLookupEnabled = cloudEnabled
         )
     }.stateIn(
         scope = viewModelScope,
@@ -56,10 +60,24 @@ class SettingsViewModel(
         initialValue = SettingsUiState()
     )
 
-    fun setGeminiApiKey(key: String) {
+    private val _apiKeySaveError = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val apiKeySaveError: StateFlow<String?> = _apiKeySaveError
+
+    private fun saveApiKey(save: suspend () -> Unit) {
         viewModelScope.launch {
-            preferencesManager.updateGeminiApiKey(key)
+            _apiKeySaveError.value = null
+            try {
+                save()
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _apiKeySaveError.value = "Could not securely save the API key. Please try again."
+            }
         }
+    }
+
+    fun setGeminiApiKey(key: String) {
+        saveApiKey { preferencesManager.updateGeminiApiKey(key) }
     }
 
     fun setAiProvider(provider: String) {
@@ -69,21 +87,15 @@ class SettingsViewModel(
     }
 
     fun setOpenAiApiKey(key: String) {
-        viewModelScope.launch {
-            preferencesManager.updateOpenAiApiKey(key)
-        }
+        saveApiKey { preferencesManager.updateOpenAiApiKey(key) }
     }
 
     fun setClaudeApiKey(key: String) {
-        viewModelScope.launch {
-            preferencesManager.updateClaudeApiKey(key)
-        }
+        saveApiKey { preferencesManager.updateClaudeApiKey(key) }
     }
 
     fun setDeepSeekApiKey(key: String) {
-        viewModelScope.launch {
-            preferencesManager.updateDeepSeekApiKey(key)
-        }
+        saveApiKey { preferencesManager.updateDeepSeekApiKey(key) }
     }
 
     fun setTheme(theme: ReaderThemeOption) {
@@ -104,21 +116,16 @@ class SettingsViewModel(
         }
     }
 
-    fun setFontFamily(family: String) {
-        viewModelScope.launch {
-            preferencesManager.updateFontFamily(family)
-        }
-    }
-
-    fun setTargetLanguage(lang: String) {
-        viewModelScope.launch {
-            preferencesManager.updateTargetLanguage(lang)
-        }
-    }
-
     fun setVolumeKeysPageTurn(enabled: Boolean) {
         viewModelScope.launch {
             preferencesManager.updateVolumeKeysPageTurn(enabled)
+        }
+    }
+
+    /** P1-6: offline switch — no user text leaves the device while off. */
+    fun setCloudLookupEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesManager.setCloudLookupEnabled(enabled)
         }
     }
 

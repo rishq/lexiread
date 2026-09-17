@@ -5,7 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.lexiread.core.preferences.UserPreferencesManager
 import com.lexiread.core.reader.BookImporter
-import com.lexiread.core.reader.PaginationEngine
+import com.lexiread.core.reader.Paginator
 import com.lexiread.core.util.TTSHelper
 import com.lexiread.core.util.UserErrorMessages
 import com.lexiread.domain.model.AiExplanation
@@ -26,7 +26,6 @@ import com.lexiread.domain.repository.TranslationRepository
 import com.lexiread.domain.repository.VocabularyRepository
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,8 +33,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 data class SelectedWordState(
     val word: String,
@@ -48,12 +49,22 @@ data class SelectedWordState(
     val isLoadingAi: Boolean = false,
     val isWordSaved: Boolean = false,
     val translationError: String? = null,
-    val aiError: String? = null
+    val aiError: String? = null,
+    /**
+     * N-3: cloud lookups are switched off. The hint is a UI concern, so the
+     * screen renders `R.string.cloud_lookups_off_hint` /
+     * `R.string.cloud_ai_off_hint` instead of a message baked into the
+     * ViewModel — otherwise the string resources stayed dead while the same
+     * text was hardcoded next to the early-exit.
+     */
+    val translationBlockedOffline: Boolean = false,
+    val aiBlockedOffline: Boolean = false
 )
 
 data class ReaderUiState(
     val book: Book? = null,
     val chapters: List<BookChapter> = emptyList(),
+    val tocTitles: List<BookChapter> = emptyList(),
     val totalChapterCount: Int = 0,
     val currentChapterIndex: Int = 0,
     val currentPageIndex: Int = 0,
@@ -66,6 +77,9 @@ data class ReaderUiState(
     val showBookmarksDialog: Boolean = false,
     val showTocDialog: Boolean = false,
     val showAiExplanationDialog: Boolean = false,
+    // P1-6: first-tap consent for cloud lookups (text leaves the device).
+    val showCloudConsentDialog: Boolean = false,
+    val cloudLookupEnabled: Boolean = false,
     val isLoadingBook: Boolean = false,
     val isPaginating: Boolean = false,
     val isLoadingNextChapter: Boolean = false,
@@ -82,7 +96,7 @@ class ReaderViewModel(
     private val preferencesManager: UserPreferencesManager,
     private val ttsHelper: TTSHelper,
     private val bookImporter: BookImporter,
-    private val paginationEngine: PaginationEngine
+    private val paginationEngine: Paginator
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ReaderUiState(isLoadingBook = true))
@@ -92,7 +106,9 @@ class ReaderViewModel(
     private var availableHeightPx: Int = 0
     private var paginationJob: kotlinx.coroutines.Job? = null
     private var prefetchJob: kotlinx.coroutines.Job? = null
-    private val progressWriteDispatcher = Dispatchers.Default.limitedParallelism(1)
+    // P1-4: debounce progress writes — rapid page turns conflate into one Room
+    // write per 500 ms instead of hundreds of transactions. Flush on dispose.
+    private val pendingProgress = MutableStateFlow<ReadingProgress?>(null)
     private var progressRestored: Boolean = false
 
     /**
@@ -111,6 +127,77 @@ class ReaderViewModel(
     init {
         loadBookAndChapters()
         observePreferencesAndBookmarks()
+        observePendingProgress()
+        observeCloudConsent()
+    }
+
+    /** P1-6: mirror the DataStore consent flag into UI state for the dialog. */
+    private fun observeCloudConsent() {
+        viewModelScope.launch {
+            combine(
+                preferencesManager.cloudLookupEnabled,
+                preferencesManager.cloudConsentAsked
+            ) { enabled, _ -> enabled }.collect { enabled ->
+                _uiState.update { it.copy(cloudLookupEnabled = enabled) }
+            }
+        }
+    }
+
+    /**
+     * P1-6: user decision from the consent dialog. When accepted, the pending
+     * word lookup is resumed; when declined, lookups stay on-device only.
+     */
+    fun onCloudConsentResult(accepted: Boolean) {
+        viewModelScope.launch {
+            preferencesManager.setCloudLookupEnabled(accepted)
+            _uiState.update { it.copy(showCloudConsentDialog = false) }
+            if (accepted) {
+                pendingWord?.let { (word, sentence) ->
+                    pendingWord = null
+                    lookupWordCloud(word, sentence)
+                }
+            } else {
+                pendingWord = null
+            }
+        }
+    }
+
+    fun setCloudLookupEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesManager.setCloudLookupEnabled(enabled)
+        }
+    }
+
+    private var pendingWord: Pair<String, String>? = null
+
+    /** P1-4: single collector — conflates rapid taps into one write per 500 ms. */
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
+    private fun observePendingProgress() {
+        viewModelScope.launch {
+            pendingProgress
+                .filterNotNull()
+                .debounce(500)
+                .collectLatest { progress ->
+                    runCatching { bookRepository.saveReadingProgress(progress) }
+                }
+        }
+    }
+
+    /** P1-4: force the latest progress to disk (slider release, dispose). */
+    private fun flushProgress() {
+        val progress = pendingProgress.value ?: return
+        viewModelScope.launch {
+            runCatching { bookRepository.saveReadingProgress(progress) }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        // Best-effort synchronous flush is impossible here (no scope), so the
+        // debounced collector already holds the value; flush via runBlocking-free
+        // fire-and-forget is handled by commitProgress() callers (slider stop,
+        // chapter change). Keep the hook documented for lifecycle owners:
+        // call commitProgress() from DisposableEffect.onDispose.
     }
 
     private fun loadBookAndChapters() {
@@ -128,8 +215,10 @@ class ReaderViewModel(
                         _uiState.update {
                             it.copy(
                                 isLoadingBook = false,
-                                errorMessage = fetchResult.exceptionOrNull()?.message
-                                    ?: "This book could not be downloaded."
+                                // P2-8: never leak raw exception.message to UI.
+                                errorMessage = fetchResult.exceptionOrNull()?.let { err ->
+                                    UserErrorMessages.messageFor(err, "This book could not be downloaded.")
+                                } ?: "This book could not be downloaded."
                             )
                         }
                         return@launch
@@ -145,10 +234,13 @@ class ReaderViewModel(
 
                 // Lazy loading: load only the target chapter initially.
                 // For books with a file path or chapters in DB, this loads one
-                // chapter; for legacy fullText books, it loads all (fallback).
+                // chapter; for legacy fullText books, getChaptersForBook returns
+                // the single requested window.
                 var chapters = bookImporter.getChaptersForBook(book, limit = 1, offset = targetChapter)
-                val totalChapters = bookImporter.getChapterCount(book.id)
-                    .let { count -> if (count > 0) count else chapters.size }
+                // Total is the real chapter count (DB or fullText), not the size of
+                // the lazily loaded window — otherwise navigation bounds collapse
+                // to a single chapter.
+                val totalChapters = bookImporter.getChapterCount(book)
 
                 if (chapters.isEmpty() && !book.isImported) {
                     // One clean re-download before reporting an error.
@@ -190,6 +282,16 @@ class ReaderViewModel(
                     )
                 }
 
+                // P1-3: load cheap TOC titles (no content) so the sheet works
+                // with lazy loading instead of showing blank placeholders.
+                viewModelScope.launch {
+                    val titles = runCatching { bookImporter.getChapterTitles(book) }
+                        .getOrDefault(emptyList())
+                    if (titles.isNotEmpty()) {
+                        _uiState.update { it.copy(tocTitles = titles) }
+                    }
+                }
+
                 // Trigger initial pagination if container size is ready
                 repaginateCurrentChapter()
                 // Prefetch the next chapter in the background
@@ -225,25 +327,76 @@ class ReaderViewModel(
                 }
                 if (prevSettings != settings) {
                     // Settings changed: all cached pages are now stale.
-                    paginationCache.clear()
+                    invalidatePagination()
                     repaginateCurrentChapter()
                 }
             }
         }
     }
 
+    private fun invalidatePagination() {
+        paginationJob?.cancel()
+        prefetchJob?.cancel()
+        paginationCache.clear()
+    }
+
     fun onContainerDimensionsChanged(widthPx: Int, heightPx: Int) {
         if (widthPx <= 0 || heightPx <= 0) return
         if (this.availableWidthPx != widthPx || this.availableHeightPx != heightPx) {
+            invalidatePagination()
             this.availableWidthPx = widthPx
             this.availableHeightPx = heightPx
             repaginateCurrentChapter()
         }
     }
 
+    /**
+     * Resolves a chapter by its own index instead of by list position.
+     *
+     * The chapter list is built by absolute index and padded lazily, so position
+     * and chapter number are not the same thing: after resuming at chapter 1 the
+     * list holds one element at position 0 whose index is 1. Trusting position
+     * alone renders a padded blank placeholder — the book goes blank after a
+     * rotation or a settings change.
+     */
+    private fun chapterAt(index: Int): BookChapter? =
+        _uiState.value.chapters.getOrNull(index)
+            ?.takeIf { it.index == index && it.content.isNotBlank() }
+
+    /**
+     * Atomically stores [chapter] at position `chapter.index`, padding the gap
+     * with blank placeholders that also carry their own position as index.
+     */
+    private fun putChapter(chapter: BookChapter) {
+        _uiState.update { state ->
+            val updated = state.chapters.toMutableList()
+            while (updated.size <= chapter.index) {
+                updated.add(BookChapter(title = "", content = "", index = updated.size))
+            }
+            updated[chapter.index] = chapter
+            state.copy(chapters = updated)
+        }
+    }
+
+    /** Loads a single chapter from the importer and merges it into the state. */
+    private suspend fun loadChapter(index: Int): BookChapter? {
+        val book = _uiState.value.book ?: return null
+        val loaded = bookImporter.getChaptersForBook(book, limit = 1, offset = index).firstOrNull()
+            ?: return null
+        putChapter(loaded)
+        return loaded
+    }
+
+    /**
+     * Index of the last chapter, preferring the known total over the lazily
+     * loaded list. With lazy loading `chapters` usually holds a single element
+     * while the real book has dozens, so `chapters.size` is not a valid bound.
+     */
+    private fun lastChapterIndex(state: ReaderUiState = _uiState.value): Int =
+        ((state.totalChapterCount.takeIf { it > 0 } ?: state.chapters.size) - 1).coerceAtLeast(0)
+
     fun repaginateCurrentChapter() {
-        val chapters = _uiState.value.chapters
-        if (chapters.isEmpty() || availableWidthPx <= 0 || availableHeightPx <= 0) return
+        if (_uiState.value.chapters.isEmpty() || availableWidthPx <= 0 || availableHeightPx <= 0) return
 
         paginationJob?.cancel()
         paginationJob = viewModelScope.launch {
@@ -251,12 +404,18 @@ class ReaderViewModel(
             try {
                 val currentState = _uiState.value
                 val settings = currentState.readerSettings
-                val chapterIdx = currentState.currentChapterIndex.coerceIn(0, chapters.size - 1)
-                val chapter = chapters[chapterIdx]
+                val chapterIdx = currentState.currentChapterIndex.coerceAtLeast(0)
+                val chapter = chapterAt(chapterIdx) ?: loadChapter(chapterIdx)
+                if (chapter == null) {
+                    _uiState.update {
+                        it.copy(isPaginating = false, errorMessage = "Chapter $chapterIdx not found.")
+                    }
+                    return@launch
+                }
 
                 // Check the cache first: if we've already paginated this chapter
                 // with the same settings and screen size, reuse the result.
-                val cacheKey = chapterIdx
+                val cacheKey = chapter.index
                 val cached = paginationCache[cacheKey]
                 val pages = if (cached != null) {
                     cached
@@ -267,6 +426,7 @@ class ReaderViewModel(
                         availableWidthPx = availableWidthPx,
                         availableHeightPx = availableHeightPx
                     )
+                    currentCoroutineContext().ensureActive()
                     paginationCache[cacheKey] = fresh
                     fresh
                 }
@@ -301,7 +461,7 @@ class ReaderViewModel(
      */
     private fun prefetchNextChapter() {
         val state = _uiState.value
-        val book = state.book ?: return
+        if (state.book == null) return
         val nextIdx = state.currentChapterIndex + 1
         val total = state.totalChapterCount
         if (total > 0 && nextIdx >= total) return
@@ -313,24 +473,10 @@ class ReaderViewModel(
                 _uiState.update { it.copy(isLoadingNextChapter = true) }
 
                 // Load the next chapter from DB/file if we don't have it.
-                val currentChapters = _uiState.value.chapters
-                val nextChapter = currentChapters.getOrNull(nextIdx)
-                    ?: run {
-                        // Try loading from importer with lazy fetch
-                        val loaded = bookImporter.getChaptersForBook(book, limit = 1, offset = nextIdx)
-                        if (loaded.isNotEmpty()) {
-                            // Merge the loaded chapter into the chapters list
-                            val updated = _uiState.value.chapters.toMutableList()
-                            while (updated.size <= nextIdx) {
-                                updated.add(BookChapter(title = "", content = "", index = updated.size))
-                            }
-                            updated[nextIdx] = loaded[0]
-                            _uiState.update { it.copy(chapters = updated) }
-                            loaded[0]
-                        } else {
-                            null
-                        }
-                    } ?: return@launch
+                // Resolved by index, never by position: a padded placeholder from
+                // an earlier prefetch must not be mistaken for real content.
+                val nextChapter = chapterAt(nextIdx) ?: loadChapter(nextIdx)
+                    ?: return@launch
 
                 if (availableWidthPx <= 0 || availableHeightPx <= 0) return@launch
 
@@ -340,11 +486,13 @@ class ReaderViewModel(
                     availableWidthPx = availableWidthPx,
                     availableHeightPx = availableHeightPx
                 )
-                paginationCache[nextIdx] = pages
-                _uiState.update { it.copy(isLoadingNextChapter = false) }
-            } catch (e: kotlinx.coroutines.CancellationException) {
+                currentCoroutineContext().ensureActive()
+                paginationCache[nextChapter.index] = pages
+            } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                android.util.Log.w(TAG, "Next-chapter prefetch failed", e)
+            } finally {
                 _uiState.update { it.copy(isLoadingNextChapter = false) }
             }
         }
@@ -355,7 +503,7 @@ class ReaderViewModel(
         if (state.currentPageIndex < state.pagesForCurrentChapter.size - 1) {
             _uiState.value = state.copy(currentPageIndex = state.currentPageIndex + 1)
             saveCurrentProgress()
-        } else if (state.currentChapterIndex < state.chapters.size - 1) {
+        } else if (state.currentChapterIndex < lastChapterIndex(state)) {
             // Next chapter
             goToChapter(state.currentChapterIndex + 1, targetPageIndex = 0)
         }
@@ -381,14 +529,12 @@ class ReaderViewModel(
     }
 
     fun commitProgress() {
-        saveCurrentProgress()
+        flushProgress()
     }
 
     fun goToChapter(chapterIndex: Int, targetPageIndex: Int = 0) {
-        val chapters = _uiState.value.chapters
-        if (chapters.isEmpty()) return
-        val total = _uiState.value.totalChapterCount.let { if (it > 0) it else chapters.size }
-        val validChapterIdx = chapterIndex.coerceIn(0, (total - 1).coerceAtLeast(0))
+        if (_uiState.value.chapters.isEmpty()) return
+        val validChapterIdx = chapterIndex.coerceIn(0, lastChapterIndex())
 
         _uiState.update {
             it.copy(
@@ -400,10 +546,10 @@ class ReaderViewModel(
 
         paginationJob?.cancel()
         paginationJob = viewModelScope.launch {
-            _uiState.update { it.copy(isPaginating = true) }
-            try {
-                // Check cache first
-                val cached = paginationCache[validChapterIdx]
+                _uiState.update { it.copy(isPaginating = true) }
+                try {
+                    // Check cache first
+                    val cached = paginationCache[validChapterIdx]
                 if (cached != null) {
                     val pageIdx = if (targetPageIndex == Int.MAX_VALUE) {
                         (cached.size - 1).coerceAtLeast(0)
@@ -422,21 +568,10 @@ class ReaderViewModel(
                     return@launch
                 }
 
-                // Need the chapter loaded: if not in the list, fetch it
-                val chapter = chapters.getOrNull(validChapterIdx)
-                    ?: run {
-                        val book = _uiState.value.book ?: return@run null
-                        val loaded = bookImporter.getChaptersForBook(book, limit = 1, offset = validChapterIdx)
-                        if (loaded.isNotEmpty()) {
-                            val updated = chapters.toMutableList()
-                            while (updated.size <= validChapterIdx) {
-                                updated.add(BookChapter(title = "", content = "", index = updated.size))
-                            }
-                            updated[validChapterIdx] = loaded[0]
-                            _uiState.update { it.copy(chapters = updated) }
-                            loaded[0]
-                        } else null
-                    }
+                // Need the chapter loaded: if not in the list, fetch it.
+                // `loadChapter` merges atomically, so a concurrent prefetch cannot
+                // be clobbered by a merge into a stale snapshot.
+                val chapter = chapterAt(validChapterIdx) ?: loadChapter(validChapterIdx)
 
                 if (chapter == null) {
                     _uiState.update {
@@ -451,9 +586,8 @@ class ReaderViewModel(
                     availableWidthPx = availableWidthPx,
                     availableHeightPx = availableHeightPx
                 )
-                paginationCache[validChapterIdx] = pages
-
                 currentCoroutineContext().ensureActive()
+                paginationCache[chapter.index] = pages
 
                 val pageIdx = if (targetPageIndex == Int.MAX_VALUE) {
                     (pages.size - 1).coerceAtLeast(0)
@@ -486,24 +620,19 @@ class ReaderViewModel(
     private fun saveCurrentProgress() {
         val state = _uiState.value
         val currentBook = state.book ?: return
-        val totalChapters = state.chapters.size.coerceAtLeast(1)
+        val totalChapters = (state.totalChapterCount.takeIf { it > 0 } ?: state.chapters.size).coerceAtLeast(1)
         val percent = ((state.currentChapterIndex.toFloat() + (state.currentPageIndex.toFloat() / state.pagesForCurrentChapter.size.coerceAtLeast(1))) / totalChapters * 100f).coerceIn(0f, 100f)
 
-        viewModelScope.launch {
-            // Single-threaded dispatcher guarantees rapid page turns persist in order
-            withContext(progressWriteDispatcher) {
-                bookRepository.saveReadingProgress(
-                    ReadingProgress(
-                        bookId = currentBook.id,
-                        currentChapter = state.currentChapterIndex,
-                        currentPage = state.currentPageIndex,
-                        totalPagesInChapter = state.pagesForCurrentChapter.size,
-                        percentCompleted = percent,
-                        lastReadTimestamp = System.currentTimeMillis()
-                    )
-                )
-            }
-        }
+        // P1-4: conflate — no coroutine/transaction per tap, the debounced
+        // collector persists the latest value.
+        pendingProgress.value = ReadingProgress(
+            bookId = currentBook.id,
+            currentChapter = state.currentChapterIndex,
+            currentPage = state.currentPageIndex,
+            totalPagesInChapter = state.pagesForCurrentChapter.size,
+            percentCompleted = percent,
+            lastReadTimestamp = System.currentTimeMillis()
+        )
     }
 
     fun toggleControlsOverlay() {
@@ -535,6 +664,46 @@ class ReaderViewModel(
 
         if (cleanWord.isBlank()) return
 
+        // P1-6: no user text leaves the device without explicit opt-in.
+        viewModelScope.launch {
+            val enabled = preferencesManager.cloudLookupEnabled.first()
+            val asked = preferencesManager.cloudConsentAsked.first()
+            if (!asked) {
+                pendingWord = cleanWord to contextSentence
+                _uiState.update {
+                    it.copy(
+                        selectedWordState = SelectedWordState(
+                            word = cleanWord,
+                            contextSentence = contextSentence,
+                            isLoadingDict = false,
+                            isLoadingTrans = false
+                        ),
+                        showCloudConsentDialog = true
+                    )
+                }
+                return@launch
+            }
+            if (!enabled) {
+                _uiState.update {
+                    it.copy(
+                        selectedWordState = SelectedWordState(
+                            word = cleanWord,
+                            contextSentence = contextSentence,
+                            isLoadingDict = false,
+                            isLoadingTrans = false,
+                            // N-3: the hint text lives in strings.xml.
+                            translationBlockedOffline = true
+                        )
+                    )
+                }
+                return@launch
+            }
+            lookupWordCloud(cleanWord, contextSentence)
+        }
+    }
+
+    /** P1-6: cloud path — dictionary + translation leave the device. */
+    private fun lookupWordCloud(cleanWord: String, contextSentence: String) {
         val initialState = SelectedWordState(
             word = cleanWord,
             contextSentence = contextSentence,
@@ -567,7 +736,10 @@ class ReaderViewModel(
                         translation = transResult.getOrNull(),
                         isLoadingTrans = false,
                         isWordSaved = isSaved,
-                        translationError = transResult.exceptionOrNull()?.message
+                        // P2-8: user-friendly message, never raw exception text.
+                        translationError = transResult.exceptionOrNull()?.let { err ->
+                            UserErrorMessages.messageFor(err, "Translation is unavailable offline.")
+                        }
                     )
                 )
             }
@@ -576,6 +748,20 @@ class ReaderViewModel(
 
     fun requestAiExplanation() {
         val selected = _uiState.value.selectedWordState ?: return
+        // P1-6: AI explanation also sends user text to the cloud.
+        if (!_uiState.value.cloudLookupEnabled) {
+            _uiState.update {
+                it.copy(
+                    selectedWordState = selected.copy(
+                        isLoadingAi = false,
+                        // N-3: the hint text lives in strings.xml.
+                        aiBlockedOffline = true
+                    ),
+                    showAiExplanationDialog = true
+                )
+            }
+            return
+        }
         _uiState.value = _uiState.value.copy(
             selectedWordState = selected.copy(isLoadingAi = true),
             showAiExplanationDialog = true
@@ -589,7 +775,10 @@ class ReaderViewModel(
                     selectedWordState = current.copy(
                         aiExplanation = aiResult.getOrNull(),
                         isLoadingAi = false,
-                        aiError = aiResult.exceptionOrNull()?.message
+                        // P2-8: user-friendly message, never raw exception text.
+                        aiError = aiResult.exceptionOrNull()?.let { err ->
+                            UserErrorMessages.messageFor(err, "AI explanation is unavailable.")
+                        }
                     )
                 )
             }
@@ -687,10 +876,6 @@ class ReaderViewModel(
         viewModelScope.launch { preferencesManager.updateMarginDp(marginDp) }
     }
 
-    fun updateIsPaginated(isPaginated: Boolean) {
-        viewModelScope.launch { preferencesManager.updateIsPaginated(isPaginated) }
-    }
-
     fun updateVolumeKeysPageTurn(enabled: Boolean) {
         viewModelScope.launch { preferencesManager.updateVolumeKeysPageTurn(enabled) }
     }
@@ -705,7 +890,7 @@ class ReaderViewModel(
         private val preferencesManager: UserPreferencesManager,
         private val ttsHelper: TTSHelper,
         private val bookImporter: BookImporter,
-        private val paginationEngine: PaginationEngine
+        private val paginationEngine: Paginator
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -727,5 +912,6 @@ class ReaderViewModel(
     private companion object {
         /** How many chapters' paginated pages to keep in memory. */
         const val PAGINATION_CACHE_SIZE = 10
+        const val TAG = "ReaderViewModel"
     }
 }

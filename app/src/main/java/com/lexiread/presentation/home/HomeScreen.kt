@@ -36,10 +36,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -281,6 +281,9 @@ private fun ContinueReadingHeroCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Book Cover
+            val safeCover = remember(book.coverUrl) {
+                com.lexiread.core.util.CoverUrls.sanitize(book.coverUrl)
+            }
             Box(
                 modifier = Modifier
                     .width(80.dp)
@@ -288,9 +291,9 @@ private fun ContinueReadingHeroCard(
                     .clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.primaryContainer)
             ) {
-                if (!book.coverUrl.isNullOrBlank()) {
+                if (safeCover != null) {
                     AsyncImage(
-                        model = book.coverUrl,
+                        model = safeCover,
                         contentDescription = book.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
@@ -400,9 +403,12 @@ private fun BookCardCompact(
                 .clip(RoundedCornerShape(12.dp))
                 .background(MaterialTheme.colorScheme.primaryContainer)
         ) {
-            if (!book.coverUrl.isNullOrBlank()) {
+            val safeCover = remember(book.coverUrl) {
+                com.lexiread.core.util.CoverUrls.sanitize(book.coverUrl)
+            }
+            if (safeCover != null) {
                 AsyncImage(
-                    model = book.coverUrl,
+                    model = safeCover,
                     contentDescription = book.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
@@ -468,9 +474,12 @@ private fun BookListItem(
                     .clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.primaryContainer)
             ) {
-                if (!book.coverUrl.isNullOrBlank()) {
+                val safeCover = remember(book.coverUrl) {
+                    com.lexiread.core.util.CoverUrls.sanitize(book.coverUrl)
+                }
+                if (safeCover != null) {
                     AsyncImage(
-                        model = book.coverUrl,
+                        model = safeCover,
                         contentDescription = book.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()

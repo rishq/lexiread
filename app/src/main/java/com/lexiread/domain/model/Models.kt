@@ -21,7 +21,17 @@ data class ReaderSettings(
     val marginDp: Int = 20,
     val isPaginated: Boolean = true,
     val volumeKeysPageTurn: Boolean = false
-)
+) {
+    companion object {
+        /**
+         * M22: one range for every font-size slider. The reader sheet allowed up
+         * to 30sp while the settings screen capped at 28sp, so a size picked
+         * while reading silently snapped down the first time the settings
+         * slider was touched.
+         */
+        val FONT_SIZE_RANGE = 14f..30f
+    }
+}
 
 data class Book(
     val id: String,

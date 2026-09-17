@@ -32,6 +32,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.IOException
 
@@ -129,7 +131,6 @@ class BooksRepositoryImpl(
                 runSuspendCatching {
                     val item = internetArchiveApi.getMetadata(identifier)
                     val meta = item.metadata
-                    val creator = (item.metadata?.let { it } ?: null)
                     CatalogBook(
                         id = id,
                         title = identifier, // Will be enriched from search results
@@ -298,10 +299,14 @@ class BooksRepositoryImpl(
             val encoded = java.net.URLEncoder.encode(query, "UTF-8")
             val url = "https://standardebooks.org/feeds/atom/all?query=$encoded" +
                 "&page=$page&per-page=$SE_PAGE_SIZE"
-            val body = standardEbooksApi.searchOpds(url)
-            val entries = com.lexiread.data.source.StandardEbooksBookSource.parseOpdsEntries(
-                body.byteStream()
-            )
+            // Closed explicitly: reading only byteStream() leaves the OkHttp
+            // connection out of the pool until GC, and repeated paging then
+            // exhausts it.
+            val entries = standardEbooksApi.searchOpds(url).use { body ->
+                com.lexiread.data.source.StandardEbooksBookSource.parseOpdsEntries(
+                    body.byteStream()
+                )
+            }
             val books = entries.map { e ->
                 CatalogBook(
                     id = STANDARD_EBOOKS_PREFIX + e.id,
@@ -426,11 +431,22 @@ class BooksRepositoryImpl(
             )
         }
 
-    /** Fetches the PGA index once per session; later calls reuse the cached text. */
+    /**
+     * Fetches the PGA index once per session; later calls reuse the cached text.
+     *
+     * Sources are gathered concurrently on the IO dispatcher, so a plain field
+     * would let two callers download and parse the index at the same time, and a
+     * non-volatile write is not guaranteed to be visible to the other thread.
+     */
+    @Volatile
     private var pgaIndexCache: String? = null
+    private val pgaIndexLock = kotlinx.coroutines.sync.Mutex()
     private suspend fun pgaIndex(): String {
         pgaIndexCache?.let { return it }
-        return pgaApi.fetch(PGA_INDEX_URL).string().also { pgaIndexCache = it }
+        return pgaIndexLock.withLock {
+            pgaIndexCache?.let { return@withLock it }
+            pgaApi.fetch(PGA_INDEX_URL).use { it.string() }.also { pgaIndexCache = it }
+        }
     }
 
     /**
@@ -503,6 +519,12 @@ class BooksRepositoryImpl(
         val cached = runSuspendCatching { catalogCacheDao.get(key) }.getOrNull()
         val fresh = runSuspendCatching { RetryPolicy.retryWithBackoff { fetch(sources) } }.getOrNull()
 
+        // Offline-first: a fresh non-empty page always wins and refreshes the
+        // cache. When the fetch returns nothing, the cache is still served for
+        // the *same* query (the cache key includes the query, so a different
+        // query is never shown in its place), which keeps the app usable on a
+        // flaky connection. Only a total fetch failure falls through to the
+        // error below.
         if (fresh != null && fresh.books.isNotEmpty()) {
             writeCache(key, kind, cacheQuery, page, fresh)
             return@withContext fresh
@@ -517,8 +539,8 @@ class BooksRepositoryImpl(
             return@withContext CatalogPage(books, entry.page, entry.totalResults, entry.hasMore)
         }
 
-        // A genuinely empty result is a valid answer; a failure is not.
         if (fresh != null) return@withContext fresh
+
         throw IOException("No book catalogue could be reached.")
     }
 

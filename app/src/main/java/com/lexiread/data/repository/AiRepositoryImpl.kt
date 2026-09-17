@@ -6,7 +6,6 @@ import com.lexiread.data.local.entity.AiExplanationEntity
 import com.lexiread.data.remote.api.ClaudeApi
 import com.lexiread.data.remote.api.GeminiApi
 import com.lexiread.data.remote.api.OpenAiChatApi
-import com.lexiread.data.remote.dto.ClaudeContentBlockDto
 import com.lexiread.data.remote.dto.ClaudeMessageDto
 import com.lexiread.data.remote.dto.ClaudeMessagesRequestDto
 import com.lexiread.data.remote.dto.GeminiContentDto
@@ -19,7 +18,6 @@ import com.lexiread.data.remote.dto.OpenAiResponseFormatDto
 import com.lexiread.domain.model.AiExplanation
 import com.lexiread.domain.repository.AiRepository
 import org.json.JSONObject
-import kotlinx.coroutines.flow.first
 
 object AiProviders {
     const val GEMINI = "gemini"

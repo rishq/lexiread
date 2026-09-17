@@ -55,6 +55,13 @@ class MyLibBookSource(
 
     private val booksDir = File(context.applicationContext.filesDir, DOWNLOAD_DIR).apply { mkdirs() }
 
+    init {
+        // Covers on this source are served from the configured host, which is not
+        // part of the built-in image allow-list. Register it explicitly rather than
+        // widening the allow-list for every catalogue.
+        UrlValidator.allowImageHost(config.host)
+    }
+
     /**
      * Entries seen on the search pages parsed so far, keyed by id.
      *
@@ -187,7 +194,10 @@ class MyLibBookSource(
             val explicitNext = parseHasNextPage(doc, requestedPage, config)
             val hasNext = when {
                 explicitNext != null -> explicitNext
-                total != null -> requestedPage * entries.size.coerceAtLeast(1) < total
+                // A full page means more; an empty page must never claim more.
+                // `coerceAtLeast(1)` turned "0 parsed entries" into "1", so a
+                // broken selector produced hasNext = true forever.
+                total != null -> entries.isNotEmpty() && requestedPage * entries.size < total
                 // No pagination markup at all: a full page is the best signal we
                 // have, and asking for one page too many costs one request.
                 else -> entries.size >= ASSUME_MORE_THRESHOLD

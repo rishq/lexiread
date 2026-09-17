@@ -55,6 +55,8 @@ class BookImporter(
             val extension = getExtension(fileName, mimeType)
 
             // Size check: query the document for its size before copying.
+            // P2-4: getFileSize() returns -1 when unknown — skip the pre-check
+            // then and rely on the guarded copy loop below.
             val fileSize = getFileSize(uri)
             if (fileSize > MAX_IMPORT_BYTES) {
                 return@withContext Result.failure(
@@ -135,13 +137,22 @@ class BookImporter(
                 )
             }
 
+            // P2-3: cap BEFORE persist so the full list becomes GC-eligible
+            // immediately — parseChapters() still returns everything, but we
+            // never hold two full copies (raw + entities) at once.
+            val cappedChapters = chapters.take(MAX_CHAPTERS).map { ch ->
+                if (ch.content.length.toLong() > MAX_CHAPTER_BYTES) {
+                    ch.copy(content = ch.content.take(MAX_CHAPTER_BYTES.toInt()))
+                } else ch
+            }
+
             // Persist chapters to DB if a DAO was provided.
             if (chapterDao != null) {
-                val chapterEntities = chapters.take(MAX_CHAPTERS).mapIndexed { index, ch ->
+                val chapterEntities = cappedChapters.mapIndexed { index, ch ->
                     ChapterEntity(
                         bookId = bookId,
                         title = ch.title,
-                        content = ch.content.take(MAX_CHAPTER_BYTES.toInt()),
+                        content = ch.content,
                         chapterIndex = index
                     )
                 }
@@ -200,13 +211,16 @@ class BookImporter(
     }
 
     private fun getFileSize(uri: Uri): Long {
+        // P2-4: -1 = unknown (missing SIZE column or empty cursor). Callers must
+        // not treat it as "empty file" — the copy loop below enforces the cap
+        // regardless, so an unknown size still cannot overflow storage.
         val cursor = context.contentResolver.query(uri, null, null, null, null)
         return cursor?.use {
             if (it.moveToFirst()) {
                 val sizeIndex = it.getColumnIndex(android.provider.OpenableColumns.SIZE)
-                if (sizeIndex != -1) it.getLong(sizeIndex) else 0L
-            } else 0L
-        } ?: 0L
+                if (sizeIndex != -1) it.getLong(sizeIndex) else -1L
+            } else -1L
+        } ?: -1L
     }
 
     /**
@@ -275,8 +289,64 @@ class BookImporter(
         }
 
         // Last resort: try fullText (for legacy books without a file).
+        // limit/offset apply here too — the reader asks for one chapter at a
+        // time, and splitting the whole book defeats lazy loading.
         val rawText = book.fullText ?: book.description ?: ""
-        ChapterParser.splitIntoChapters(rawText)
+        val allChapters = ChapterParser.splitIntoChapters(rawText)
+        if (limit != null) allChapters.drop(offset).take(limit) else allChapters.drop(offset)
+    }
+
+    /**
+     * Total chapter count without loading all content. For books whose chapters
+     * live in the DB this reads the count directly; for legacy full-text books
+     * (no DB rows) it counts the full-text chapters.
+     *
+     * Navigation bounds rely on this being the *real* total, not the lazily
+     * loaded window that [getChaptersForBook] may return.
+     */
+    suspend fun getChapterCount(book: Book): Int = withContext(Dispatchers.IO) {
+        val dbCount = chapterDao?.getChapterCount(book.id) ?: 0
+        if (dbCount > 0) return@withContext dbCount
+        book.fullText?.let { ChapterParser.splitIntoChapters(it).size } ?: 0
+    }
+
+    /**
+     * P1-3: cheap TOC titles without loading chapter content. DB titles first;
+     * falls back to parsing (titles only are kept, content is dropped).
+     */
+    suspend fun getChapterTitles(book: Book): List<BookChapter> = withContext(Dispatchers.IO) {
+        if (chapterDao != null) {
+            val rows = chapterDao.getChapterTitles(book.id)
+            if (rows.isNotEmpty()) {
+                return@withContext rows.map { row ->
+                    BookChapter(title = row.title.ifBlank { "Chapter ${row.chapterIndex + 1}" }, content = "", index = row.chapterIndex)
+                }
+            }
+        }
+        // Fallback: parse and keep titles only (content dropped to save memory).
+        val path = book.filePath
+        if (path != null) {
+            val file = File(path)
+            if (file.exists()) {
+                val ext = book.format.lowercase()
+                val parser = parsers.firstOrNull { it.canParse(ext, file) } ?: TxtParser()
+                val parsed = try {
+                    parser.parseChapters(file)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing titles from ${file.name}", e)
+                    emptyList()
+                }
+                if (parsed.isNotEmpty()) {
+                    return@withContext parsed.map { ch -> ch.copy(content = "") }
+                }
+            }
+        }
+        val rawText = book.fullText ?: book.description ?: ""
+        if (rawText.isNotBlank()) {
+            return@withContext ChapterParser.splitIntoChapters(rawText)
+                .map { ch -> ch.copy(content = "") }
+        }
+        emptyList()
     }
 
     /**

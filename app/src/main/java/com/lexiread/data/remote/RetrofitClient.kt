@@ -31,6 +31,7 @@ object RetrofitClient {
     private const val HTTP_CACHE_BYTES = 10L * 1024 * 1024
     private const val HTTP_CACHE_MAX_AGE_SECONDS = 60 * 60 * 6
     private const val CACHE_DIRECTORY = "http_cache"
+    private const val MAX_REDIRECTS = 3
 
     private val moshi: Moshi = Moshi.Builder()
         .add(KotlinJsonAdapterFactory())
@@ -82,8 +83,71 @@ object RetrofitClient {
         }
     }
 
+    /**
+     * Follows redirects manually so every hop can be re-validated.
+     *
+     * OkHttp follows redirects on its own, which means [com.lexiread.core.util.UrlValidator]
+     * would only ever see the first URL. An open redirect on an allow-listed host
+     * would then make the app fetch from an arbitrary host and store the response
+     * as a book file. Automatic redirects are therefore disabled on every client
+     * and this interceptor re-checks each `Location` before following it.
+     *
+     * @param sameHostOnly P2-1: API clients (OpenAI/Gemini/...) must not reuse the
+     * book-download allow-list. A cross-host redirect there (e.g. api.openai.com
+     * -> cdn...) would throw SecurityException under the download policy, so API
+     * traffic only follows same-host redirects.
+     */
+    private class RedirectGuard(private val sameHostOnly: Boolean = false) : Interceptor {
+        override fun intercept(chain: Interceptor.Chain): Response {
+            var request = chain.request()
+            var response = chain.proceed(request)
+            var hops = 0
+            while (response.isRedirect) {
+                if (hops >= MAX_REDIRECTS) {
+                    response.close()
+                    throw java.io.IOException("Too many redirects for ${request.url}")
+                }
+                val location = response.header("Location")
+                val target = location?.let { request.url.resolve(it) }
+                if (target == null) {
+                    return response
+                }
+                if (sameHostOnly) {
+                    com.lexiread.core.util.UrlValidator.requireSameHostRedirect(
+                        request.url.toString(),
+                        target.toString()
+                    )
+                } else {
+                    com.lexiread.core.util.UrlValidator.requireTrustedRedirect(
+                        request.url.toString(),
+                        target.toString()
+                    )
+                }
+                response.close()
+                request = request.newBuilder().url(target).build()
+                response = chain.proceed(request)
+                hops++
+            }
+            return response
+        }
+    }
+
     private fun OkHttpClient.Builder.applyCache(): OkHttpClient.Builder = apply {
         httpCache?.let { cache(it) }
+    }
+
+    /** Disables automatic redirects and installs the guard that re-validates them. */
+    private fun OkHttpClient.Builder.applyRedirectGuard(): OkHttpClient.Builder = apply {
+        followRedirects(false)
+        followSslRedirects(false)
+        addInterceptor(RedirectGuard(sameHostOnly = false))
+    }
+
+    /** P2-1: API traffic follows same-host redirects only, never the book allow-list. */
+    private fun OkHttpClient.Builder.applyApiRedirectGuard(): OkHttpClient.Builder = apply {
+        followRedirects(false)
+        followSslRedirects(false)
+        addInterceptor(RedirectGuard(sameHostOnly = true))
     }
 
     /** Catalogue reads: cached, so a repeated query or a back-navigation is instant. */
@@ -102,6 +166,7 @@ object RetrofitClient {
                 level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
             })
             .applyCache()
+            .applyRedirectGuard()
             .build()
     }
 
@@ -120,18 +185,7 @@ object RetrofitClient {
             }.apply {
                 level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
             })
-            .build()
-    }
-
-    // Dedicated File Download Client (No body logging to prevent leaks / OOM, longer timeouts)
-    val downloadOkHttpClient: OkHttpClient by lazy {
-        OkHttpClient.Builder()
-            .connectTimeout(60, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
-            .writeTimeout(60, TimeUnit.SECONDS)
-            .addInterceptor(HttpLoggingInterceptor().apply {
-                level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
-            })
+            .applyApiRedirectGuard()
             .build()
     }
 

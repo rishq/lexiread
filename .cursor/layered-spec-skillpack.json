@@ -1,0 +1,15 @@
+{
+  "source_repo": "C:\\Users\\Admin\\AppData\\Local\\Temp\\layered-spec",
+  "git_revision": "5fc592144a1e9fbd9103557a7834255078d65317",
+  "installed_at": "2026-09-08T10:20:56.888406+00:00",
+  "host": "cursor",
+  "scope": "repo",
+  "files": [
+    ".cursor/planning/planning_contract.md",
+    ".cursor/skills/layered-workflow-planning/SKILL.md",
+    ".cursor/skills/spec-first-planning-loop/SKILL.md",
+    ".cursor/skills/connected-code-mapping/SKILL.md",
+    ".cursor/skills/code-logic-workflow-documentation/SKILL.md",
+    ".cursor/skills/spec-first-planning-loop/assets/default_workflow.md"
+  ]
+}

@@ -143,6 +143,31 @@ class CatalogDeduperTest {
     }
 
     @Test
+    fun `keeps distinct non-Latin titles apart`() {
+        // An ASCII-only normalizer collapsed every Cyrillic title to "", so all
+        // of them shared one key and dedupe() merged them into a single card.
+        val warAndPeace = book(id = "mylib_1", title = "Война и мир", author = "Лев Толстой")
+        val anna = book(id = "mylib_2", title = "Анна Каренина", author = "Лев Толстой")
+
+        assertEquals(2, CatalogDeduper.dedupe(listOf(warAndPeace, anna)).size)
+    }
+
+    @Test
+    fun `normalizes non-Latin titles to distinct keys`() {
+        assertEquals("война и мир", CatalogDeduper.normalizeTitle("Война и мир"))
+        assertEquals("анна каренина", CatalogDeduper.normalizeTitle("Анна Каренина"))
+    }
+
+    @Test
+    fun `non-Latin authors normalize to non-empty keys`() {
+        assertTrue(CatalogDeduper.normalizeAuthor("Лев Толстой").isNotBlank())
+        assertEquals(
+            CatalogDeduper.normalizeAuthor("Толстой Лев"),
+            CatalogDeduper.normalizeAuthor("Лев Толстой")
+        )
+    }
+
+    @Test
     fun `preserves insertion order`() {
         val first = book(id = "ol_A", title = "Anna Karenina")
         val second = book(id = "ol_B", title = "War and Peace")
