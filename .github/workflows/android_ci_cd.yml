@@ -29,12 +29,18 @@ on:
         type: boolean
         default: false
 
+# Least privilege by default. The build job runs contributor-controlled Gradle
+# logic on pull requests, so the default token must not be able to write. The
+# release job re-grants `contents: write` for itself only.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build_and_release:
-    name: Build APKs & Release
+  # Runs on every event, including pull_request. It holds no signing material:
+  # no release keystore, no STORE_PASSWORD/KEY_PASSWORD, and a read-only token.
+  # Anything a contributor can influence through a pull request is confined here.
+  build:
+    name: Build & Test
     runs-on: ubuntu-latest
 
     steps:
@@ -42,6 +48,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # Do not leave the checkout token in .git/config for the rest of the
+          # job: on a pull request the following steps execute contributor-
+          # controlled Gradle build logic.
+          persist-credentials: false
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -63,7 +73,7 @@ jobs:
           fi
           chmod +x gradlew
 
-      - name: Prepare Secrets & Environment (.env)
+      - name: Prepare .env File
         run: |
           echo "Setting up .env file..."
           if [ -f ".env.example" ]; then
@@ -71,7 +81,7 @@ jobs:
           else
             touch .env
           fi
-          
+
           # GEMINI_API_KEY is never packaged into the APK (P0-3):
           # - .env.example contains no secret value (commented out);
           # - app/build.gradle.kts secrets { ignoreList } blocks GEMINI_API_KEY
@@ -79,9 +89,118 @@ jobs:
           # Users provide their own key via the in-app Settings screen
           # (stored locally on device). Never add real keys to .env in CI.
 
+      # A throwaway debug key, generated fresh on every run. It is not a secret
+      # and is deliberately kept out of the release job, which uses the upload key.
+      - name: Prepare Debug Keystore
+        run: |
+          if [ -f "debug.keystore.base64" ] && [ ! -s "debug.keystore" ]; then
+            echo "Restoring debug.keystore from base64..."
+            base64 -d debug.keystore.base64 > debug.keystore || base64 -D debug.keystore.base64 > debug.keystore || true
+          fi
+
+          if [ ! -s "debug.keystore" ]; then
+            echo "Generating debug.keystore via keytool..."
+            keytool -genkeypair -alias androiddebugkey -keypass android -keystore debug.keystore -storepass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+          fi
+
+      - name: Run Unit Tests
+        run: ./gradlew testDebugUnitTest --continue
+
+      # N-4 (audit 2026-09-17): androidTest sources were never compiled in CI, so
+      # a broken instrumented test could reach main unnoticed — the same class of
+      # failure that already happened once with unit tests. Compiling the source
+      # set catches that without needing an emulator; running it on a device
+      # would be the next step.
+      - name: Compile Instrumented Tests (androidTest)
+        run: ./gradlew assembleDebugAndroidTest
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Collect and Rename Debug Artifacts
+        run: |
+          mkdir -p outputs/
+
+          if [ -f app/build/outputs/apk/debug/app-debug.apk ]; then
+            cp app/build/outputs/apk/debug/app-debug.apk outputs/LexiRead-debug.apk
+          fi
+
+          echo "Generated artifacts in outputs/:"
+          ls -la outputs/
+
+      - name: Upload Build Artifacts to GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: lexiread-debug-artifacts
+          path: outputs/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # The only job that ever sees the upload keystore or the signing passwords.
+  #
+  # P0-CI (audit 2026-09-18): this used to be the same job as `build`, so a
+  # pull_request — the lowest-trust trigger the workflow accepts — reached the
+  # step that decodes RELEASE_KEYSTORE_BASE64 into the workspace and the step that
+  # runs `assembleRelease` with STORE_PASSWORD/KEY_PASSWORD in its environment.
+  # Contributor-controlled Gradle build logic therefore ran with the release
+  # signing material present. Gating the job on the event keeps the two apart.
+  #
+  # `environment: release` is the hook for adding required reviewers to a
+  # publish; GitHub creates the environment with no protection rules if it does
+  # not exist yet, so this changes nothing until it is configured.
+  #
+  # Note the trade-off: no release-variant build runs on a pull request, so an
+  # R8/minify-only regression is first seen after merge. The alternative is
+  # running the release pipeline on contributor-controlled input, which is the
+  # finding this split closes.
+  release:
+    name: Build Signed Release & Publish
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    environment: release
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.0'
+
+      - name: Ensure Gradle Wrapper Exists
+        run: |
+          if [ ! -f "gradlew" ]; then
+            echo "Generating Gradle Wrapper..."
+            gradle wrapper --gradle-version 9.7.0 --distribution-type bin
+          fi
+          chmod +x gradlew
+
+      - name: Prepare .env File
+        run: |
+          echo "Setting up .env file..."
+          if [ -f ".env.example" ]; then
+            cp .env.example .env
+          else
+            touch .env
+          fi
+          # See the build job: no real key ever belongs in .env in CI.
+
       - name: Prepare Keystore Files
         run: |
-          # Restore debug keystore from base64 if present, or generate a standard debug keystore
           if [ -f "debug.keystore.base64" ] && [ ! -s "debug.keystore" ]; then
             echo "Restoring debug.keystore from base64..."
             base64 -d debug.keystore.base64 > debug.keystore || base64 -D debug.keystore.base64 > debug.keystore || true
@@ -99,20 +218,6 @@ jobs:
             echo "KEYSTORE_PATH=$GITHUB_WORKSPACE/my-upload-key.jks" >> $GITHUB_ENV
           fi
 
-      - name: Run Unit Tests
-        run: ./gradlew testDebugUnitTest --continue
-
-      # N-4 (audit 2026-09-17): androidTest sources were never compiled in CI, so
-      # a broken instrumented test could reach main unnoticed — the same class of
-      # failure that already happened once with unit tests. Compiling the source
-      # set catches that without needing an emulator; running it on a device
-      # would be the next step.
-      - name: Compile Instrumented Tests (androidTest)
-        run: ./gradlew assembleDebugAndroidTest
-
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug
-
       - name: Build Release APK & Bundle (AAB)
         env:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
@@ -129,12 +234,11 @@ jobs:
       - name: Collect and Rename Artifacts
         run: |
           mkdir -p outputs/
-          
-          # Find and copy Debug APK
+
           if [ -f app/build/outputs/apk/debug/app-debug.apk ]; then
             cp app/build/outputs/apk/debug/app-debug.apk outputs/LexiRead-debug.apk
           fi
-          
+
           # Find and copy Release APK (signed only; unsigned builds fail above per P2-10)
           if [ -f app/build/outputs/apk/release/app-release.apk ]; then
             cp app/build/outputs/apk/release/app-release.apk outputs/LexiRead-release.apk

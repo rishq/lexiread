@@ -84,6 +84,30 @@ object RetrofitClient {
     }
 
     /**
+     * Which allow-list a redirect hop is checked against.
+     *
+     * There is more than one because the app fetches more than one kind of thing:
+     * book files, cover images, and API responses. Reusing the widest list for all
+     * three would let an API or image redirect land on a host that is only trusted
+     * for book downloads.
+     */
+    private enum class RedirectPolicy {
+        /** Book downloads and catalogue reads: the download + image allow-lists. */
+        TRUSTED_HOSTS,
+
+        /** P2-1: API clients (OpenAI/Gemini/...) never reuse the book allow-list. */
+        SAME_HOST_ONLY,
+
+        /**
+         * Cover images. Mirrors the image allow-list
+         * [com.lexiread.core.util.CoverUrls] applies to the entry URL, including
+         * hosts registered at runtime, so a redirect cannot land somewhere the
+         * entry check would have refused.
+         */
+        IMAGE_HOSTS
+    }
+
+    /**
      * Follows redirects manually so every hop can be re-validated.
      *
      * OkHttp follows redirects on its own, which means [com.lexiread.core.util.UrlValidator]
@@ -91,13 +115,8 @@ object RetrofitClient {
      * would then make the app fetch from an arbitrary host and store the response
      * as a book file. Automatic redirects are therefore disabled on every client
      * and this interceptor re-checks each `Location` before following it.
-     *
-     * @param sameHostOnly P2-1: API clients (OpenAI/Gemini/...) must not reuse the
-     * book-download allow-list. A cross-host redirect there (e.g. api.openai.com
-     * -> cdn...) would throw SecurityException under the download policy, so API
-     * traffic only follows same-host redirects.
      */
-    private class RedirectGuard(private val sameHostOnly: Boolean = false) : Interceptor {
+    private class RedirectGuard(private val policy: RedirectPolicy) : Interceptor {
         override fun intercept(chain: Interceptor.Chain): Response {
             var request = chain.request()
             var response = chain.proceed(request)
@@ -112,16 +131,24 @@ object RetrofitClient {
                 if (target == null) {
                     return response
                 }
-                if (sameHostOnly) {
-                    com.lexiread.core.util.UrlValidator.requireSameHostRedirect(
-                        request.url.toString(),
-                        target.toString()
-                    )
-                } else {
-                    com.lexiread.core.util.UrlValidator.requireTrustedRedirect(
-                        request.url.toString(),
-                        target.toString()
-                    )
+                when (policy) {
+                    RedirectPolicy.SAME_HOST_ONLY ->
+                        com.lexiread.core.util.UrlValidator.requireSameHostRedirect(
+                            request.url.toString(),
+                            target.toString()
+                        )
+
+                    RedirectPolicy.IMAGE_HOSTS ->
+                        com.lexiread.core.util.UrlValidator.requireTrustedImageRedirect(
+                            request.url.toString(),
+                            target.toString()
+                        )
+
+                    RedirectPolicy.TRUSTED_HOSTS ->
+                        com.lexiread.core.util.UrlValidator.requireTrustedRedirect(
+                            request.url.toString(),
+                            target.toString()
+                        )
                 }
                 response.close()
                 request = request.newBuilder().url(target).build()
@@ -137,18 +164,17 @@ object RetrofitClient {
     }
 
     /** Disables automatic redirects and installs the guard that re-validates them. */
-    private fun OkHttpClient.Builder.applyRedirectGuard(): OkHttpClient.Builder = apply {
+    private fun OkHttpClient.Builder.applyRedirectGuard(
+        policy: RedirectPolicy = RedirectPolicy.TRUSTED_HOSTS
+    ): OkHttpClient.Builder = apply {
         followRedirects(false)
         followSslRedirects(false)
-        addInterceptor(RedirectGuard(sameHostOnly = false))
+        addInterceptor(RedirectGuard(policy))
     }
 
     /** P2-1: API traffic follows same-host redirects only, never the book allow-list. */
-    private fun OkHttpClient.Builder.applyApiRedirectGuard(): OkHttpClient.Builder = apply {
-        followRedirects(false)
-        followSslRedirects(false)
-        addInterceptor(RedirectGuard(sameHostOnly = true))
-    }
+    private fun OkHttpClient.Builder.applyApiRedirectGuard(): OkHttpClient.Builder =
+        applyRedirectGuard(RedirectPolicy.SAME_HOST_ONLY)
 
     /** Catalogue reads: cached, so a repeated query or a back-navigation is instant. */
     private val catalogOkHttpClient: OkHttpClient by lazy {
@@ -186,6 +212,29 @@ object RetrofitClient {
                 level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
             })
             .applyApiRedirectGuard()
+            .build()
+    }
+
+    /**
+     * Cover images, fetched by Coil.
+     *
+     * [com.lexiread.core.util.CoverUrls] allow-lists the URL before it reaches
+     * Coil, but that only covers the URL the caller supplied: the request itself
+     * can be answered with a redirect, and Coil's default client would follow it
+     * wherever it points. This client carries the same per-hop guard the
+     * catalogue clients use, so every `Location` is re-checked against the image
+     * allow-list before it is followed.
+     *
+     * The shared HTTP cache is deliberately not attached. Image hosts do send
+     * cache headers, so caching covers here would fill the 10 MB budget the
+     * catalogue JSON needs; Coil keeps its own disk cache.
+     */
+    val imageOkHttpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
+            .applyRedirectGuard(RedirectPolicy.IMAGE_HOSTS)
             .build()
     }
 

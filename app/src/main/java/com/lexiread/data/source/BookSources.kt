@@ -2,9 +2,9 @@ package com.lexiread.data.source
 
 import android.content.Context
 import android.util.Log
-import android.util.Xml
 import com.lexiread.core.util.BookFormatSelector
 import com.lexiread.core.util.SafeDownloader
+import com.lexiread.core.util.SafeXml
 import com.lexiread.core.util.TextEncoding
 import com.lexiread.core.util.UrlValidator
 import com.lexiread.data.mapper.toCatalogBook
@@ -378,7 +378,12 @@ class StandardEbooksBookSource(
         )
 
         fun parseOpdsEntries(stream: java.io.InputStream): List<OpdsEntry> {
-            val parser = Xml.newPullParser()
+            // SafeXml: the feed arrives over the network, so a `<!DOCTYPE>` with an
+            // internal subset must not be able to expand inside the parser. The
+            // subset check the file parsers also use needs the document as a
+            // String, and this reader deliberately streams rather than buffering
+            // the whole response, so only the parser-level control applies here.
+            val parser = SafeXml.newPullParser()
             parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
             parser.setInput(stream, null)
 

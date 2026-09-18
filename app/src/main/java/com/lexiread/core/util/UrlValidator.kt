@@ -103,6 +103,28 @@ object UrlValidator {
     }
 
     /**
+     * Redirect policy for cover images, used by the OkHttp client Coil fetches
+     * through.
+     *
+     * The allow-list is deliberately the same one [requireTrustedImageUrl] uses,
+     * including hosts registered via [allowImageHost]. A redirect guard stricter
+     * than the entry check would reject a hop the entry check had already
+     * accepted — for example a MyLib cover served from a sibling host of the
+     * configured one — so the two must stay in step.
+     */
+    fun requireTrustedImageRedirect(fromUrl: String, toUrl: String): String {
+        val allowed = TRUSTED_IMAGE_HOSTS + extraImageHosts
+        val (scheme, host) = parse(toUrl)
+        if (scheme != "https") throw SecurityException("Redirect rejected: only HTTPS is allowed ($toUrl).")
+        val fromHost = parse(fromUrl).second
+        if (host != null && host == fromHost) return toUrl
+        if (!isTrustedHost(host, allowed)) {
+            throw SecurityException("Redirect rejected: host '$host' is not in the allowed list.")
+        }
+        return toUrl
+    }
+
+    /**
      * P2-1: redirect policy for API clients (OpenAI/Gemini/...). Same-host
      * redirects are followed; cross-host redirects are rejected without
      * consulting the book-download allow-list.

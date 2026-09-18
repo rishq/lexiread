@@ -93,4 +93,71 @@ class UrlValidatorTest {
             UrlValidator.requireTrustedImageUrl("https://ephemeral-test-host.example.com/c.jpg")
         }
     }
+
+    // Lead 1 (audit 2026-09-18): the guard on a cover redirect has to accept
+    // exactly what the entry check accepted, or a validated cover would fail to
+    // load once Coil's client carries the guard.
+    @Test
+    fun `image redirect to the same host is allowed`() {
+        val from = "https://covers.openlibrary.org/b/id/1-M.jpg"
+        val to = "https://covers.openlibrary.org/b/id/1-L.jpg"
+
+        assertEquals(to, UrlValidator.requireTrustedImageRedirect(from, to))
+    }
+
+    @Test
+    fun `image redirect to another allow-listed image host is allowed`() {
+        val from = "https://covers.openlibrary.org/b/id/1-M.jpg"
+        val to = "https://archive.org/download/cover.jpg"
+
+        assertEquals(to, UrlValidator.requireTrustedImageRedirect(from, to))
+    }
+
+    /**
+     * The MyLib host is registered at runtime rather than compiled in, so the
+     * redirect guard must consult the same registry the entry check does.
+     */
+    @Test
+    fun `image redirect to a host registered at runtime is allowed`() {
+        try {
+            UrlValidator.allowImageHost("runtime-cover-host.invalid")
+            val from = "https://runtime-cover-host.invalid/a.jpg"
+            val to = "https://static.runtime-cover-host.invalid/a.jpg"
+
+            assertEquals(to, UrlValidator.requireTrustedImageRedirect(from, to))
+        } finally {
+            UrlValidator.clearExtraImageHosts()
+        }
+    }
+
+    @Test
+    fun `image redirect to an untrusted host is rejected`() {
+        val from = "https://covers.openlibrary.org/b/id/1-M.jpg"
+
+        assertThrows(SecurityException::class.java) {
+            UrlValidator.requireTrustedImageRedirect(from, "https://evil.example.com/cover.jpg")
+        }
+    }
+
+    /**
+     * The image allow-list is not the download allow-list: a cover must not be able
+     * to redirect onto a host that is only trusted for book files.
+     */
+    @Test
+    fun `image redirect to a download-only host is rejected`() {
+        val from = "https://covers.openlibrary.org/b/id/1-M.jpg"
+
+        assertThrows(SecurityException::class.java) {
+            UrlValidator.requireTrustedImageRedirect(from, "https://gutenberg.net.au/cover.jpg")
+        }
+    }
+
+    @Test
+    fun `image redirect over plain http is rejected`() {
+        val from = "https://covers.openlibrary.org/b/id/1-M.jpg"
+
+        assertThrows(SecurityException::class.java) {
+            UrlValidator.requireTrustedImageRedirect(from, "http://covers.openlibrary.org/b/id/1-M.jpg")
+        }
+    }
 }

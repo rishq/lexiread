@@ -1,10 +1,10 @@
 ﻿package com.lexiread.core.reader.parsers
 
 import android.util.Log
-import android.util.Xml
 import com.lexiread.core.reader.BookParser
 import com.lexiread.core.reader.ChapterParser
 import com.lexiread.core.reader.ParsedBookMetadata
+import com.lexiread.core.util.SafeXml
 import com.lexiread.core.util.TextEncoding
 import com.lexiread.domain.model.BookChapter
 import kotlinx.coroutines.Dispatchers
@@ -237,9 +237,16 @@ class EpubParser : BookParser {
     /**
      * Parsing from a decoded String keeps the declared encoding intact.
      * `setInput(stream, "UTF-8")` would re-introduce the mojibake bug here.
+     *
+     * Both XML documents this reads — `META-INF/container.xml` and the OPF
+     * package — come out of the same untrusted archive, so both go through
+     * [SafeXml]: the internal DTD subset is rejected outright and the parser is
+     * built with DTD processing cleared, so a `<!DOCTYPE>` cannot turn into
+     * entity expansion. See [SafeXml] for why the two controls are separate.
      */
     private fun newPullParser(document: String): XmlPullParser {
-        val parser = Xml.newPullParser()
+        SafeXml.requireNoInternalDtdSubset(document)
+        val parser = SafeXml.newPullParser()
         parser.setInput(StringReader(document))
         return parser
     }

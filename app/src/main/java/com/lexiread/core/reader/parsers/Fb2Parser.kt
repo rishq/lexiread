@@ -2,10 +2,10 @@
 
 import android.util.Base64
 import android.util.Log
-import android.util.Xml
 import com.lexiread.core.reader.BookParser
 import com.lexiread.core.reader.ChapterParser
 import com.lexiread.core.reader.ParsedBookMetadata
+import com.lexiread.core.util.SafeXml
 import com.lexiread.core.util.TextEncoding
 import com.lexiread.domain.model.BookChapter
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +24,57 @@ class Fb2Parser : BookParser {
         // not OOM the decode or fill filesDir unbounded.
         private const val MAX_COVER_SIZE_BYTES = 5L * 1024 * 1024
         private const val MAX_BASE64_CHARS = (MAX_COVER_SIZE_BYTES * 4 / 3 + 4)
+        private const val BINARY_OPEN_TAG = "<binary"
+        private const val BINARY_CLOSE_TAG = "</binary"
+
+        /** The `id="..."` attribute of a `<binary>` start tag, matched against
+         * the tag text only so `data-id` cannot satisfy it. */
+        private val BINARY_ID_ATTRIBUTE = Regex("(?:^|\\s)id=\"[^\"]+\"", RegexOption.IGNORE_CASE)
+
+        /**
+         * Returns the raw text of the first `<binary id="...">` element, or null.
+         *
+         * This replaced a regex whose payload group was a lazy
+         * `([\s\S]*?)</binary>`. `Regex.find` restarts at every `<binary id=`
+         * occurrence and each restart scanned forward to the end of the document
+         * when the closing tag was missing, so a document built from repeated
+         * openers and no closer — well inside the [MAX_FILE_SIZE_BYTES] cap — cost
+         * quadratic work on the import thread. An index scan visits each
+         * `<binary` and each `</binary` once, so the cost is linear in the
+         * document length.
+         */
+        private fun findFirstBinaryPayload(text: String): String? {
+            var searchFrom = 0
+            while (true) {
+                val open = text.indexOf(BINARY_OPEN_TAG, searchFrom, ignoreCase = true)
+                if (open < 0) return null
+                val tagEnd = text.indexOf('>', open)
+                if (tagEnd < 0) return null
+                val openTag = text.substring(open, tagEnd)
+                searchFrom = tagEnd + 1
+                if (!BINARY_ID_ATTRIBUTE.containsMatchIn(openTag)) continue
+                val close = text.indexOf(BINARY_CLOSE_TAG, tagEnd, ignoreCase = true)
+                if (close < 0) return null
+                return text.substring(tagEnd + 1, close)
+            }
+        }
+
+        /**
+         * Removes XML whitespace from [payload], returning null once the result
+         * would exceed [MAX_BASE64_CHARS].
+         *
+         * The cap is enforced while building rather than afterwards, so an
+         * oversize `<binary>` never allocates the stripped copy.
+         */
+        private fun stripBase64Whitespace(payload: CharSequence): String? {
+            val out = StringBuilder(minOf(payload.length, MAX_BASE64_CHARS.toInt()))
+            for (ch in payload) {
+                if (ch.isWhitespace()) continue
+                if (out.length.toLong() >= MAX_BASE64_CHARS) return null
+                out.append(ch)
+            }
+            return out.toString()
+        }
     }
 
     /** Reads an FB2 file honouring its declared encoding instead of assuming UTF-8. */
@@ -39,7 +90,10 @@ class Fb2Parser : BookParser {
 
         try {
             val fileText = readDocument(file)
-            val parser = Xml.newPullParser()
+            // An internal DTD subset is the only way this document could declare
+            // entities for the parser to expand; see SafeXml for the detail.
+            SafeXml.requireNoInternalDtdSubset(fileText)
+            val parser = SafeXml.newPullParser()
             parser.setInput(StringReader(fileText))
 
             var eventType = parser.eventType
@@ -158,7 +212,8 @@ class Fb2Parser : BookParser {
 
         try {
             val text = readDocument(file)
-            val parser = Xml.newPullParser()
+            SafeXml.requireNoInternalDtdSubset(text)
+            val parser = SafeXml.newPullParser()
             parser.setInput(StringReader(text))
 
             var eventType = parser.eventType
@@ -196,13 +251,14 @@ class Fb2Parser : BookParser {
             }
 
             // Extract binary cover if present (P1-2: capped at 5 MB like EPUB).
-            val binaryMatch = Regex("<binary[^>]*id=\"([^\"]+)\"[^>]*>([\\s\\S]*?)</binary>", RegexOption.IGNORE_CASE).find(text)
-            if (binaryMatch != null) {
-                val base64Data = binaryMatch.groupValues[2].replace("\\s".toRegex(), "")
-                // Check length before decode: base64 inflates ~4/3, so a huge
-                // <binary> is rejected without allocating the decoded buffer.
-                if (base64Data.length.toLong() > MAX_BASE64_CHARS) {
-                    Log.w(TAG, "Skipping oversize FB2 cover (${base64Data.length} base64 chars)")
+            val binaryPayload = findFirstBinaryPayload(text)
+            if (binaryPayload != null) {
+                // Whitespace is stripped and the length checked in a single pass,
+                // so a huge <binary> is rejected without allocating the decoded
+                // buffer. Base64 inflates ~4/3.
+                val base64Data = stripBase64Whitespace(binaryPayload)
+                if (base64Data == null) {
+                    Log.w(TAG, "Skipping oversize FB2 cover (>$MAX_BASE64_CHARS base64 chars)")
                 } else {
                     val imageBytes = Base64.decode(base64Data, Base64.DEFAULT)
                     if (imageBytes.size.toLong() > MAX_COVER_SIZE_BYTES) {

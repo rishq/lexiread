@@ -24,6 +24,8 @@ class PdfParser : BookParser {
         private const val MAX_INFLATED_BYTES = 32 * 1024 * 1024L // 32 MB
         /** P1-1: cap on total extracted text so the StringBuilder itself cannot OOM. */
         private const val MAX_EXTRACTED_TEXT_CHARS = 5 * 1024 * 1024 // ~10 MB as UTF-16
+        private const val TJ_OPERATOR = "Tj"
+        private const val TJ_ARRAY_OPERATOR = "TJ"
     }
 
     override fun canParse(format: String, file: File): Boolean {
@@ -226,46 +228,171 @@ class PdfParser : BookParser {
         }
     }
 
+    /**
+     * Extracts the text of the content-stream string-showing operators.
+     *
+     * The regexes this replaced each had the shape
+     * `opener(.*?)(?<!\\)closer\s*OPERATOR` — an unbounded lazy group with a
+     * required suffix that may be absent. `findAll` restarts at every opener, and
+     * a restart whose suffix never appears scans to the end of the chunk, so the
+     * work was quadratic in a chunk the caps allow to reach [MAX_INFLATED_BYTES]
+     * (32 MB), and the raw fallback in [extractTextFromPdfBytes] reaches it with
+     * no compression at all. The scanners below walk the chunk once per operator
+     * and cannot backtrack.
+     *
+     * An opener whose closer never appears ends the scan instead of restarting
+     * it: if there is no unescaped `)` after offset i there is none after any
+     * later offset either, so the rest of the chunk holds no complete literal.
+     *
+     * Two behaviours differ from the regexes on malformed input, both in favour
+     * of the correct reading. A literal is no longer allowed to swallow a
+     * following literal when the operator is missing (`(a) Td (b) Tj` yields `b`
+     * rather than `a) Td (b`), and `\\)` now terminates a literal as it should,
+     * instead of the single-backslash lookbehind treating it as an escape.
+     */
     private fun parsePdfTextOperators(streamText: String): String {
         val sb = StringBuilder()
-
-        // Match Tj operator: (text) Tj
-        val tjRegex = Regex("\\((.*?)(?<!\\\\)\\)\\s*Tj", RegexOption.DOT_MATCHES_ALL)
-        for (match in tjRegex.findAll(streamText)) {
-            val text = decodePdfString(match.groupValues[1])
-            if (text.isNotBlank()) {
-                sb.append(text).append(" ")
-            }
-        }
-
-        // Match TJ array operator: [(text) -10 (more)] TJ
-        val tjArrayRegex = Regex("\\[(.*?)\\]\\s*TJ", RegexOption.DOT_MATCHES_ALL)
-        val innerStringRegex = Regex("\\((.*?)(?<!\\\\)\\)|<([0-9a-fA-F]+)>", RegexOption.DOT_MATCHES_ALL)
-        for (match in tjArrayRegex.findAll(streamText)) {
-            val arrayContent = match.groupValues[1]
-            for (item in innerStringRegex.findAll(arrayContent)) {
-                val str = item.groupValues[1]
-                val hex = item.groupValues[2]
-                if (str.isNotEmpty()) {
-                    sb.append(decodePdfString(str))
-                } else if (hex.isNotEmpty()) {
-                    sb.append(decodeHexPdfString(hex))
-                }
-            }
-            sb.append(" ")
-        }
-
-        // Match Hex string Tj: <48656c6c6f> Tj
-        val hexTjRegex = Regex("<([0-9a-fA-F]+)>\\s*Tj")
-        for (match in hexTjRegex.findAll(streamText)) {
-            val hex = match.groupValues[1]
-            val text = decodeHexPdfString(hex)
-            if (text.isNotBlank()) {
-                sb.append(text).append(" ")
-            }
-        }
-
+        appendTjStrings(streamText, sb)
+        appendTjArrays(streamText, sb)
+        appendHexTjStrings(streamText, sb)
         return sb.toString().trim()
+    }
+
+    /** `(text) Tj`. */
+    private fun appendTjStrings(text: String, sb: StringBuilder) {
+        var i = 0
+        while (true) {
+            val open = text.indexOf('(', i)
+            if (open < 0) return
+            val close = indexOfUnescaped(text, open + 1, ')', text.length)
+            if (close < 0) return
+            if (text.startsWith(TJ_OPERATOR, skipWhitespace(text, close + 1))) {
+                val decoded = decodePdfString(text.substring(open + 1, close))
+                if (decoded.isNotBlank()) sb.append(decoded).append(" ")
+            }
+            i = close + 1
+        }
+    }
+
+    /** `[(text) -10 (more)] TJ`. */
+    private fun appendTjArrays(text: String, sb: StringBuilder) {
+        var i = 0
+        // Cursor to the first ']' at or after [i]. It is reused rather than
+        // re-scanned: there is no ']' between [i, close), so `close` is also the
+        // first ']' after every '[' in that range. Re-scanning per '[' would make
+        // a chunk of nothing but '[' with one trailing ']' quadratic again.
+        var close = text.indexOf(']')
+        while (true) {
+            val open = text.indexOf('[', i)
+            if (open < 0) return
+            if (close < open) {
+                close = text.indexOf(']', open + 1)
+                if (close < 0) return
+            }
+            if (text.startsWith(TJ_ARRAY_OPERATOR, skipWhitespace(text, close + 1))) {
+                appendArrayItems(text, open + 1, close, sb)
+                sb.append(" ")
+                i = close + 1
+                close = text.indexOf(']', i)
+            } else {
+                // Not an array-showing operator: resume just after the '[' so a
+                // nested array inside this one is still found.
+                i = open + 1
+            }
+        }
+    }
+
+    /**
+     * Appends the string and hex operands of one `TJ` array body.
+     *
+     * The single-pass form of `\((.*?)(?<!\\)\)|<([0-9a-fA-F]+)>`.
+     */
+    private fun appendArrayItems(text: String, from: Int, to: Int, sb: StringBuilder) {
+        var i = from
+        while (i < to) {
+            when (text[i]) {
+                '(' -> {
+                    val close = indexOfUnescaped(text, i + 1, ')', to)
+                    if (close < 0) return
+                    sb.append(decodePdfString(text.substring(i + 1, close)))
+                    i = close + 1
+                }
+                '<' -> {
+                    val close = indexOfHexStringEnd(text, i + 1, to)
+                    if (close < 0) {
+                        i++
+                    } else {
+                        sb.append(decodeHexPdfString(text.substring(i + 1, close)))
+                        i = close + 1
+                    }
+                }
+                else -> i++
+            }
+        }
+    }
+
+    /** `<48656c6c6f> Tj`. */
+    private fun appendHexTjStrings(text: String, sb: StringBuilder) {
+        var i = 0
+        while (true) {
+            val open = text.indexOf('<', i)
+            if (open < 0) return
+            val close = indexOfHexStringEnd(text, open + 1, text.length)
+            if (close < 0) {
+                // `<<` dictionary markers and `<` inside other operators land
+                // here; step past this one and keep looking.
+                i = open + 1
+                continue
+            }
+            if (text.startsWith(TJ_OPERATOR, skipWhitespace(text, close + 1))) {
+                val decoded = decodeHexPdfString(text.substring(open + 1, close))
+                if (decoded.isNotBlank()) sb.append(decoded).append(" ")
+            }
+            i = close + 1
+        }
+    }
+
+    /**
+     * Index of the first [closer] at or after [from], skipping any character
+     * escaped by a backslash, or -1 when there is none before [limit].
+     *
+     * A backslash escapes the next character in a PDF literal, so `\)` does not
+     * end the string while `\\)` does.
+     */
+    private fun indexOfUnescaped(text: String, from: Int, closer: Char, limit: Int): Int {
+        var i = from
+        while (i < limit) {
+            val c = text[i]
+            if (c == '\\') {
+                i += 2
+                continue
+            }
+            if (c == closer) return i
+            i++
+        }
+        return -1
+    }
+
+    /**
+     * Index of the `>` closing a hex string that starts at [from], or -1 when
+     * [from] does not begin one. The body must be non-empty and all hex digits,
+     * which is what keeps `<<` and `/Name` from being read as a string.
+     */
+    private fun indexOfHexStringEnd(text: String, from: Int, limit: Int): Int {
+        var i = from
+        while (i < limit && isHexDigit(text[i])) i++
+        if (i == from) return -1
+        return if (i < limit && text[i] == '>') i else -1
+    }
+
+    private fun isHexDigit(c: Char): Boolean =
+        c in '0'..'9' || c in 'a'..'f' || c in 'A'..'F'
+
+    /** Index of the first non-whitespace character at or after [from]. */
+    private fun skipWhitespace(text: String, from: Int): Int {
+        var i = from
+        while (i < text.length && text[i].isWhitespace()) i++
+        return i
     }
 
     private fun decodePdfString(raw: String): String {

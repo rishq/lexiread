@@ -2,14 +2,30 @@
 
 import android.app.Application
 import android.util.Log
+import coil.ImageLoader
+import coil.ImageLoaderFactory
 import com.lexiread.core.util.CrashLogger
 import com.lexiread.data.remote.RetrofitClient
 import com.lexiread.presentation.di.AppContainer
 
-class LexiReadApp : Application() {
+class LexiReadApp : Application(), ImageLoaderFactory {
 
     lateinit var container: AppContainer
         private set
+
+    /**
+     * The image loader every `AsyncImage` call resolves to.
+     *
+     * `CoverUrls.sanitize` checks the URL a screen hands to Coil, but that is the
+     * *entry* URL only: the request can be answered with a redirect, and Coil's
+     * default client would follow it to any host, so an open redirect on an
+     * allow-listed image host would turn a validated cover URL into an arbitrary
+     * fetch. Routing Coil through [RetrofitClient.imageOkHttpClient] re-validates
+     * each hop against the image allow-list, exactly as the catalogue clients do.
+     */
+    override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)
+        .okHttpClient(RetrofitClient.imageOkHttpClient)
+        .build()
 
     override fun onCreate() {
         super.onCreate()
