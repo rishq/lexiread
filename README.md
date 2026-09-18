@@ -58,10 +58,10 @@ LexiRead combines an e-book reader with language-learning utilities. Readers can
 
 The repository includes a complete automated CI/CD workflow (`.github/workflows/android_ci_cd.yml`):
 
-- **Automatic Build & Test on Push / Pull Request**: Every push or PR to `main`/`master` runs unit tests and builds the debug and release APKs / AAB bundles.
-- **Automated GitHub Releases on Tags**: Push a tag (e.g. `v1.0.0`) to automatically trigger a build, create a GitHub Release, generate release notes, and attach the APK and AAB binaries.
+- **Automatic Build & Test on Push / Pull Request**: Every push or PR to `main`/`master` runs unit tests, compiles the instrumented tests, and builds the **debug** APK. Release variants are deliberately not built on that path: they need the upload keystore, which never reaches a pull-request build.
+- **Automated GitHub Releases on Tags**: Push a tag (e.g. `v1.0.0`) to build the signed release APK/AAB, create a GitHub Release, generate release notes, and attach both binaries. Pushing to `main` does **not** cut a release.
 - **Manual Trigger (`workflow_dispatch`)**: Run the workflow directly from the GitHub Actions tab with custom release tags and pre-release options.
-- **GitHub Artifacts**: All successful builds upload artifacts (`LexiRead-debug.apk`, `LexiRead-release.apk`, `LexiRead-release.aab`) accessible directly in the workflow summary.
+- **GitHub Artifacts**: The build job uploads `LexiRead-debug.apk`; the release job uploads `LexiRead-release.apk` and `LexiRead-release.aab`. Both are accessible from the workflow summary.
 
 ### Setting up Repository Secrets
 Release signing secrets are **required** for any build that produces a release

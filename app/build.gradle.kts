@@ -68,11 +68,22 @@ android {
     taskName.contains("Release") || taskName in setOf("assemble", "build", "bundle")
   }
   if (isCi && releaseRequested && !hasReleaseKeystore && !debugSigningAllowed) {
+    // Name the specific input that is missing. The three conditions are ANDed
+    // above, so a single combined message sends people to the wrong place - and
+    // in CI the real cause (a secret that was never configured) is invisible.
+    val missing = buildList {
+      if (!file(releaseKeystorePath).exists()) {
+        add("no keystore file at $releaseKeystorePath")
+      }
+      if (System.getenv("STORE_PASSWORD").isNullOrBlank()) add("STORE_PASSWORD is not set")
+      if (System.getenv("KEY_PASSWORD").isNullOrBlank()) add("KEY_PASSWORD is not set")
+    }
     throw GradleException(
-      "Refusing to build a release artifact: release signing is not configured. " +
-        "Expected a keystore at $releaseKeystorePath plus STORE_PASSWORD and KEY_PASSWORD " +
-        "(CI: RELEASE_KEYSTORE_BASE64). Set ALLOW_DEBUG_SIGNING=true to explicitly " +
-        "publish a debug-signed build instead."
+      "Refusing to build a release artifact: release signing is not configured - " +
+        missing.joinToString("; ") + ". " +
+        "In CI these come from the RELEASE_KEYSTORE_BASE64, STORE_PASSWORD and " +
+        "KEY_PASSWORD repository secrets (see README, 'Setting up Repository Secrets'). " +
+        "Set ALLOW_DEBUG_SIGNING=true to explicitly publish a debug-signed build instead."
     )
   }
 

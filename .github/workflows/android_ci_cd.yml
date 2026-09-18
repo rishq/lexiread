@@ -156,7 +156,18 @@ jobs:
   release:
     name: Build Signed Release & Publish
     needs: build
-    if: github.event_name != 'pull_request'
+    # Only a tag push or an explicit manual run asks for a release. This used to
+    # be `github.event_name != 'pull_request'`, so *every* push to main cut a
+    # `v1.0.<run_number>` release - ten of them exist (v1.0.16 .. v1.0.25), all
+    # debug-signed, because the signing secrets were never configured. It also
+    # turned CI red on ordinary commits. README already documents releases as
+    # tag-driven, so this now matches it.
+    #
+    # With the guard in app/build.gradle.kts this means: a tag push with no
+    # signing secrets fails loudly (you asked for a release, you get told you
+    # cannot have one), while a normal push to main no longer involves the
+    # release pipeline at all.
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -235,19 +246,19 @@ jobs:
         run: |
           mkdir -p outputs/
 
-          if [ -f app/build/outputs/apk/debug/app-debug.apk ]; then
-            cp app/build/outputs/apk/debug/app-debug.apk outputs/LexiRead-debug.apk
-          fi
+          # This job never builds a debug variant, so the `app-debug.apk` copy
+          # that used to live here could never fire - it just implied otherwise.
+          #
+          # Both release artifacts are required: the whole point of this job is
+          # to publish them, so a missing one fails here instead of uploading a
+          # silently partial set.
+          test -f app/build/outputs/apk/release/app-release.apk || {
+            echo "::error::app-release.apk was not produced"; exit 1; }
+          test -f app/build/outputs/bundle/release/app-release.aab || {
+            echo "::error::app-release.aab was not produced"; exit 1; }
 
-          # Find and copy Release APK (signed only; unsigned builds fail above per P2-10)
-          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
-            cp app/build/outputs/apk/release/app-release.apk outputs/LexiRead-release.apk
-          fi
-
-          # Find and copy Release AAB Bundle (if built)
-          if [ -f app/build/outputs/bundle/release/app-release.aab ]; then
-            cp app/build/outputs/bundle/release/app-release.aab outputs/LexiRead-release.aab
-          fi
+          cp app/build/outputs/apk/release/app-release.apk outputs/LexiRead-release.apk
+          cp app/build/outputs/bundle/release/app-release.aab outputs/LexiRead-release.aab
 
           echo "Generated artifacts in outputs/:"
           ls -la outputs/
@@ -262,7 +273,9 @@ jobs:
 
       - name: Determine Release Tag
         id: release_info
-        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release != 'false')
+        # The `push to main` clause that used to be here is gone: the job itself
+        # no longer runs on that event, so it was unreachable.
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release != 'false')
         run: |
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             TAG_NAME="${GITHUB_REF#refs/tags/}"
