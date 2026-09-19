@@ -16,6 +16,9 @@
 local.properties
 .env
 debug.keystore
+# Upload keystore for Play releases — never commit. Lose it and you
+# cannot sign updates (Play App Signing reset aside).
+/my-upload-key.jks
 .workbuddy-ai/
 .CODE_REVIEW.md
 CODE_REVIEW_FINAL.md
