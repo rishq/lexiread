@@ -68,10 +68,17 @@ internal const val FIRST_PAGE = 1
  * Open Library and Google Books are metadata-only — they flood results with
  * books the user cannot actually read, which was the #1 complaint. They remain
  * available as optional toggles in the UI.
+ *
+ * MY_LIB is on by default per owner decision: without it its books never
+ * appear in search, Popular or categories unless the user finds the toggle.
+ * Note it still contributes nothing to Popular (no popular route — blank
+ * queries are rejected in fetchMyLib), and its mirror host can rotate; see
+ * MyLibConfig.DEFAULT_HOST.
  */
 val DEFAULT_SOURCES: Set<SourceKind> = setOf(
     SourceKind.GUTENDEX,
     SourceKind.INTERNET_ARCHIVE,
     SourceKind.STANDARD_EBOOKS,
-    SourceKind.GUTENDEX_AUSTRALIA
+    SourceKind.GUTENDEX_AUSTRALIA,
+    SourceKind.MY_LIB
 )

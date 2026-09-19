@@ -106,14 +106,16 @@ object UrlValidator {
      * Redirect policy for cover images, used by the OkHttp client Coil fetches
      * through.
      *
-     * The allow-list is deliberately the same one [requireTrustedImageUrl] uses,
-     * including hosts registered via [allowImageHost]. A redirect guard stricter
-     * than the entry check would reject a hop the entry check had already
-     * accepted — for example a MyLib cover served from a sibling host of the
-     * configured one — so the two must stay in step.
+     * The allow-list is deliberately the same one [requireTrustedImageUrl] uses.
+     * A redirect guard stricter than the entry check would reject a hop the entry
+     * check had already accepted, so the two must stay in step.
+     *
+     * Pass the source's image host via [extraHosts] rather than relying on the
+     * global [allowImageHost] registry, so trust is scoped to the request that
+     * already passed the entry check.
      */
-    fun requireTrustedImageRedirect(fromUrl: String, toUrl: String): String {
-        val allowed = TRUSTED_IMAGE_HOSTS + extraImageHosts
+    fun requireTrustedImageRedirect(fromUrl: String, toUrl: String, extraHosts: Set<String> = emptySet()): String {
+        val allowed = TRUSTED_IMAGE_HOSTS + extraImageHosts + extraHosts
         val (scheme, host) = parse(toUrl)
         if (scheme != "https") throw SecurityException("Redirect rejected: only HTTPS is allowed ($toUrl).")
         val fromHost = parse(fromUrl).second

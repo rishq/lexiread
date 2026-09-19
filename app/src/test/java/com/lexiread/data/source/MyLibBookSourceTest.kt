@@ -2,6 +2,7 @@ package com.lexiread.data.source
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.lexiread.core.util.UrlValidator
 import com.lexiread.data.remote.api.MyLibApi
 import com.lexiread.domain.model.Book
 import com.lexiread.domain.model.BookFormat
@@ -12,6 +13,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -225,6 +227,16 @@ class MyLibBookSourceTest {
         )
 
         source.downloadContent(Book(id = "mylib_evil", title = "Evil", author = "?"))
+    }
+
+    @Test
+    fun `constructor does not register host in global image allow-list`(): Unit = runBlocking {
+        UrlValidator.clearExtraImageHosts()
+        val source = MyLibBookSource(fakeApi(), context)
+
+        assertThrows(SecurityException::class.java) {
+            UrlValidator.requireTrustedImageUrl("https://zlib.bz/covers/test.jpg")
+        }
     }
 
     // --- fixtures -----------------------------------------------------------

@@ -96,6 +96,38 @@ class PgaBookSourceTest {
     }
 
     @Test
+    fun `downloadContent rejects book body larger than MAX_BOOK_BYTES`() = runBlocking {
+        // Regression test for the uncapped ResponseBody.string() heap sink:
+        // a hostile catalogue answering with a gigabyte body must fail closed
+        // instead of being buffered fully into heap.
+        val big = "x".repeat((PgaBookSource.MAX_BOOK_BYTES + 1).toInt())
+        val source = PgaBookSource(fakeApi(INDEX_FIXTURE, fileContent = big), context)
+        val book = Book(id = "pga_2400261", title = "Big", author = "Big Author", format = "TXT")
+
+        var failed = false
+        try {
+            source.downloadContent(book)
+        } catch (e: IllegalArgumentException) {
+            failed = true
+        }
+        assertTrue(failed)
+    }
+
+    @Test
+    fun `search rejects index larger than MAX_INDEX_BYTES`() = runBlocking {
+        val bigIndex = "x".repeat((PgaBookSource.MAX_INDEX_BYTES + 1).toInt())
+        val source = PgaBookSource(fakeApi(bigIndex), context)
+
+        var failed = false
+        try {
+            source.search("")
+        } catch (e: IllegalArgumentException) {
+            failed = true
+        }
+        assertTrue(failed)
+    }
+
+    @Test
     fun `stripHtml converts tags and entities to readable prose`() {
         val html = "<html><body><p>Hello &amp; welcome</p><script>bad()</script></body></html>"
         val text = PgaBookSource.stripHtml(html)

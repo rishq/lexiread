@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.lexiread.data.source.MyLibConfig
 import com.lexiread.domain.model.Book
 
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -266,7 +267,8 @@ private fun LibraryBookCard(
                     .background(MaterialTheme.colorScheme.primaryContainer)
             ) {
                 val safeCover = remember(book.coverUrl) {
-                    com.lexiread.core.util.CoverUrls.sanitize(book.coverUrl)
+                    val extraHosts = if (book.id.startsWith("mylib_")) setOf(MyLibConfig.DEFAULT_HOST) else emptySet()
+                com.lexiread.core.util.CoverUrls.sanitize(book.coverUrl, extraHosts)
                 }
                 if (safeCover != null) {
                     AsyncImage(

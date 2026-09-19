@@ -131,6 +131,13 @@ class UrlValidatorTest {
     }
 
     @Test
+    fun `image redirect with per-call extra host is allowed`() {
+        val from = "https://zlib.bz/covers/a.jpg"
+        val to = "https://static.zlib.bz/covers/a.jpg"
+        assertEquals(to, UrlValidator.requireTrustedImageRedirect(from, to, setOf("zlib.bz")))
+    }
+
+    @Test
     fun `image redirect to an untrusted host is rejected`() {
         val from = "https://covers.openlibrary.org/b/id/1-M.jpg"
 

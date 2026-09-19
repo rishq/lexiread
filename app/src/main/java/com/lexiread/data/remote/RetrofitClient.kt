@@ -138,11 +138,15 @@ object RetrofitClient {
                             target.toString()
                         )
 
-                    RedirectPolicy.IMAGE_HOSTS ->
+                    RedirectPolicy.IMAGE_HOSTS -> {
+                        val fromHost = request.url.host?.lowercase()?.trimEnd('.')?.takeIf { it.isNotBlank() }
+                        val extra = if (fromHost != null) setOf(fromHost) else emptySet()
                         com.lexiread.core.util.UrlValidator.requireTrustedImageRedirect(
                             request.url.toString(),
-                            target.toString()
+                            target.toString(),
+                            extra
                         )
+                    }
 
                     RedirectPolicy.TRUSTED_HOSTS ->
                         com.lexiread.core.util.UrlValidator.requireTrustedRedirect(

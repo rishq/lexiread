@@ -1,8 +1,10 @@
 package com.lexiread.data.source
 
 import android.content.Context
+import com.lexiread.core.util.TextEncoding
 import com.lexiread.core.util.UrlValidator
 import com.lexiread.data.remote.api.PgaApi
+import okhttp3.ResponseBody
 import com.lexiread.domain.model.Book
 import com.lexiread.domain.model.FormatKind
 import com.lexiread.domain.repository.BookSource
@@ -67,14 +69,19 @@ class PgaBookSource(
         val raw = try {
             // Prefer the clean plain-text edition; fall back to the HTML page
             // (recent additions only ship HTML) if no `.txt` exists.
-            pgaApi.fetch(UrlValidator.requireTrustedDownloadUrl(txtUrl)).use { it.string() }
+            // Size-capped: ResponseBody.string() would buffer an unbounded body
+            // into heap, so stream through TextEncoding with a hard cap instead.
+            pgaApi.fetch(UrlValidator.requireTrustedDownloadUrl(txtUrl)).use {
+                readCappedBodyText(it, MAX_BOOK_BYTES, "PGA book content")
+            }
         } catch (e: CancellationException) {
             // runCatching would swallow this and fire a second request from an
             // already-cancelled coroutine.
             throw e
         } catch (e: Exception) {
-            pgaApi.fetch(UrlValidator.requireTrustedDownloadUrl(htmlUrl)).use { it.string() }
-                .let(::stripHtml)
+            pgaApi.fetch(UrlValidator.requireTrustedDownloadUrl(htmlUrl)).use {
+                readCappedBodyText(it, MAX_BOOK_BYTES, "PGA book content")
+            }.let(::stripHtml)
         }
 
         val cleaned = cleanPgaText(raw)
@@ -88,9 +95,21 @@ class PgaBookSource(
         cachedEntries?.let { return it }
         return entriesLock.withLock {
             cachedEntries?.let { return@withLock it }
-            pgaApi.fetch(INDEX_URL).use { it.string() }
+            pgaApi.fetch(INDEX_URL).use {
+                readCappedBodyText(it, MAX_INDEX_BYTES, "PGA index")
+            }
                 .let(::parseIndex)
                 .also { cachedEntries = it }
+        }
+    }
+
+    private fun readCappedBodyText(body: ResponseBody, maxBytes: Long, label: String): String {
+        body.byteStream().use { stream ->
+            val bytes = TextEncoding.readCappedBytes(stream, maxBytes + 1)
+            require(bytes.size <= maxBytes) {
+                "$label exceeds the ${maxBytes / (1024 * 1024)}MB limit."
+            }
+            return TextEncoding.decode(bytes)
         }
     }
 
@@ -100,6 +119,12 @@ class PgaBookSource(
         private const val DOWNLOAD_DIR = "downloaded_books"
         private const val INDEX_URL = "https://gutenberg.net.au/gutindex_aus.txt"
         private const val SEARCH_LIMIT = 50
+        // Aligned with peer sources: Gutendex caps book downloads at 25MB,
+        // IA/SE/MyLib at 40MB, MyLib pages at 4MB. PGA texts are small
+        // (the index is ~1.5MB), so 25MB/10MB leaves ample headroom while
+        // closing the uncapped ResponseBody.string() heap sink.
+        internal const val MAX_BOOK_BYTES = 25L * 1024 * 1024
+        internal const val MAX_INDEX_BYTES = 10L * 1024 * 1024
 
         private val NUMBER_PATTERN = Regex("\\d{7}")
         private val URL_PATTERN =

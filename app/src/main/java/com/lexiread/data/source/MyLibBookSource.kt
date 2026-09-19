@@ -55,12 +55,12 @@ class MyLibBookSource(
 
     private val booksDir = File(context.applicationContext.filesDir, DOWNLOAD_DIR).apply { mkdirs() }
 
-    init {
-        // Covers on this source are served from the configured host, which is not
-        // part of the built-in image allow-list. Register it explicitly rather than
-        // widening the allow-list for every catalogue.
-        UrlValidator.allowImageHost(config.host)
-    }
+    /**
+     * Covers on this source are served from [config.host], which is not part of
+     * the built-in image allow-list. The host is passed per-call through
+     * [CoverUrls.sanitize] rather than widened globally here, so trust is scoped
+     * to the books this source returns.
+     */
 
     /**
      * Entries seen on the search pages parsed so far, keyed by id.

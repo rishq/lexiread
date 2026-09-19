@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.lexiread.data.source.MyLibConfig
 import com.lexiread.domain.model.CatalogBook
 import com.lexiread.domain.model.SourceKind
 import kotlinx.coroutines.launch
@@ -318,7 +319,7 @@ private fun CatalogBookCard(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            CoverImage(url = book.coverUrl, title = book.title)
+            CoverImage(url = book.coverUrl, title = book.title, source = book.source)
 
             Spacer(modifier = Modifier.width(16.dp))
 
@@ -411,10 +412,9 @@ private fun CatalogBookCard(
  * visually even instead of collapsing into empty boxes.
  */
 @Composable
-private fun CoverImage(url: String?, title: String) {
-    // Cover URLs come from remote responses and scraped markup, so only fetch
-    // them from a host we actually trust.
-    val safeUrl = remember(url) { com.lexiread.core.util.CoverUrls.sanitize(url) }
+private fun CoverImage(url: String?, title: String, source: SourceKind) {
+    val extraHosts = if (source == SourceKind.MY_LIB) setOf(MyLibConfig.DEFAULT_HOST) else emptySet()
+    val safeUrl = remember(url) { com.lexiread.core.util.CoverUrls.sanitize(url, extraHosts) }
     Box(
         modifier = Modifier
             .width(64.dp)
