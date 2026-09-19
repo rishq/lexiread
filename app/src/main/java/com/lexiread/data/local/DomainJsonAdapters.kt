@@ -302,7 +302,12 @@ private class CatalogBookAdapter(private val moshi: Moshi) : JsonAdapter<Catalog
                 6 -> subjects = reader.nextListOrEmpty(stringListAdapter)
                 7 -> source = reader.nextSourceKind()
                 8 -> formats = reader.nextListOrEmpty(bookFormatListAdapter)
-                9 -> reader.nextNull<BookIdentifiers?>()?.let { identifiers = it }
+                9 -> identifiers = if (reader.peek() == JsonReader.Token.NULL) {
+                    reader.nextNull<BookIdentifiers?>()
+                    BookIdentifiers()
+                } else {
+                    bookIdentifiersAdapter.fromJson(reader) ?: BookIdentifiers()
+                }
                 10 -> isPublicDomain = reader.nextBooleanOrNull() ?: false
                 11 -> downloadCount = reader.nextIntOrNull()
                 12 -> publishedYear = reader.nextIntOrNull()
