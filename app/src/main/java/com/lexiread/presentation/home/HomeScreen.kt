@@ -283,7 +283,7 @@ private fun ContinueReadingHeroCard(
         ) {
             // Book Cover
             val safeCover = remember(book.coverUrl) {
-                val extraHosts = if (book.id.startsWith("mylib_")) setOf(MyLibConfig.DEFAULT_HOST) else emptySet()
+                val extraHosts = if (book.id.startsWith("mylib_")) setOf(MyLibConfig.DEFAULT_HOST) + MyLibConfig.FALLBACK_HOSTS else emptySet()
                 com.lexiread.core.util.CoverUrls.sanitize(book.coverUrl, extraHosts)
             }
             Box(
@@ -406,7 +406,7 @@ private fun BookCardCompact(
                 .background(MaterialTheme.colorScheme.primaryContainer)
         ) {
             val safeCover = remember(book.coverUrl) {
-                val extraHosts = if (book.id.startsWith("mylib_")) setOf(MyLibConfig.DEFAULT_HOST) else emptySet()
+                val extraHosts = if (book.id.startsWith("mylib_")) setOf(MyLibConfig.DEFAULT_HOST) + MyLibConfig.FALLBACK_HOSTS else emptySet()
                 com.lexiread.core.util.CoverUrls.sanitize(book.coverUrl, extraHosts)
             }
             if (safeCover != null) {
@@ -478,7 +478,7 @@ private fun BookListItem(
                     .background(MaterialTheme.colorScheme.primaryContainer)
             ) {
                 val safeCover = remember(book.coverUrl) {
-                    val extraHosts = if (book.id.startsWith("mylib_")) setOf(MyLibConfig.DEFAULT_HOST) else emptySet()
+                    val extraHosts = if (book.id.startsWith("mylib_")) setOf(MyLibConfig.DEFAULT_HOST) + MyLibConfig.FALLBACK_HOSTS else emptySet()
                 com.lexiread.core.util.CoverUrls.sanitize(book.coverUrl, extraHosts)
                 }
                 if (safeCover != null) {

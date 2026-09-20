@@ -667,14 +667,17 @@ data class MyLibConfig(
     /** Mirrors or CDNs allowed to serve book files, besides [host]. */
     val allowedDownloadHosts: Set<String> = emptySet(),
     /** A scraped page is attacker-controlled; never read it unbounded. */
-    val maxPageBytes: Long = DEFAULT_MAX_PAGE_BYTES
+    val maxPageBytes: Long = DEFAULT_MAX_PAGE_BYTES,
+    /** Mirrors to try if [host] is unreachable. */
+    val fallbackHosts: List<String> = emptyList()
 ) {
     /** Hosts files may be fetched from: this deployment plus its mirrors. */
-    fun downloadHosts(): Set<String> = allowedDownloadHosts + host
+    fun downloadHosts(): Set<String> = allowedDownloadHosts + host + fallbackHosts
 
     companion object {
         const val DEFAULT_HOST = "zlib.bz"
         const val DEFAULT_MAX_PAGE_BYTES = 4L * 1024 * 1024
+        val FALLBACK_HOSTS = listOf("zlibrary.to", "1lib.dev", "z-lib.io")
     }
 }
 

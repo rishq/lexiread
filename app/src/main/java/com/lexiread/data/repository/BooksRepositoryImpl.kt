@@ -459,38 +459,48 @@ class BooksRepositoryImpl(
         withContext(dispatcher) {
             if (query.isBlank()) return@withContext CatalogPage.empty(page)
 
-            val url = MyLibBookSource.buildSearchUrl(query, page, MY_LIB_CONFIG)
-            val html = myLibApi.fetch(url).use { body ->
-                TextEncoding.readText(body.byteStream(), MY_LIB_CONFIG.maxPageBytes)
-            }
-            val parsed = MyLibBookSource.parseSearchPage(html, url, page, MY_LIB_CONFIG)
+            val hosts = listOf(MY_LIB_CONFIG.host) + MY_LIB_CONFIG.fallbackHosts
+            var lastError: Throwable? = null
 
-            // The search page is the only place that carries direct file links,
-            // so hand them to the source that will later be asked to download one.
-            myLibSource()?.remember(parsed.entries)
+            for (host in hosts) {
+                try {
+                    val config = MY_LIB_CONFIG.copy(host = host)
+                    val url = MyLibBookSource.buildSearchUrl(query, page, config)
+                    val html = myLibApi.fetch(url).use { body ->
+                        TextEncoding.readText(body.byteStream(), config.maxPageBytes)
+                    }
+                    val parsed = MyLibBookSource.parseSearchPage(html, url, page, config)
 
-            CatalogPage(
-                books = parsed.entries.map { entry ->
-                    CatalogBook(
-                        id = MY_LIB_PREFIX + entry.id,
-                        title = entry.title,
-                        authors = entry.author?.let { listOf(com.lexiread.domain.model.Author(it)) }
-                            ?: emptyList(),
-                        coverUrl = entry.coverUrl,
-                        description = entry.description,
-                        language = entry.language,
-                        subjects = emptyList(),
-                        source = SourceKind.MY_LIB,
-                        formats = entry.formats,
-                        isPublicDomain = true,
-                        publishedYear = entry.year,
-                        identifiers = com.lexiread.domain.model.BookIdentifiers()
+                    myLibSource()?.remember(parsed.entries)
+
+                    return@withContext CatalogPage(
+                        books = parsed.entries.map { entry ->
+                            CatalogBook(
+                                id = MY_LIB_PREFIX + entry.id,
+                                title = entry.title,
+                                authors = entry.author?.let { listOf(com.lexiread.domain.model.Author(it)) }
+                                    ?: emptyList(),
+                                coverUrl = entry.coverUrl,
+                                description = entry.description,
+                                language = entry.language,
+                                subjects = emptyList(),
+                                source = SourceKind.MY_LIB,
+                                formats = entry.formats,
+                                isPublicDomain = true,
+                                publishedYear = entry.year,
+                                identifiers = com.lexiread.domain.model.BookIdentifiers()
+                            )
+                        },
+                        page = page,
+                        totalResults = parsed.totalResults,
+                        hasMore = parsed.hasNextPage
                     )
-                },
-                page = page,
-                totalResults = parsed.totalResults,
-                hasMore = parsed.hasNextPage
-            )
+                } catch (e: IOException) {
+                    lastError = e
+                }
+            }
+
+            throw lastError ?: IOException("No book catalogue could be reached.")
         }
 
     /**
@@ -599,7 +609,9 @@ class BooksRepositoryImpl(
          * the one thing to change when the site moves or restyles — the parser
          * itself never hardcodes any of it.
          */
-        val MY_LIB_CONFIG = MyLibConfig()
+        val MY_LIB_CONFIG = MyLibConfig(
+            fallbackHosts = MyLibConfig.FALLBACK_HOSTS
+        )
         const val IA_PAGE_SIZE = 20
         const val SE_PAGE_SIZE = 20
         const val PGA_PAGE_SIZE = 20

@@ -148,11 +148,15 @@ object RetrofitClient {
                         )
                     }
 
-                    RedirectPolicy.TRUSTED_HOSTS ->
+                    RedirectPolicy.TRUSTED_HOSTS -> {
+                        val fromHost = request.url.host?.lowercase()?.trimEnd('.')?.takeIf { it.isNotBlank() }
+                        val extra = if (fromHost != null) setOf(fromHost) else emptySet()
                         com.lexiread.core.util.UrlValidator.requireTrustedRedirect(
                             request.url.toString(),
-                            target.toString()
+                            target.toString(),
+                            extra
                         )
+                    }
                 }
                 response.close()
                 request = request.newBuilder().url(target).build()

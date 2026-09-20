@@ -13,6 +13,7 @@ import com.lexiread.data.repository.BooksRepositoryImpl
 import com.lexiread.data.source.GutendexBookSource
 import com.lexiread.data.source.InternetArchiveBookSource
 import com.lexiread.data.source.MyLibBookSource
+import com.lexiread.data.source.MyLibConfig
 import com.lexiread.data.source.OpenLibraryBookSource
 import com.lexiread.data.source.PgaBookSource
 import com.lexiread.data.source.StandardEbooksBookSource
@@ -85,7 +86,7 @@ class AppContainer(private val context: Context) {
             InternetArchiveBookSource(RetrofitClient.internetArchiveApi, context),
             StandardEbooksBookSource(RetrofitClient.standardEbooksApi, context),
             PgaBookSource(RetrofitClient.pgaApi, context),
-            MyLibBookSource(RetrofitClient.myLibApi, context)
+            MyLibBookSource(RetrofitClient.myLibApi, context, MyLibConfig(fallbackHosts = MyLibConfig.FALLBACK_HOSTS))
         )
     }
 
