@@ -1,5 +1,7 @@
 # LexiRead
 
+![LexiRead — e-book reader and language learning](assets/cover.svg)
+
 LexiRead is an Android application designed for reading e-books and improving language comprehension with built-in translation, dictionary lookup, space-repetition vocabulary learning, and AI-powered text explanations.
 
 ## Overview

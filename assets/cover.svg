@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" font-family="DejaVu Sans, Verdana, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#232347"/>
+      <stop offset="0.55" stop-color="#1b2a4a"/>
+      <stop offset="1" stop-color="#0b3b39"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#2dd4bf" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#2dd4bf" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e2e8f0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <ellipse cx="600" cy="380" rx="420" ry="220" fill="url(#glow)"/>
+
+  <!-- watermark letters -->
+  <text x="60" y="230" font-size="170" font-weight="bold" fill="#ffffff" opacity="0.07">Aa</text>
+  <text x="985" y="530" font-size="150" font-weight="bold" fill="#ffffff" opacity="0.07">Бб</text>
+  <text x="1010" y="150" font-size="110" font-weight="bold" fill="#ffffff" opacity="0.06">あ</text>
+
+  <!-- title -->
+  <text x="600" y="108" text-anchor="middle" font-size="82" font-weight="bold" fill="#ffffff" letter-spacing="3">LexiRead</text>
+  <text x="600" y="152" text-anchor="middle" font-size="29" fill="#a5f3fc">E-book reader &#183; Language learning</text>
+
+  <!-- open book shadow / cover -->
+  <g>
+    <path d="M600,296 C535,264 460,260 396,282 L396,474 C460,452 535,456 600,488 Z" fill="#0d9488"/>
+    <path d="M600,296 C665,264 740,260 804,282 L804,474 C740,452 665,456 600,488 Z" fill="#0f766e"/>
+    <!-- pages -->
+    <path d="M600,290 C538,260 468,256 408,276 L408,462 C468,442 538,446 600,476 Z" fill="url(#page)"/>
+    <path d="M600,290 C662,260 732,256 792,276 L792,462 C732,442 662,446 600,476 Z" fill="url(#page)"/>
+    <line x1="600" y1="290" x2="600" y2="476" stroke="#94a3b8" stroke-width="3"/>
+    <!-- fake text lines, left page -->
+    <g fill="#94a3b8" opacity="0.55">
+      <rect x="430" y="300" width="130" height="10" rx="5"/>
+      <rect x="430" y="322" width="150" height="10" rx="5"/>
+      <rect x="430" y="344" width="120" height="10" rx="5"/>
+      <rect x="430" y="366" width="150" height="10" rx="5"/>
+      <rect x="430" y="388" width="100" height="10" rx="5"/>
+    </g>
+    <!-- fake text lines, right page -->
+    <g fill="#94a3b8" opacity="0.55">
+      <rect x="640" y="300" width="130" height="10" rx="5"/>
+      <rect x="640" y="322" width="110" height="10" rx="5"/>
+    </g>
+    <!-- tapped word highlight -->
+    <ellipse cx="690" cy="352" rx="62" ry="20" fill="#fde047" opacity="0.85"/>
+    <text x="690" y="360" text-anchor="middle" font-size="21" font-weight="bold" fill="#422006">serendipity</text>
+  </g>
+
+  <!-- lookup tooltip -->
+  <g>
+    <rect x="772" y="206" width="252" height="104" rx="16" fill="#ffffff" opacity="0.96"/>
+    <polygon points="786,310 770,336 806,310" fill="#ffffff" opacity="0.96"/>
+    <text x="898" y="244" text-anchor="middle" font-size="26" font-weight="bold" fill="#1e293b">serendipity</text>
+    <text x="898" y="278" text-anchor="middle" font-size="22" fill="#0d9488">находка &#183; удача</text>
+  </g>
+
+  <!-- flashcards -->
+  <g>
+    <g transform="rotate(-8 250 400)">
+      <rect x="165" y="348" width="170" height="104" rx="14" fill="#f59e0b"/>
+      <text x="250" y="398" text-anchor="middle" font-size="30" font-weight="bold" fill="#ffffff">apple</text>
+      <text x="250" y="428" text-anchor="middle" font-size="19" fill="#fef3c7">tap to flip</text>
+    </g>
+    <g transform="rotate(6 262 452)">
+      <rect x="177" y="404" width="170" height="104" rx="14" fill="#ffffff"/>
+      <rect x="177" y="404" width="170" height="104" rx="14" fill="none" stroke="#f59e0b" stroke-width="4"/>
+      <text x="262" y="454" text-anchor="middle" font-size="30" font-weight="bold" fill="#1e293b">яблоко</text>
+      <text x="262" y="484" text-anchor="middle" font-size="19" fill="#b45309">SRS &#183; due today</text>
+    </g>
+  </g>
+
+  <!-- feature chips -->
+  <g font-size="24" text-anchor="middle">
+    <rect x="120" y="548" width="210" height="52" rx="26" fill="#ffffff" opacity="0.12"/>
+    <text x="225" y="582" fill="#e2e8f0">Dictionary</text>
+    <rect x="350" y="548" width="230" height="52" rx="26" fill="#ffffff" opacity="0.12"/>
+    <text x="465" y="582" fill="#e2e8f0">Text-to-Speech</text>
+    <rect x="600" y="548" width="230" height="52" rx="26" fill="#ffffff" opacity="0.12"/>
+    <text x="715" y="582" fill="#e2e8f0">Flashcards</text>
+    <rect x="850" y="548" width="230" height="52" rx="26" fill="#ffffff" opacity="0.12"/>
+    <text x="965" y="582" fill="#e2e8f0">AI Tutor</text>
+  </g>
+</svg>
