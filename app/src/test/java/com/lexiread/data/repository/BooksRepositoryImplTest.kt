@@ -37,6 +37,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import retrofit2.HttpException
+import retrofit2.Response
 import java.io.IOException
 
 /**
@@ -419,6 +421,50 @@ class BooksRepositoryImplTest {
         assertTrue(book.canRead)
         assertEquals(431, page.totalResults)
         assertTrue(page.hasMore)
+    }
+
+    @Test
+    fun `my library falls through to the next host when one answers 503`() = runBlocking {
+        // Retrofit surfaces error statuses as HttpException (a
+        // RuntimeException, not an IOException). The failover loop must still
+        // try the remaining mirrors instead of letting it escape.
+        val api = object : MyLibApi {
+            override suspend fun fetch(url: String): ResponseBody {
+                if ("zlib.bz" in url) {
+                    throw HttpException(
+                        Response.error<ResponseBody>(
+                            503,
+                            ResponseBody.create("text/html".toMediaType(), "blocked")
+                        )
+                    )
+                }
+                return FakeMyLibApiFixture().fetch(url)
+            }
+        }
+
+        val page = repository(myLibApi = api).search("pride", 1, setOf(SourceKind.MY_LIB))
+
+        assertEquals(1, page.books.size)
+        assertEquals("mylib_12345", page.books.first().id)
+    }
+
+    @Test(expected = IOException::class)
+    fun `my library browser-check pages surface as no catalogue`() {
+        runBlocking {
+        // Every mirror answers non-browser clients with a JS proof-of-work
+        // page. It must count as a host failure, never as an empty result.
+        val api = object : MyLibApi {
+            override suspend fun fetch(url: String): ResponseBody =
+                ResponseBody.create(
+                    "text/html".toMediaType(),
+                    "<html><head><title>Checking your browser ...</title></head>" +
+                        "<body><script>window.location.search+='no_cookie=true'</script></body></html>"
+                )
+        }
+
+            repository(myLibApi = api).search("pride", 1, setOf(SourceKind.MY_LIB))
+            throw AssertionError("Expected IOException from all-browser-check mirrors")
+        }
     }
 
     @Test

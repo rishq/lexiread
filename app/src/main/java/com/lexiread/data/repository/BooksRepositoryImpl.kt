@@ -469,6 +469,14 @@ class BooksRepositoryImpl(
                     val html = myLibApi.fetch(url).use { body ->
                         TextEncoding.readText(body.byteStream(), config.maxPageBytes)
                     }
+                    // The mirrors answer non-browser clients with a JS
+                    // proof-of-work "browser check" page instead of results.
+                    // It holds no catalogue rows, so without this guard it
+                    // would parse to a silent empty page on every host.
+                    if (isBotCheckPage(html)) {
+                        lastError = IOException("MyLib host $host returned a browser-check page.")
+                        continue
+                    }
                     val parsed = MyLibBookSource.parseSearchPage(html, url, page, config)
 
                     myLibSource()?.remember(parsed.entries)
@@ -495,13 +503,24 @@ class BooksRepositoryImpl(
                         totalResults = parsed.totalResults,
                         hasMore = parsed.hasNextPage
                     )
-                } catch (e: IOException) {
+                } catch (e: CancellationException) {
+                    throw e
+                    // Retrofit throws HttpException (a RuntimeException, not an
+                    // IOException) on error statuses such as the 503 the
+                    // mirrors currently answer with. Catching only IOException
+                    // let the first host's failure escape before the fallbacks
+                    // were ever tried.
+                } catch (e: Exception) {
                     lastError = e
                 }
             }
 
             throw lastError ?: IOException("No book catalogue could be reached.")
         }
+
+    private fun isBotCheckPage(html: String): Boolean =
+        html.contains("checking your browser", ignoreCase = true) ||
+            html.contains("no_cookie=true")
 
     /**
      * The same instance the download path uses, so the links seen here are the
