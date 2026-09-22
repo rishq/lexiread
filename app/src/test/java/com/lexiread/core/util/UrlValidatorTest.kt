@@ -80,15 +80,14 @@ class UrlValidatorTest {
         }
     }
 
-    // P2-2: global image-host registry can be reset between tests.
+    // Scoped trust: per-call extra hosts cover runtime mirrors without globals.
     @Test
-    fun `extra image hosts can be cleared to avoid cross-test leaks`() {
-        try {
-            UrlValidator.allowImageHost("ephemeral-test-host.example.com")
-            UrlValidator.requireTrustedImageUrl("https://ephemeral-test-host.example.com/c.jpg")
-        } finally {
-            UrlValidator.clearExtraImageHosts()
-        }
+    fun `extra image hosts are scoped to the call`() {
+        val extra = setOf("ephemeral-test-host.example.com")
+        assertEquals(
+            "https://ephemeral-test-host.example.com/c.jpg",
+            UrlValidator.requireTrustedImageUrl("https://ephemeral-test-host.example.com/c.jpg", extra)
+        )
         assertThrows(SecurityException::class.java) {
             UrlValidator.requireTrustedImageUrl("https://ephemeral-test-host.example.com/c.jpg")
         }
@@ -114,20 +113,16 @@ class UrlValidatorTest {
     }
 
     /**
-     * The MyLib host is registered at runtime rather than compiled in, so the
-     * redirect guard must consult the same registry the entry check does.
+     * A mirror host passed per call must satisfy the redirect guard exactly
+     * like the entry check.
      */
     @Test
-    fun `image redirect to a host registered at runtime is allowed`() {
-        try {
-            UrlValidator.allowImageHost("runtime-cover-host.invalid")
-            val from = "https://runtime-cover-host.invalid/a.jpg"
-            val to = "https://static.runtime-cover-host.invalid/a.jpg"
+    fun `image redirect to a per-call extra host is allowed`() {
+        val extra = setOf("runtime-cover-host.invalid")
+        val from = "https://runtime-cover-host.invalid/a.jpg"
+        val to = "https://static.runtime-cover-host.invalid/a.jpg"
 
-            assertEquals(to, UrlValidator.requireTrustedImageRedirect(from, to))
-        } finally {
-            UrlValidator.clearExtraImageHosts()
-        }
+        assertEquals(to, UrlValidator.requireTrustedImageRedirect(from, to, extra))
     }
 
     @Test

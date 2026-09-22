@@ -3,7 +3,7 @@ package com.lexiread.data.repository
 import com.lexiread.data.local.dao.CatalogCacheDao
 import com.lexiread.data.local.entity.CatalogCacheEntity
 import com.lexiread.data.remote.api.InternetArchiveApi
-import com.lexiread.data.remote.api.MyLibApi
+import com.lexiread.data.remote.api.MyLibEapiApi
 import com.lexiread.data.remote.api.PgaApi
 import com.lexiread.data.remote.api.StandardEbooksApi
 import com.lexiread.data.remote.dto.InternetArchiveMetadataResponse
@@ -105,12 +105,11 @@ class BooksRepositoryImplTest {
     }
 
     /**
-     * Returns an empty search page: with no result rows the parser finds
-     * nothing, which is the honest answer for a catalogue that has no fixture.
+     * Empty EAPI answer: success with no rows, honest empty result.
      */
-    private class FakeMyLibApi : MyLibApi {
-        override suspend fun fetch(url: String): ResponseBody =
-            ResponseBody.create("text/html".toMediaType(), "<html><body></body></html>")
+    private class FakeMyLibApi : MyLibEapiApi {
+        override suspend fun search(url: String, message: String, page: Int) =
+            com.lexiread.data.remote.mylib.MyLibEapiSearchResponse(success = 1)
     }
 
     private class FakeCatalogCacheDao : CatalogCacheDao {
@@ -216,7 +215,7 @@ class BooksRepositoryImplTest {
         cache: FakeCatalogCacheDao = FakeCatalogCacheDao(),
         library: FakeBookRepository = FakeBookRepository(),
         pgaApi: FakePgaApi = FakePgaApi(),
-        myLibApi: MyLibApi = FakeMyLibApi()
+        myLibEapiApi: MyLibEapiApi = FakeMyLibApi()
     ) = BooksRepositoryImpl(
         gutendexApi = gutendex,
         openLibraryApi = openLibrary,
@@ -224,7 +223,7 @@ class BooksRepositoryImplTest {
         internetArchiveApi = FakeInternetArchiveApi(),
         standardEbooksApi = FakeStandardEbooksApi(),
         pgaApi = pgaApi,
-        myLibApi = myLibApi,
+        myLibEapiApi = myLibEapiApi,
         catalogCacheDao = cache,
         bookRepository = library,
         sources = listOf(FakeBookSource("gutenberg")),
@@ -408,7 +407,7 @@ class BooksRepositoryImplTest {
 
     @Test
     fun `my library results appear when selected`() = runBlocking {
-        val page = repository(myLibApi = FakeMyLibApiFixture())
+        val page = repository(myLibEapiApi = FakeMyLibApiFixture())
             .search("pride", 1, setOf(SourceKind.MY_LIB))
 
         assertEquals(1, page.books.size)
@@ -428,42 +427,38 @@ class BooksRepositoryImplTest {
         // Retrofit surfaces error statuses as HttpException (a
         // RuntimeException, not an IOException). The failover loop must still
         // try the remaining mirrors instead of letting it escape.
-        val api = object : MyLibApi {
-            override suspend fun fetch(url: String): ResponseBody {
-                if ("zlib.bz" in url) {
+        val api = object : MyLibEapiApi {
+            override suspend fun search(url: String, message: String, page: Int) =
+                if ("z-library.ec" in url) {
                     throw HttpException(
                         Response.error<ResponseBody>(
                             503,
                             ResponseBody.create("text/html".toMediaType(), "blocked")
                         )
                     )
+                } else {
+                    FakeMyLibApiFixture().search(url, message, page)
                 }
-                return FakeMyLibApiFixture().fetch(url)
-            }
         }
 
-        val page = repository(myLibApi = api).search("pride", 1, setOf(SourceKind.MY_LIB))
+        val page = repository(myLibEapiApi = api).search("pride", 1, setOf(SourceKind.MY_LIB))
 
         assertEquals(1, page.books.size)
         assertEquals("mylib_12345", page.books.first().id)
     }
 
     @Test(expected = IOException::class)
-    fun `my library browser-check pages surface as no catalogue`() {
+    fun `my library success-zero on all mirrors surfaces as no catalogue`() {
         runBlocking {
-        // Every mirror answers non-browser clients with a JS proof-of-work
-        // page. It must count as a host failure, never as an empty result.
-        val api = object : MyLibApi {
-            override suspend fun fetch(url: String): ResponseBody =
-                ResponseBody.create(
-                    "text/html".toMediaType(),
-                    "<html><head><title>Checking your browser ...</title></head>" +
-                        "<body><script>window.location.search+='no_cookie=true'</script></body></html>"
-                )
+        // Every mirror answers success=0. Must count as host failure,
+        // never as empty result.
+        val api = object : MyLibEapiApi {
+            override suspend fun search(url: String, message: String, page: Int) =
+                com.lexiread.data.remote.mylib.MyLibEapiSearchResponse(success = 0)
         }
 
-            repository(myLibApi = api).search("pride", 1, setOf(SourceKind.MY_LIB))
-            throw AssertionError("Expected IOException from all-browser-check mirrors")
+            repository(myLibEapiApi = api).search("pride", 1, setOf(SourceKind.MY_LIB))
+            throw AssertionError("Expected IOException from all-success-zero mirrors")
         }
     }
 
@@ -477,26 +472,28 @@ class BooksRepositoryImplTest {
         assertTrue(!page.hasMore)
     }
 
-    /** A stand-in for one scraped search page. */
-    private class FakeMyLibApiFixture : MyLibApi {
-        override suspend fun fetch(url: String): ResponseBody = ResponseBody.create(
-            "text/html".toMediaType(),
-            """
-            <html><body>
-              <div class="book-item">
-                <img class="cover" src="/covers/abc.jpg">
-                <h3 class="title"><a href="/book/12345/pride-and-prejudice">Pride and Prejudice</a></h3>
-                <span class="author">Jane Austen</span>
-                <a href="/download/12345.epub">EPUB</a>
-                <a href="/download/12345.txt">TXT</a>
-              </div>
-              <div class="pagination">
-                <span>Results 1-1 of 431</span>
-                <a href="/s/?q=pride&amp;page=2">Next</a>
-              </div>
-            </body></html>
-            """.trimIndent()
-        )
+    /** A stand-in for one EAPI search answer. */
+    private class FakeMyLibApiFixture : MyLibEapiApi {
+        override suspend fun search(url: String, message: String, page: Int) =
+            com.lexiread.data.remote.mylib.MyLibEapiSearchResponse(
+                success = 1,
+                books = listOf(
+                    com.lexiread.data.remote.mylib.MyLibEapiBook(
+                        id = 12345,
+                        title = "Pride and Prejudice",
+                        author = "Jane Austen",
+                        extension = "epub",
+                        dl = "/download/12345.epub",
+                        href = "/book/12345/pride-and-prejudice",
+                        cover = "/covers/abc.jpg"
+                    )
+                ),
+                pagination = com.lexiread.data.remote.mylib.MyLibEapiPagination(
+                    current = 1,
+                    total_pages = 2,
+                    total_items = 431
+                )
+            )
     }
 
     private fun allSources(): Set<SourceKind> = SourceKind.entries.toSet()

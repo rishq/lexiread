@@ -4,7 +4,6 @@ import android.util.Log
 import com.lexiread.core.util.BookFormatSelector
 import com.lexiread.core.util.CatalogDeduper
 import com.lexiread.core.util.RetryPolicy
-import com.lexiread.core.util.TextEncoding
 import com.lexiread.core.util.runSuspendCatching
 import com.lexiread.data.local.CatalogCacheSerializer
 import com.lexiread.data.local.dao.CatalogCacheDao
@@ -14,11 +13,15 @@ import com.lexiread.data.mapper.toDomainBook
 import com.lexiread.data.source.MyLibBookSource
 import com.lexiread.data.source.MyLibConfig
 import com.lexiread.data.source.PgaBookSource
+import com.lexiread.data.remote.mylib.toEntry
+import com.lexiread.data.remote.api.MyLibEapiApi
 import com.lexiread.data.remote.googlebooks.GoogleBooksApi
 import com.lexiread.data.remote.gutendex.GutendexApi
 import com.lexiread.data.remote.openlibrary.OpenLibraryApi
+import com.lexiread.domain.model.Author
 import com.lexiread.domain.model.Book
 import com.lexiread.domain.model.BookFormat
+import com.lexiread.domain.model.BookIdentifiers
 import com.lexiread.domain.model.CatalogBook
 import com.lexiread.domain.model.CatalogPage
 import com.lexiread.domain.model.Category
@@ -56,7 +59,7 @@ class BooksRepositoryImpl(
     private val internetArchiveApi: com.lexiread.data.remote.api.InternetArchiveApi,
     private val standardEbooksApi: com.lexiread.data.remote.api.StandardEbooksApi,
     private val pgaApi: com.lexiread.data.remote.api.PgaApi,
-    private val myLibApi: com.lexiread.data.remote.api.MyLibApi,
+    private val myLibEapiApi: MyLibEapiApi,
     private val catalogCacheDao: CatalogCacheDao,
     private val bookRepository: BookRepository,
     private val sources: List<BookSource>,
@@ -450,43 +453,41 @@ class BooksRepositoryImpl(
     }
 
     /**
-     * Scrapes one Mylib search page.
+     * Searches one MyLib mirror through the EAPI JSON endpoint.
      *
-     * The blank-query guard matters: `q=` asks the site for its whole catalogue,
-     * which is exactly what "Popular" would otherwise do on every app start.
+     * The HTML search pages sit behind a JS browser check that plain HTTP
+     * clients cannot pass; `/eapi/book/search` answers the same mirrors
+     * with JSON and needs no account for search, so it is the transport.
+     * Mirrors are tried in order; anything but `success == 1` moves on.
+     *
+     * The blank-query guard matters: an empty message asks the site for its
+     * whole catalogue, which is exactly what "Popular" would otherwise do on
+     * every app start.
      */
     private suspend fun fetchMyLib(query: String, page: Int): CatalogPage =
         withContext(dispatcher) {
             if (query.isBlank()) return@withContext CatalogPage.empty(page)
 
-            val hosts = listOf(MY_LIB_CONFIG.host) + MY_LIB_CONFIG.fallbackHosts
+            val hosts = (MyLibConfig.EAPI_HOSTS + MY_LIB_CONFIG.host + MY_LIB_CONFIG.fallbackHosts).distinct()
             var lastError: Throwable? = null
 
             for (host in hosts) {
                 try {
-                    val config = MY_LIB_CONFIG.copy(host = host)
-                    val url = MyLibBookSource.buildSearchUrl(query, page, config)
-                    val html = myLibApi.fetch(url).use { body ->
-                        TextEncoding.readText(body.byteStream(), config.maxPageBytes)
-                    }
-                    // The mirrors answer non-browser clients with a JS
-                    // proof-of-work "browser check" page instead of results.
-                    // It holds no catalogue rows, so without this guard it
-                    // would parse to a silent empty page on every host.
-                    if (isBotCheckPage(html)) {
-                        lastError = IOException("MyLib host $host returned a browser-check page.")
+                    val response = myLibEapiApi.search("https://$host/eapi/book/search", query, page)
+                    if (response.success != 1) {
+                        lastError = IOException("MyLib host $host answered success=0.")
                         continue
                     }
-                    val parsed = MyLibBookSource.parseSearchPage(html, url, page, config)
+                    val entries = response.books.mapNotNull { it.toEntry(host) }
 
-                    myLibSource()?.remember(parsed.entries)
+                    myLibSource()?.remember(entries)
 
                     return@withContext CatalogPage(
-                        books = parsed.entries.map { entry ->
+                        books = entries.map { entry ->
                             CatalogBook(
                                 id = MY_LIB_PREFIX + entry.id,
                                 title = entry.title,
-                                authors = entry.author?.let { listOf(com.lexiread.domain.model.Author(it)) }
+                                authors = entry.author?.let { listOf(Author(it)) }
                                     ?: emptyList(),
                                 coverUrl = entry.coverUrl,
                                 description = entry.description,
@@ -496,20 +497,19 @@ class BooksRepositoryImpl(
                                 formats = entry.formats,
                                 isPublicDomain = true,
                                 publishedYear = entry.year,
-                                identifiers = com.lexiread.domain.model.BookIdentifiers()
+                                identifiers = BookIdentifiers()
                             )
                         },
                         page = page,
-                        totalResults = parsed.totalResults,
-                        hasMore = parsed.hasNextPage
+                        totalResults = response.pagination?.total_items,
+                        hasMore = response.pagination?.let { it.current < it.total_pages } ?: false
                     )
+                    // Retrofit throws HttpException (a RuntimeException, not an
+                    // IOException) on error statuses, and Moshi throws on a
+                    // block page where JSON was expected. Either must move on
+                    // to the next mirror rather than escape the loop.
                 } catch (e: CancellationException) {
                     throw e
-                    // Retrofit throws HttpException (a RuntimeException, not an
-                    // IOException) on error statuses such as the 503 the
-                    // mirrors currently answer with. Catching only IOException
-                    // let the first host's failure escape before the fallbacks
-                    // were ever tried.
                 } catch (e: Exception) {
                     lastError = e
                 }
@@ -517,10 +517,6 @@ class BooksRepositoryImpl(
 
             throw lastError ?: IOException("No book catalogue could be reached.")
         }
-
-    private fun isBotCheckPage(html: String): Boolean =
-        html.contains("checking your browser", ignoreCase = true) ||
-            html.contains("no_cookie=true")
 
     /**
      * The same instance the download path uses, so the links seen here are the
@@ -628,9 +624,8 @@ class BooksRepositoryImpl(
          * the one thing to change when the site moves or restyles — the parser
          * itself never hardcodes any of it.
          */
-        val MY_LIB_CONFIG = MyLibConfig(
-            fallbackHosts = MyLibConfig.FALLBACK_HOSTS
-        )
+        val MY_LIB_CONFIG = MyLibConfig.defaultConfig()
+
         const val IA_PAGE_SIZE = 20
         const val SE_PAGE_SIZE = 20
         const val PGA_PAGE_SIZE = 20

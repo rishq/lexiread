@@ -8,7 +8,6 @@ import com.lexiread.data.mapper.openLibraryCoverUrl
 import com.lexiread.domain.model.FormatKind
 import com.lexiread.domain.model.SourceKind
 import com.squareup.moshi.Moshi
-import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -31,7 +30,7 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 class CatalogApiParseTest {
 
     private lateinit var server: MockWebServer
-    private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+    private val moshi = Moshi.Builder().build()
 
     private lateinit var gutendex: GutendexApi
     private lateinit var openLibrary: OpenLibraryApi

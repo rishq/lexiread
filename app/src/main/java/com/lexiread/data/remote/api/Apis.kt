@@ -10,8 +10,11 @@ import com.lexiread.data.remote.dto.InternetArchiveSearchResponse
 import com.lexiread.data.remote.dto.MyMemoryResponse
 import com.lexiread.data.remote.dto.OpenAiChatRequestDto
 import com.lexiread.data.remote.dto.OpenAiChatResponseDto
+import com.lexiread.data.remote.mylib.MyLibEapiSearchResponse
 import okhttp3.ResponseBody
 import retrofit2.http.Body
+import retrofit2.http.Field
+import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
@@ -52,6 +55,22 @@ interface PgaApi {
 interface MyLibApi {
     @GET
     suspend fun fetch(@Url url: String): ResponseBody
+}
+
+/**
+ * Z-Library EAPI search. Unlike the HTML search pages, the EAPI answers
+ * plain HTTP clients with JSON, so this is the catalogue-search transport.
+ * The full per-host URL is passed in (mirror failover lives in the
+ * repository); the base URL below is only an anchor.
+ */
+interface MyLibEapiApi {
+    @FormUrlEncoded
+    @POST
+    suspend fun search(
+        @Url url: String,
+        @Field("message") message: String,
+        @Field("page") page: Int
+    ): MyLibEapiSearchResponse
 }
 
 /**

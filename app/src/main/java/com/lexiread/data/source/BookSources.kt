@@ -60,7 +60,7 @@ class GutendexBookSource(
             )
 
         val url = UrlValidator.requireTrustedDownloadUrl(format.url)
-        val destination = File(booksDir, "gutenberg_$idNum.${extensionFor(format.kind)}")
+        val destination = File(booksDir, "gutenberg_$idNum.${BookFormatSelector.fileExtension(format.kind)}")
         gutendexApi.downloadFile(url).use { body ->
             SafeDownloader.downloadToFile(body, destination, MAX_DOWNLOAD_BYTES)
         }
@@ -87,12 +87,6 @@ class GutendexBookSource(
     companion object {
         private const val DOWNLOAD_DIR = "downloaded_books"
         private const val MAX_DOWNLOAD_BYTES = 25L * 1024 * 1024
-
-        internal fun extensionFor(kind: FormatKind): String = when (kind) {
-            FormatKind.EPUB -> "epub"
-            FormatKind.HTML -> "html"
-            else -> "txt"
-        }
 
         internal fun cleanBookText(rawText: String): String {
             var text = rawText

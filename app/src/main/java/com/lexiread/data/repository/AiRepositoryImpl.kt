@@ -47,6 +47,7 @@ class AiRepositoryImpl(
 
     companion object {
         private const val TAG = "AiRepository"
+        val AI_CACHE_TTL_MS = java.util.concurrent.TimeUnit.DAYS.toMillis(30)
     }
 
     override suspend fun explainWordOrSentence(
@@ -62,7 +63,7 @@ class AiRepositoryImpl(
         // expired entries are simply ignored via the timestamp check below.
 
         // 1. Check Room cache
-        val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
+        val thirtyDaysAgo = System.currentTimeMillis() - AI_CACHE_TTL_MS
         val cached = cacheDao.getAiExplanationCache(cacheKey)
         if (cached != null && cached.timestamp >= thirtyDaysAgo) {
             val examplesList = try {

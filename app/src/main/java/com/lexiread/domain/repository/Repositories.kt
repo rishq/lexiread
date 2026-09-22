@@ -44,9 +44,6 @@ interface TranslationRepository {
 
 interface VocabularyRepository {
     fun getSavedWords(): Flow<List<SavedWord>>
-    fun getWordsByStatus(status: LearningStatus): Flow<List<SavedWord>>
-    fun getDueWords(): Flow<List<SavedWord>>
-    fun getDueWordCount(): Flow<Int>
     suspend fun isWordSaved(word: String): Boolean
     suspend fun saveWord(savedWord: SavedWord)
     suspend fun updateStatus(id: Int, status: LearningStatus)

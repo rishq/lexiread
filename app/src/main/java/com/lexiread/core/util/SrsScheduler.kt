@@ -65,7 +65,7 @@ object SrsScheduler {
             newInterval = 1
         }
 
-        val nextReview = now + newInterval.toLong() * 24 * 60 * 60 * 1000L
+        val nextReview = now + java.util.concurrent.TimeUnit.DAYS.toMillis(newInterval.toLong())
 
         return current.copy(
             reps = newReps,

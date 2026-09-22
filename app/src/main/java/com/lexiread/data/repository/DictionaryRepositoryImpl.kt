@@ -4,20 +4,18 @@ import com.lexiread.core.util.recoverSuspendCatching
 import com.lexiread.core.util.runSuspendCatching
 import com.lexiread.data.local.dao.CacheDao
 import com.lexiread.data.local.entity.DictionaryCacheEntity
+import com.lexiread.data.local.domainMoshi
 import com.lexiread.data.remote.api.DictionaryApi
 import com.lexiread.domain.model.DefinitionMeaning
 import com.lexiread.domain.model.DictionaryEntry
 import com.lexiread.domain.repository.DictionaryRepository
-import com.squareup.moshi.Moshi
-import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 
 class DictionaryRepositoryImpl(
     private val dictionaryApi: DictionaryApi,
     private val cacheDao: CacheDao
 ) : DictionaryRepository {
 
-    private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-    private val adapter = moshi.adapter(DictionaryEntry::class.java)
+    private val adapter = domainMoshi.adapter(DictionaryEntry::class.java)
 
     override suspend fun lookupWord(word: String): Result<DictionaryEntry> {
         val cleanWord = word.trim().lowercase().removeSurrounding("\"", "\"").removeSurrounding("'", "'")

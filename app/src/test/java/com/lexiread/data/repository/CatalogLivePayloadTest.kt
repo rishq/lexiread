@@ -4,7 +4,7 @@ import com.lexiread.data.local.CatalogCacheSerializer
 import com.lexiread.data.local.dao.CatalogCacheDao
 import com.lexiread.data.local.entity.CatalogCacheEntity
 import com.lexiread.data.remote.api.InternetArchiveApi
-import com.lexiread.data.remote.api.MyLibApi
+import com.lexiread.data.remote.api.MyLibEapiApi
 import com.lexiread.data.remote.api.PgaApi
 import com.lexiread.data.remote.api.StandardEbooksApi
 import com.lexiread.data.remote.dto.InternetArchiveMetadataResponse
@@ -19,7 +19,6 @@ import com.lexiread.domain.model.SourceKind
 import com.lexiread.domain.repository.BookRepository
 import com.lexiread.domain.repository.BookSource
 import com.squareup.moshi.Moshi
-import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
@@ -104,12 +103,13 @@ class CatalogLivePayloadTest {
         override suspend fun fetch(url: String): ResponseBody = throw UnsupportedOperationException()
     }
 
-    private class NoopMyLibApi : MyLibApi {
-        override suspend fun fetch(url: String): ResponseBody = throw UnsupportedOperationException()
+    private class NoopMyLibApi : MyLibEapiApi {
+        override suspend fun search(url: String, message: String, page: Int) =
+            com.lexiread.data.remote.mylib.MyLibEapiSearchResponse(success = 1)
     }
 
     /** Mirrors RetrofitClient: generated adapters first, reflection as backstop. */
-    private fun moshi() = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+    private fun moshi() = Moshi.Builder().build()
 
     private fun <T> service(server: MockWebServer, api: Class<T>): T = Retrofit.Builder()
         .baseUrl(server.url("/"))
@@ -148,7 +148,7 @@ class CatalogLivePayloadTest {
                 internetArchiveApi = NoopInternetArchiveApi(),
                 standardEbooksApi = NoopStandardEbooksApi(),
                 pgaApi = NoopPgaApi(),
-                myLibApi = NoopMyLibApi(),
+                myLibEapiApi = NoopMyLibApi(),
                 catalogCacheDao = StaticCacheDao(),
                 bookRepository = NoopBookRepository(),
                 sources = listOf(NoopSource("gutenberg")),

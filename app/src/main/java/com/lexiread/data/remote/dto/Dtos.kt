@@ -64,16 +64,14 @@ data class PhoneticDto(
 data class MeaningDto(
     val partOfSpeech: String?,
     val definitions: List<DefinitionDto>?,
-    val synonyms: List<String>?,
-    val antonyms: List<String>?
+    val synonyms: List<String>?
 )
 
 @JsonClass(generateAdapter = true)
 data class DefinitionDto(
     val definition: String?,
     val example: String?,
-    val synonyms: List<String>?,
-    val antonyms: List<String>?
+    val synonyms: List<String>?
 )
 
 // --- MyMemory Translation DTOs ---

@@ -144,22 +144,6 @@ interface SavedWordDao {
     @Query("SELECT * FROM saved_words ORDER BY dateAdded DESC")
     fun getAllSavedWords(): Flow<List<SavedWordEntity>>
 
-    @Query("SELECT * FROM saved_words WHERE learningStatus = :status ORDER BY dateAdded DESC")
-    fun getWordsByStatus(status: String): Flow<List<SavedWordEntity>>
-
-    @Query("""
-        SELECT * FROM saved_words
-        WHERE nextReviewEpoch = 0 OR nextReviewEpoch <= :now
-        ORDER BY nextReviewEpoch ASC, dateAdded DESC
-    """)
-    fun getDueWords(now: Long): Flow<List<SavedWordEntity>>
-
-    @Query("""
-        SELECT COUNT(*) FROM saved_words
-        WHERE nextReviewEpoch = 0 OR nextReviewEpoch <= :now
-    """)
-    fun getDueWordCount(now: Long): Flow<Int>
-
     @Query("SELECT * FROM saved_words WHERE word = :word LIMIT 1")
     suspend fun getWordByText(word: String): SavedWordEntity?
 

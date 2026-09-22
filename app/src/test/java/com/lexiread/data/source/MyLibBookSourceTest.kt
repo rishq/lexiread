@@ -230,13 +230,16 @@ class MyLibBookSourceTest {
     }
 
     @Test
-    fun `constructor does not register host in global image allow-list`(): Unit = runBlocking {
-        UrlValidator.clearExtraImageHosts()
-        val source = MyLibBookSource(fakeApi(), context)
+    fun `mylib covers need explicit extra hosts, never globals`(): Unit = runBlocking {
+        MyLibBookSource(fakeApi(), context)
 
         assertThrows(SecurityException::class.java) {
             UrlValidator.requireTrustedImageUrl("https://zlib.bz/covers/test.jpg")
         }
+        assertEquals(
+            "https://zlib.bz/covers/test.jpg",
+            UrlValidator.requireTrustedImageUrl("https://zlib.bz/covers/test.jpg", MyLibConfig.COVER_HOSTS)
+        )
     }
 
     // --- fixtures -----------------------------------------------------------

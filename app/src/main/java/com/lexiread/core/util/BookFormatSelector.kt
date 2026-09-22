@@ -67,6 +67,13 @@ object BookFormatSelector {
     /** The cover image, or null when the record has none. */
     fun coverUrl(formats: Map<String, String>?): String? =
         formats?.get(MIME_COVER)?.takeIf { it.isNotBlank() }?.forceHttps()
+
+    /** File extension for a downloaded book of [kind]. */
+    fun fileExtension(kind: FormatKind): String = when (kind) {
+        FormatKind.EPUB -> "epub"
+        FormatKind.HTML -> "html"
+        else -> "txt"
+    }
 }
 
 /**

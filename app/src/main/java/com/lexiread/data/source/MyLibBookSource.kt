@@ -106,7 +106,7 @@ class MyLibBookSource(
         // The host is configuration, not code, so it is passed in rather than
         // added to the global allow-list. It is still checked, never trusted.
         val url = UrlValidator.requireTrustedDownloadUrl(format.url.forceHttps(), config.downloadHosts())
-        val destination = File(booksDir, "${ID_PREFIX}_${safeStem(entry.id)}.${extensionFor(format.kind)}")
+        val destination = File(booksDir, "${ID_PREFIX}_${slug(entry.id).takeIf { it.isNotBlank() } ?: "book"}.${BookFormatSelector.fileExtension(format.kind)}")
 
         api.fetch(url).use { body ->
             SafeDownloader.downloadToFile(body, destination, MAX_DOWNLOAD_BYTES)
@@ -555,14 +555,6 @@ class MyLibBookSource(
             .trim('_')
             .take(MAX_ID_LENGTH)
 
-        private fun safeStem(id: String): String = slug(id).takeIf { it.isNotBlank() } ?: "book"
-
-        private fun extensionFor(kind: FormatKind): String = when (kind) {
-            FormatKind.EPUB -> "epub"
-            FormatKind.HTML -> "html"
-            else -> "txt"
-        }
-
         internal fun MyLibEntry.toBook(): Book = Book(
             id = "${ID_PREFIX}_$id",
             title = title,
@@ -678,6 +670,26 @@ data class MyLibConfig(
         const val DEFAULT_HOST = "zlib.bz"
         const val DEFAULT_MAX_PAGE_BYTES = 4L * 1024 * 1024
         val FALLBACK_HOSTS = listOf("zlibrary.to", "1lib.dev", "z-lib.io")
+
+        /**
+         * Mirrors whose EAPI answers plain HTTP clients with JSON. Probed
+         * 2026-09-20: `z-library.ec` serves search anonymously. Single source:
+         * the repository fails over across these, and they are trusted for
+         * downloads and covers exactly like the HTML mirrors.
+         */
+        val EAPI_HOSTS = listOf("z-library.ec")
+
+        /** Every host a MyLib cover or book file may come from. */
+        val COVER_HOSTS: Set<String> = setOf(DEFAULT_HOST) + FALLBACK_HOSTS + EAPI_HOSTS
+
+        /**
+         * The one config both search and download use. EAPI mirrors stay
+         * trusted for downloads, so a found book never fails closed later.
+         */
+        fun defaultConfig() = MyLibConfig(
+            fallbackHosts = FALLBACK_HOSTS,
+            allowedDownloadHosts = EAPI_HOSTS.toSet()
+        )
     }
 }
 

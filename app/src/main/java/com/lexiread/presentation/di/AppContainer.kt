@@ -86,7 +86,13 @@ class AppContainer(private val context: Context) {
             InternetArchiveBookSource(RetrofitClient.internetArchiveApi, context),
             StandardEbooksBookSource(RetrofitClient.standardEbooksApi, context),
             PgaBookSource(RetrofitClient.pgaApi, context),
-            MyLibBookSource(RetrofitClient.myLibApi, context, MyLibConfig(fallbackHosts = MyLibConfig.FALLBACK_HOSTS))
+            MyLibBookSource(
+                RetrofitClient.myLibApi,
+                context,
+                // Same config the repository searches with: EAPI mirrors stay
+                // trusted for downloads, never silently dropped.
+                MyLibConfig.defaultConfig()
+            )
         )
     }
 
@@ -109,7 +115,7 @@ class AppContainer(private val context: Context) {
             internetArchiveApi = RetrofitClient.internetArchiveApi,
             standardEbooksApi = RetrofitClient.standardEbooksApi,
             pgaApi = RetrofitClient.pgaApi,
-            myLibApi = RetrofitClient.myLibApi,
+            myLibEapiApi = RetrofitClient.myLibEapiApi,
             catalogCacheDao = database.catalogCacheDao(),
             bookRepository = bookRepository,
             sources = bookSources,
@@ -176,7 +182,7 @@ class AppContainer(private val context: Context) {
             // Purge expired cache entries once per app start.
             runCatching { database.cacheDao().deleteExpiredDictionaryCache(System.currentTimeMillis() - CACHE_TTL_MS) }
             runCatching { database.cacheDao().deleteExpiredTranslationCache(System.currentTimeMillis() - CACHE_TTL_MS) }
-            runCatching { database.cacheDao().deleteExpiredAiExplanationCache(System.currentTimeMillis() - AI_CACHE_TTL_MS) }
+            runCatching { database.cacheDao().deleteExpiredAiExplanationCache(System.currentTimeMillis() - CACHE_TTL_MS) }
             // Stale catalogue pages still serve as offline fallback, but they
             // must not accumulate forever.
             runCatching { database.catalogCacheDao().deleteExpired(System.currentTimeMillis() - CACHE_TTL_MS) }
@@ -190,7 +196,6 @@ class AppContainer(private val context: Context) {
     }
 
     companion object {
-        private const val CACHE_TTL_MS = 30L * 24 * 60 * 60 * 1000
-        private const val AI_CACHE_TTL_MS = 30L * 24 * 60 * 60 * 1000
+        private val CACHE_TTL_MS = java.util.concurrent.TimeUnit.DAYS.toMillis(30)
     }
 }

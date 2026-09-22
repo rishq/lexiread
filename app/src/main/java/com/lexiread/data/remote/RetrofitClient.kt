@@ -6,6 +6,7 @@ import com.lexiread.data.remote.api.ClaudeApi
 import com.lexiread.data.remote.api.DictionaryApi
 import com.lexiread.data.remote.api.InternetArchiveApi
 import com.lexiread.data.remote.api.MyLibApi
+import com.lexiread.data.remote.api.MyLibEapiApi
 import com.lexiread.data.remote.api.PgaApi
 import com.lexiread.data.remote.api.StandardEbooksApi
 import com.lexiread.data.remote.api.GeminiApi
@@ -15,7 +16,6 @@ import com.lexiread.data.remote.googlebooks.GoogleBooksApi
 import com.lexiread.data.remote.gutendex.GutendexApi
 import com.lexiread.data.remote.openlibrary.OpenLibraryApi
 import com.squareup.moshi.Moshi
-import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import okhttp3.Cache
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -34,7 +34,6 @@ object RetrofitClient {
     private const val MAX_REDIRECTS = 3
 
     private val moshi: Moshi = Moshi.Builder()
-        .add(KotlinJsonAdapterFactory())
         .build()
 
     @Volatile
@@ -184,6 +183,17 @@ object RetrofitClient {
     private fun OkHttpClient.Builder.applyApiRedirectGuard(): OkHttpClient.Builder =
         applyRedirectGuard(RedirectPolicy.SAME_HOST_ONLY)
 
+    /** Key-masking debug logger shared by the catalogue and API clients. */
+    private fun sanitizedLogging(): HttpLoggingInterceptor =
+        HttpLoggingInterceptor { message ->
+            val sanitized = message.replace(Regex("(?i)(key=)[^&\\s]+"), "$1[REDACTED]")
+            if (BuildConfig.DEBUG) {
+                android.util.Log.d("RetrofitClient", sanitized)
+            }
+        }.apply {
+            level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
+        }
+
     /** Catalogue reads: cached, so a repeated query or a back-navigation is instant. */
     private val catalogOkHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -191,14 +201,7 @@ object RetrofitClient {
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .addInterceptor(CatalogCacheInterceptor())
-            .addInterceptor(HttpLoggingInterceptor { message ->
-                val sanitized = message.replace(Regex("(?i)(key=)[^&\\s]+"), "$1[REDACTED]")
-                if (BuildConfig.DEBUG) {
-                    android.util.Log.d("RetrofitClient", sanitized)
-                }
-            }.apply {
-                level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
-            })
+            .addInterceptor(sanitizedLogging())
             .applyCache()
             .applyRedirectGuard()
             .build()
@@ -210,15 +213,7 @@ object RetrofitClient {
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
-            .addInterceptor(HttpLoggingInterceptor { message ->
-                // Mask API keys if present in URL or query params
-                val sanitized = message.replace(Regex("(?i)(key=)[^&\\s]+"), "$1[REDACTED]")
-                if (BuildConfig.DEBUG) {
-                    android.util.Log.d("RetrofitClient", sanitized)
-                }
-            }.apply {
-                level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
-            })
+            .addInterceptor(sanitizedLogging())
             .applyApiRedirectGuard()
             .build()
     }
@@ -310,6 +305,19 @@ object RetrofitClient {
             .client(catalogOkHttpClient)
             .build()
             .create(MyLibApi::class.java)
+    }
+
+    /**
+     * EAPI search client. The base URL is only an anchor: every call passes
+     * its full mirror URL, so failover across mirrors keeps working.
+     */
+    val myLibEapiApi: MyLibEapiApi by lazy {
+        Retrofit.Builder()
+            .baseUrl("https://z-library.ec/")
+            .client(catalogOkHttpClient)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+            .create(MyLibEapiApi::class.java)
     }
 
     val dictionaryApi: DictionaryApi by lazy {
