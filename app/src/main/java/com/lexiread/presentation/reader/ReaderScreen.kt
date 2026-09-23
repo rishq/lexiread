@@ -66,6 +66,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lexiread.data.remote.RetrofitClient
+import com.lexiread.presentation.common.ChallengeWebViewDialog
 import com.lexiread.domain.model.ReaderSettings
 import com.lexiread.domain.model.ReaderThemeOption
 
@@ -125,8 +127,17 @@ fun ReaderScreen(
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = textColor)
                 }
-            } else if (uiState.errorMessage != null) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            } else if (uiState.challengeUrl != null) {
+                val challengeUrl = uiState.challengeUrl!!
+                ChallengeWebViewDialog(
+                    url = challengeUrl,
+                    onPassed = {
+                        RetrofitClient.syncWebViewCookies(challengeUrl)
+                        viewModel.retryAfterChallenge()
+                    },
+                    onDismiss = { viewModel.dismissChallenge() }
+                )
+            } else if (uiState.errorMessage != null) {                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
                         text = uiState.errorMessage ?: "Failed to load book.",
                         color = MaterialTheme.colorScheme.error,
@@ -252,6 +263,24 @@ fun ReaderScreen(
                             .fillMaxWidth()
                             .padding(bottom = 12.dp)
                     )
+
+                    if (currentPage == null) {
+                        // ponytail: diagnostic empty-state — remove once the
+                        // blank-reader root cause is confirmed fixed.
+                        val book = uiState.book
+                        val file = book?.filePath?.let { java.io.File(it) }
+                        Text(
+                            text = "debug: id=${book?.id} format=${book?.format} " +
+                                "chapters=${uiState.chapters.size} pages=${uiState.pagesForCurrentChapter.size} " +
+                                "file=${file?.exists()}:${file?.length()}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = textColor.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                        )
+                        TextButton(onClick = { viewModel.retryLoad() }) {
+                            Text("Retry", color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
                 }
 
                 // Interactive Tap Zones removed from here: they were drawn above the

@@ -242,8 +242,12 @@ class BookImporter(
             } else {
                 chapterDao.getChaptersForBook(book.id)
             }
-            if (dbChapters.isNotEmpty()) {
-                return@withContext dbChapters.map { ch ->
+            // Blank rows must never win: a blank chapter paginates into zero
+            // pages and the reader shows a dead "No page content." screen.
+            // Fall through to the file when nothing readable is cached.
+            val readable = dbChapters.filter { it.content.isNotBlank() }
+            if (readable.isNotEmpty()) {
+                return@withContext readable.map { ch ->
                     BookChapter(title = ch.title, content = ch.content, index = ch.chapterIndex)
                 }
             }
@@ -268,7 +272,8 @@ class BookImporter(
 
                 // If DB is available, cache the parsed chapters for next time.
                 if (chapterDao != null && allChapters.isNotEmpty()) {
-                    val entities = allChapters.take(MAX_CHAPTERS).mapIndexed { index, ch ->
+                    val entities = allChapters.filter { it.content.isNotBlank() }
+                        .take(MAX_CHAPTERS).mapIndexed { index, ch ->
                         ChapterEntity(
                             bookId = book.id,
                             title = ch.title,
@@ -280,9 +285,9 @@ class BookImporter(
                 }
 
                 val windowed = if (limit != null) {
-                    allChapters.drop(offset).take(limit)
+                    allChapters.filter { it.content.isNotBlank() }.drop(offset).take(limit)
                 } else {
-                    allChapters
+                    allChapters.filter { it.content.isNotBlank() }.drop(offset)
                 }
                 return@withContext windowed
             }

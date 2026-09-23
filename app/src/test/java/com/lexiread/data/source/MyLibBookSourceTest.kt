@@ -109,12 +109,10 @@ class MyLibBookSourceTest {
     fun `parseSearchPage offers only formats the reader can open`() {
         val page = MyLibBookSource.parseSearchPage(SEARCH_PAGE, BASE_URL)
 
-        // Moby Dick is published only as FB2 and PDF here. Advertising them
-        // would produce a card that looks readable and fails on tap.
+        // Reader opens EPUB, FB2, PDF, HTML, TXT — MOBI etc stay filtered.
         val moby = page.entries[1]
         assertEquals("67890", moby.id)
-        assertTrue(moby.formats.isEmpty())
-        assertTrue(moby.formats.none { it.kind == FormatKind.EPUB })
+        assertEquals(listOf(FormatKind.FB2, FormatKind.PDF), moby.formats.map { it.kind })
     }
 
     @Test
@@ -205,9 +203,86 @@ class MyLibBookSourceTest {
         assertTrue(file.name.endsWith(".epub"))
     }
 
+    @Test(expected = ChallengeRequiredException::class)
+    fun `downloadContent raises browser challenge on 503`(): Unit = runBlocking {        val walled = object : MyLibApi {
+            override suspend fun fetch(url: String): ResponseBody =
+                throw retrofit2.HttpException(
+                    retrofit2.Response.error<ResponseBody>(
+                        503,
+                        ResponseBody.create("text/html".toMediaType(), "Checking your browser ...")
+                    )
+                )
+        }
+        val source = MyLibBookSource(walled, context)
+        source.remember(MyLibBookSource.parseSearchPage(SEARCH_PAGE, BASE_URL).entries)
+
+        source.downloadContent(
+            Book(id = "mylib_12345", title = "Pride and Prejudice", author = "Jane Austen")
+        )
+    }
+
+    @Test(expected = ChallengeRequiredException::class)
+    fun `downloadContent reopens challenge when wall page saved as book`(): Unit = runBlocking {
+        // Half-cleared challenge: HTTP 200 with the HTML wall instead of bytes.
+        val walled = object : MyLibApi {
+            override suspend fun fetch(url: String): ResponseBody =
+                ResponseBody.create(
+                    "application/pdf".toMediaType(),
+                    "<html><body>Checking your browser ...</body></html>"
+                )
+        }
+        val source = MyLibBookSource(walled, context)
+        source.remember(
+            listOf(
+                MyLibEntry(
+                    id = "1",
+                    title = "Walled",
+                    author = null,
+                    coverUrl = null,
+                    detailUrl = null,
+                    formats = listOf(
+                        BookFormat(FormatKind.PDF, "application/pdf", "https://zlib.bz/dl/1")
+                    ),
+                    language = null,
+                    year = null,
+                    description = null
+                )
+            )
+        )
+
+        source.downloadContent(Book(id = "mylib_1", title = "Walled", author = "?"))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `downloadContent rejects a non-pdf body for a pdf format`(): Unit = runBlocking {
+        val wrong = object : MyLibApi {
+            override suspend fun fetch(url: String): ResponseBody =
+                ResponseBody.create("application/pdf".toMediaType(), "not a pdf at all")
+        }
+        val source = MyLibBookSource(wrong, context)
+        source.remember(
+            listOf(
+                MyLibEntry(
+                    id = "2",
+                    title = "Wrong",
+                    author = null,
+                    coverUrl = null,
+                    detailUrl = null,
+                    formats = listOf(
+                        BookFormat(FormatKind.PDF, "application/pdf", "https://zlib.bz/dl/2")
+                    ),
+                    language = null,
+                    year = null,
+                    description = null
+                )
+            )
+        )
+
+        source.downloadContent(Book(id = "mylib_2", title = "Wrong", author = "?"))
+    }
+
     @Test(expected = SecurityException::class)
-    fun `downloadContent refuses a host outside the allow-list`(): Unit = runBlocking {
-        val source = MyLibBookSource(fakeApi(), context)
+    fun `downloadContent refuses a host outside the allow-list`(): Unit = runBlocking {        val source = MyLibBookSource(fakeApi(), context)
         source.remember(
             listOf(
                 MyLibEntry(

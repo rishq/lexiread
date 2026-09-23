@@ -8,6 +8,7 @@ import com.lexiread.core.reader.BookImporter
 import com.lexiread.core.reader.Paginator
 import com.lexiread.core.util.TTSHelper
 import com.lexiread.core.util.UserErrorMessages
+import com.lexiread.data.source.ChallengeRequiredException
 import com.lexiread.domain.model.AiExplanation
 import com.lexiread.domain.model.Book
 import com.lexiread.domain.model.BookChapter
@@ -83,7 +84,9 @@ data class ReaderUiState(
     val isLoadingBook: Boolean = false,
     val isPaginating: Boolean = false,
     val isLoadingNextChapter: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    /** Mirror browser-check URL: dialog passes it, then the download retries. */
+    val challengeUrl: String? = null
 )
 
 class ReaderViewModel(
@@ -212,11 +215,13 @@ class ReaderViewModel(
                         stored ?: Book(id = bookId, title = "Classic Book", author = "Unknown")
                     )
                     fetchResult.getOrNull() ?: run {
+                        val challenge = fetchResult.exceptionOrNull() as? ChallengeRequiredException
                         _uiState.update {
                             it.copy(
                                 isLoadingBook = false,
+                                challengeUrl = challenge?.url,
                                 // P2-8: never leak raw exception.message to UI.
-                                errorMessage = fetchResult.exceptionOrNull()?.let { err ->
+                                errorMessage = if (challenge != null) null else fetchResult.exceptionOrNull()?.let { err ->
                                     UserErrorMessages.messageFor(err, "This book could not be downloaded.")
                                 } ?: "This book could not be downloaded."
                             )
@@ -299,10 +304,13 @@ class ReaderViewModel(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
+                val challenge = error as? ChallengeRequiredException
                 _uiState.update {
                     it.copy(
                         isLoadingBook = false,
-                        errorMessage = UserErrorMessages.messageFor(error, "Failed to open this book.")
+                        challengeUrl = challenge?.url,
+                        errorMessage = if (challenge != null) null
+                            else UserErrorMessages.messageFor(error, "Failed to open this book.")
                     )
                 }
             }
@@ -530,6 +538,22 @@ class ReaderViewModel(
 
     fun commitProgress() {
         flushProgress()
+    }
+
+    /** Retries the download after the browser check cleared, via [challengeUrl]. */
+    fun retryAfterChallenge() {
+        _uiState.update { it.copy(challengeUrl = null) }
+        loadBookAndChapters()
+    }
+
+    /** Full reload from the empty/error state (used by the Retry button). */
+    fun retryLoad() {
+        _uiState.update { it.copy(errorMessage = null) }
+        loadBookAndChapters()
+    }
+
+    fun dismissChallenge() {
+        _uiState.update { it.copy(challengeUrl = null) }
     }
 
     fun goToChapter(chapterIndex: Int, targetPageIndex: Int = 0) {

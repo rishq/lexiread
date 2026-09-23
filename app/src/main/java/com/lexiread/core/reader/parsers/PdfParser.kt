@@ -58,8 +58,10 @@ class PdfParser : BookParser {
             if (extractedText.isNotBlank()) {
                 val cleanedText = ChapterParser.cleanParagraphs(extractedText)
                 val splitChapters = ChapterParser.splitIntoChapters(cleanedText)
+                // Binary garbage can survive extraction but clean down to
+                // blank chapters — drop those so the fallback below fires.
                 if (splitChapters.isNotEmpty()) {
-                    chapters.addAll(splitChapters)
+                    chapters.addAll(splitChapters.filter { it.content.isNotBlank() })
                 }
             }
         } catch (e: Exception) {

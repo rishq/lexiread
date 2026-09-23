@@ -20,8 +20,10 @@ enum class SourceKind(val label: String) {
 /** Physical container of a readable file. */
 enum class FormatKind {
     EPUB,
+    FB2,
     HTML,
     TXT,
+    PDF,
     UNKNOWN
 }
 

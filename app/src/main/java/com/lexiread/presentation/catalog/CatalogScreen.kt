@@ -49,8 +49,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,7 +65,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.lexiread.data.remote.RetrofitClient
 import com.lexiread.data.source.MyLibConfig
+import com.lexiread.presentation.common.ChallengeWebViewDialog
 import com.lexiread.domain.model.CatalogBook
 import com.lexiread.domain.model.SourceKind
 import kotlinx.coroutines.launch
@@ -79,6 +83,7 @@ fun CatalogScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    var challengeUrl by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         viewModel.effects.collect { effect ->
@@ -86,6 +91,7 @@ fun CatalogScreen(
                 is CatalogEffect.OpenReader -> onReadClick(effect.bookId)
                 is CatalogEffect.OpenDetails -> onBookClick(effect.bookId)
                 is CatalogEffect.ShowMessage -> scope.launch { snackbarHostState.showSnackbar(effect.message) }
+                is CatalogEffect.ShowChallenge -> challengeUrl = effect.url
             }
         }
     }
@@ -202,6 +208,21 @@ fun CatalogScreen(
                 snackbarData = data,
                 containerColor = MaterialTheme.colorScheme.inverseSurface,
                 contentColor = MaterialTheme.colorScheme.inverseOnSurface
+            )
+        }
+
+        challengeUrl?.let { url ->
+            ChallengeWebViewDialog(
+                url = url,
+                onPassed = {
+                    RetrofitClient.syncWebViewCookies(url)
+                    challengeUrl = null
+                    viewModel.retryOpenAfterChallenge()
+                },
+                onDismiss = {
+                    challengeUrl = null
+                    viewModel.dismissChallenge()
+                }
             )
         }
     }

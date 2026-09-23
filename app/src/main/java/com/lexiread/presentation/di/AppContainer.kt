@@ -91,7 +91,8 @@ class AppContainer(private val context: Context) {
                 context,
                 // Same config the repository searches with: EAPI mirrors stay
                 // trusted for downloads, never silently dropped.
-                MyLibConfig.defaultConfig()
+                MyLibConfig.defaultConfig(),
+                RetrofitClient.myLibEapiApi
             )
         )
     }

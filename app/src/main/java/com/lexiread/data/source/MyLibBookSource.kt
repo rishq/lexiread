@@ -7,6 +7,8 @@ import com.lexiread.core.util.TextEncoding
 import com.lexiread.core.util.UrlValidator
 import com.lexiread.core.util.forceHttps
 import com.lexiread.data.remote.api.MyLibApi
+import com.lexiread.data.remote.api.MyLibEapiApi
+import com.lexiread.data.remote.mylib.toEntry
 import com.lexiread.domain.model.Book
 import com.lexiread.domain.model.BookFormat
 import com.lexiread.domain.model.FormatKind
@@ -47,7 +49,8 @@ import java.util.Locale
 class MyLibBookSource(
     private val api: MyLibApi,
     context: Context,
-    private val config: MyLibConfig = MyLibConfig()
+    private val config: MyLibConfig = MyLibConfig(),
+    private val eapi: MyLibEapiApi? = null
 ) : BookSource {
 
     override val idPrefix = ID_PREFIX
@@ -92,7 +95,7 @@ class MyLibBookSource(
 
     override suspend fun downloadContent(book: Book): Book = withContext(Dispatchers.IO) {
         val id = book.id.removePrefix("${ID_PREFIX}_")
-        val entry = lookup(id)
+        val entry = lookup(id) ?: refetchEntry(book, id)
             ?: throw IllegalStateException(
                 "The download links for '${book.title}' are no longer in memory. " +
                         "Search for the book again and open it from the results."
@@ -108,14 +111,28 @@ class MyLibBookSource(
         val url = UrlValidator.requireTrustedDownloadUrl(format.url.forceHttps(), config.downloadHosts())
         val destination = File(booksDir, "${ID_PREFIX}_${slug(entry.id).takeIf { it.isNotBlank() } ?: "book"}.${BookFormatSelector.fileExtension(format.kind)}")
 
-        api.fetch(url).use { body ->
-            SafeDownloader.downloadToFile(body, destination, MAX_DOWNLOAD_BYTES)
+        try {
+            api.fetch(url).use { body ->
+                SafeDownloader.downloadToFile(body, destination, MAX_DOWNLOAD_BYTES)
+            }
+        } catch (error: retrofit2.HttpException) {
+            // Cloudflare JS wall (usually 503 "Checking your browser...").
+            // Plain HTTP can never pass it — the UI opens the same URL in a
+            // WebView (real browser engine), syncs the cleared cookies, and
+            // retries. Anything else rethrows untouched.
+            if (error.code() == 503) throw ChallengeRequiredException(url)
+            throw error
         }
         if (format.kind == FormatKind.EPUB) {
             require(SafeDownloader.isValidEpub(destination)) {
                 destination.delete()
                 "The catalogue did not return a valid EPUB file for '${book.title}'."
             }
+        } else {
+            // A half-cleared challenge can answer 200 with the HTML wall page
+            // instead of the book. Catch it here by magic bytes — never let a
+            // wall page masquerade as a book and render as a blank reader.
+            requireValidDownload(destination, format.kind, book.title, url)
         }
 
         book.copy(filePath = destination.absolutePath, format = format.kind.name, isSaved = true)
@@ -138,6 +155,62 @@ class MyLibBookSource(
 
     @Synchronized
     private fun lookup(id: String): MyLibEntry? = remembered[id]
+
+    /**
+     * Library / restart path: the in-memory search links are gone (process
+     * death, cache eviction, book saved via "add to library" and opened
+     * later). Re-run one EAPI search by title and retry the lookup, so a
+     * saved book still downloads instead of failing with "no longer in
+     * memory". Null EAPI (tests) keeps the old throw behavior.
+     */
+    private suspend fun refetchEntry(book: Book, id: String): MyLibEntry? {
+        val api = eapi ?: return null
+        val hosts = (MyLibConfig.EAPI_HOSTS + config.host + config.fallbackHosts).distinct()
+        for (host in hosts) {
+            val entries = runCatching {
+                api.search("https://$host/eapi/book/search", book.title, FIRST_PAGE)
+            }.getOrNull()?.takeIf { it.success == 1 }
+                ?.books?.mapNotNull { it.toEntry(host) }
+                ?: continue
+            remember(entries)
+            lookup(id)?.let { return it }
+            entries.firstOrNull {
+                it.title.equals(book.title, ignoreCase = true)
+            }?.let { return it }
+        }
+        return null
+    }
+
+    /**
+     * Magic-byte check for non-EPUB downloads. HTML wall pages saved as
+     * `.pdf`/`.fb2` parse into blank chapters and render as an empty reader,
+     * so reject them here: a challenge-looking body reopens the WebView check,
+     * anything else fails with an honest message.
+     */
+    private fun requireValidDownload(file: File, kind: FormatKind, title: String, url: String) {
+        val head = runCatching {
+            file.inputStream().use { stream ->
+                val buffer = ByteArray(2048)
+                val read = stream.read(buffer)
+                if (read > 0) String(buffer, 0, read, Charsets.ISO_8859_1) else ""
+            }
+        }.getOrDefault("")
+        if (head.contains("Checking your browser", ignoreCase = true) ||
+            head.contains("Just a moment", ignoreCase = true)
+        ) {
+            file.delete()
+            throw ChallengeRequiredException(url)
+        }
+        val valid = when (kind) {
+            FormatKind.PDF -> head.startsWith("%PDF")
+            FormatKind.FB2 -> head.contains("<FictionBook", ignoreCase = true)
+            else -> head.isNotBlank()
+        }
+        require(valid) {
+            file.delete()
+            "The catalogue did not return a valid ${kind.name} file for '$title'."
+        }
+    }
 
     companion object {
         const val ID_PREFIX = "mylib"
@@ -351,8 +424,8 @@ class MyLibBookSource(
          * Direct file links in the row, one per kind, best first.
          *
          * Links are recognised by extension in the URL *or* by the link text
-         * ("EPUB", "FB2"), because both conventions are common. Only EPUB, HTML
-         * and TXT are returned: those are the ones `BookFormatSelector.pickBest`
+         * ("EPUB", "FB2"), because both conventions are common. Only EPUB, FB2,
+         * HTML, TXT and PDF are returned: those are the ones the reader can open
          * can open, and advertising a format the reader cannot open produces a
          * card that looks readable and then fails on tap.
          */
@@ -591,9 +664,11 @@ class MyLibBookSource(
          */
         private val READABLE_EXTENSIONS: Map<String, Pair<FormatKind, String>> = mapOf(
             "epub" to (FormatKind.EPUB to "application/epub+zip"),
+            "fb2" to (FormatKind.FB2 to "application/x-fictionbook+xml"),
             "html" to (FormatKind.HTML to "text/html"),
             "htm" to (FormatKind.HTML to "text/html"),
-            "txt" to (FormatKind.TXT to "text/plain")
+            "txt" to (FormatKind.TXT to "text/plain"),
+            "pdf" to (FormatKind.PDF to "application/pdf")
         )
 
         /** Recognised but not necessarily readable — used to spot file links. */
@@ -726,6 +801,16 @@ data class MyLibSelectors(
         ".pagination", "nav.pagination", "div.pager", "ul.pager", ".pages"
     )
 )
+
+/**
+ * The mirror answered the file download with its browser challenge (HTTP
+ * 503). The URL is kept so the UI can open it in a WebView, let the real
+ * browser engine pass the check, sync the cookies, and retry. A plain
+ * [retrofit2.HttpException] on purpose: [UserErrorMessages] maps it to the
+ * generic fallback, while this type routes to the challenge dialog instead.
+ */
+class ChallengeRequiredException(val url: String) :
+    IllegalStateException("This mirror needs a quick browser check before the download starts.")
 
 /** One row of a search page, already resolved to absolute URLs. */
 internal data class MyLibEntry(

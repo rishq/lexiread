@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.lexiread.core.util.UserErrorMessages
 import com.lexiread.data.mapper.toDomainBook
+import com.lexiread.data.source.ChallengeRequiredException
 import com.lexiread.domain.model.CatalogBook
 import com.lexiread.domain.model.CatalogPage
 import com.lexiread.domain.model.Category
@@ -46,6 +47,7 @@ sealed interface CatalogEffect {
     data class OpenReader(val bookId: String) : CatalogEffect
     data class OpenDetails(val bookId: String) : CatalogEffect
     data class ShowMessage(val message: String) : CatalogEffect
+    data class ShowChallenge(val url: String) : CatalogEffect
 }
 
 class CatalogViewModel(
@@ -201,6 +203,11 @@ class CatalogViewModel(
             result
                 .onSuccess { saved -> _effects.tryEmit(CatalogEffect.OpenReader(saved.id)) }
                 .onFailure { error ->
+                    if (error is ChallengeRequiredException) {
+                        pendingChallengeBook = book
+                        _effects.tryEmit(CatalogEffect.ShowChallenge(error.url))
+                        return@onFailure
+                    }
                     _effects.tryEmit(
                         CatalogEffect.ShowMessage(
                             UserErrorMessages.messageFor(error, "This book could not be opened for reading.")
@@ -208,6 +215,18 @@ class CatalogViewModel(
                     )
                 }
         }
+    }
+
+    private var pendingChallengeBook: CatalogBook? = null
+
+    /** Retries the book that raised the browser challenge, after its cookies cleared. */
+    fun retryOpenAfterChallenge() {
+        pendingChallengeBook?.let { openBook(it) }
+        pendingChallengeBook = null
+    }
+
+    fun dismissChallenge() {
+        pendingChallengeBook = null
     }
 
     /** Saves metadata only, without waiting for a download. */

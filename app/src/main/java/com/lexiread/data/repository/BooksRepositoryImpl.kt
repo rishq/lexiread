@@ -495,7 +495,15 @@ class BooksRepositoryImpl(
                                 subjects = emptyList(),
                                 source = SourceKind.MY_LIB,
                                 formats = entry.formats,
-                                isPublicDomain = true,
+                                // Metadata-only: EAPI search answers anonymously
+                                // but file download is JS-walled (GET on the `dl`
+                                // link returns 503 "Checking your browser...",
+                                // reader fetch-config returns 401 without a
+                                // session — probed 2026-09-23). Advertising
+                                // canRead=true shows a Read button that can only
+                                // fail, so cards stay discoverable while the
+                                // reader resolves readable editions elsewhere.
+                                isPublicDomain = false,
                                 publishedYear = entry.year,
                                 identifiers = BookIdentifiers()
                             )

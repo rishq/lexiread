@@ -17,10 +17,13 @@ object BookFormatSelector {
     private const val MIME_XHTML = "application/xhtml+xml"
     private const val MIME_HTML = "text/html"
     private const val MIME_PLAIN = "text/plain"
+    private const val MIME_PDF = "application/pdf"
+    private const val MIME_FB2 = "application/x-fictionbook+xml"
+    private const val MIME_FB2_ALT = "application/fb2"
     private const val MIME_COVER = "image/jpeg"
 
-    /** Best reading experience first. */
-    private val READING_PREFERENCE = listOf(FormatKind.EPUB, FormatKind.HTML, FormatKind.TXT)
+    /** Best reading experience first. PDF last: text extraction is lossy. */
+    private val READING_PREFERENCE = listOf(FormatKind.EPUB, FormatKind.FB2, FormatKind.HTML, FormatKind.TXT, FormatKind.PDF)
 
     /**
      * Converts a raw Gutendex `formats` map into an ordered list, one entry per
@@ -59,6 +62,8 @@ object BookFormatSelector {
             MIME_EPUB -> FormatKind.EPUB
             MIME_HTML, MIME_XHTML -> FormatKind.HTML
             MIME_PLAIN -> FormatKind.TXT
+            MIME_PDF -> FormatKind.PDF
+            MIME_FB2, MIME_FB2_ALT -> FormatKind.FB2
             // Cover art, RDF metadata, MOBI, zipped HTML: not readable here.
             else -> null
         }
@@ -71,7 +76,9 @@ object BookFormatSelector {
     /** File extension for a downloaded book of [kind]. */
     fun fileExtension(kind: FormatKind): String = when (kind) {
         FormatKind.EPUB -> "epub"
+        FormatKind.FB2 -> "fb2"
         FormatKind.HTML -> "html"
+        FormatKind.PDF -> "pdf"
         else -> "txt"
     }
 }

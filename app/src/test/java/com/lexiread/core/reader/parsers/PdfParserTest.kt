@@ -36,6 +36,16 @@ class PdfParserTest {
 
     private fun chaptersOf(file: File): List<BookChapter> = runBlocking { PdfParser().parseChapters(file) }
 
+    @Test
+    fun `blank extraction falls back instead of blank chapters`() {
+        val file = pdfFile("blank", "BT /F1 12 Tf (   ) Tj ET")
+
+        val chapters = chaptersOf(file)
+
+        assertTrue(chapters.isNotEmpty())
+        assertTrue(chapters.all { it.content.isNotBlank() })
+    }
+
     /**
      * Runs [block] twice and times only the second run.
      *

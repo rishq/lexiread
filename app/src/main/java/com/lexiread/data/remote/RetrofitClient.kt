@@ -17,6 +17,10 @@ import com.lexiread.data.remote.gutendex.GutendexApi
 import com.lexiread.data.remote.openlibrary.OpenLibraryApi
 import com.squareup.moshi.Moshi
 import okhttp3.Cache
+import okhttp3.Cookie
+import okhttp3.CookieJar
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
@@ -200,6 +204,7 @@ object RetrofitClient {
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
+            .cookieJar(appCookieJar)
             .addInterceptor(CatalogCacheInterceptor())
             .addInterceptor(sanitizedLogging())
             .applyCache()
@@ -239,6 +244,47 @@ object RetrofitClient {
             .writeTimeout(15, TimeUnit.SECONDS)
             .applyRedirectGuard(RedirectPolicy.IMAGE_HOSTS)
             .build()
+    }
+
+    /**
+     * Shared in-memory cookies for catalogue clients.
+     *
+     * Z-Library answers file downloads with a Cloudflare JS challenge (503)
+     * that plain HTTP can never pass. The app lets a WebView pass it once
+     * (real browser engine), then [syncWebViewCookies] copies the resulting
+     * cookies here so later downloads ride the cleared session.
+     */
+    private val appCookieJar = object : CookieJar {
+        private val store = mutableMapOf<String, MutableList<Cookie>>()
+
+        @Synchronized
+        override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
+            val kept = (store[url.host].orEmpty() + cookies)
+                .distinctBy { it.name }
+                .toMutableList()
+            store[url.host] = kept
+        }
+
+        @Synchronized
+        override fun loadForRequest(url: HttpUrl): List<Cookie> =
+            store[url.host].orEmpty().filter { it.matches(url) }
+    }
+
+    /**
+     * Copies cookies a WebView earned (e.g. after passing a browser
+     * challenge) into [appCookieJar] so OkHttp sends them too.
+     */
+    fun syncWebViewCookies(url: String) {
+        val httpUrl = url.toHttpUrlOrNull() ?: return
+        val header = runCatching {
+            android.webkit.CookieManager.getInstance().getCookie(url)
+        }.getOrNull()?.takeIf { it.isNotBlank() } ?: return
+        val cookies = header.split(';').mapNotNull { pair ->
+            val name = pair.substringBefore('=').trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val value = pair.substringAfter('=', "").trim()
+            Cookie.Builder().name(name).value(value).domain(httpUrl.host).path("/").build()
+        }
+        if (cookies.isNotEmpty()) appCookieJar.saveFromResponse(httpUrl, cookies)
     }
 
     // --- Book catalogues ---

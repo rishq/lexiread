@@ -33,6 +33,7 @@ import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -416,8 +417,9 @@ class BooksRepositoryImplTest {
         assertEquals("mylib_12345", book.id)
         assertEquals("Pride and Prejudice", book.title)
         assertEquals("Jane Austen", book.authorLine)
-        // EPUB and TXT links were on the page, so the card is openable.
-        assertTrue(book.canRead)
+        // Metadata-only: file download is JS-walled without a session, so
+        // the card must not promise reading even with EPUB/TXT links present.
+        assertFalse(book.canRead)
         assertEquals(431, page.totalResults)
         assertTrue(page.hasMore)
     }
