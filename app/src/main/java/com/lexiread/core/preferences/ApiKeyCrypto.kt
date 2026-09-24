@@ -16,6 +16,8 @@ object ApiKeyCrypto {
 
     private const val ENCRYPTED_PREFIX = "enc:v1:"
 
+    fun isEncrypted(stored: String): Boolean = stored.startsWith(ENCRYPTED_PREFIX)
+
     fun encrypt(plain: String): String = encrypt(plain, ::getOrCreateKey)
 
     internal fun encrypt(plain: String, keyProvider: () -> java.security.Key): String {

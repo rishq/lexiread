@@ -1,5 +1,6 @@
 ﻿package com.lexiread.data.repository
 
+import com.lexiread.core.util.CoverUrls
 import com.lexiread.core.util.recoverSuspendCatching
 import com.lexiread.core.util.runSuspendCatching
 import com.lexiread.data.local.dao.CacheDao
@@ -46,7 +47,7 @@ class DictionaryRepositoryImpl(
                 ?: firstEntry.phonetics?.firstOrNull { !it.text.isNullOrBlank() }?.text
                 ?: "/$cleanWord/"
 
-            val audioUrl = firstEntry.phonetics?.firstOrNull { !it.audio.isNullOrBlank() }?.audio
+            val audioUrl = CoverUrls.sanitize(firstEntry.phonetics?.firstOrNull { !it.audio.isNullOrBlank() }?.audio)
 
             val meanings = firstEntry.meanings?.map { m ->
                 DefinitionMeaning(

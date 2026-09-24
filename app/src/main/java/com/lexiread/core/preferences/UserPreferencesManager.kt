@@ -84,6 +84,19 @@ class UserPreferencesManager(private val context: Context) {
         }
     }
 
+    /** One-time migration: re-encrypt legacy `plain:` / raw keys, then drop plaintext. */
+    suspend fun migrateLegacyKeys() {
+        context.dataStore.edit { prefs ->
+            listOf(Keys.GEMINI_API_KEY, Keys.OPENAI_API_KEY, Keys.CLAUDE_API_KEY, Keys.DEEPSEEK_API_KEY).forEach { k ->
+                val stored = prefs[k].orEmpty()
+                if (stored.isNotEmpty() && !ApiKeyCrypto.isEncrypted(stored)) {
+                    val plain = ApiKeyCrypto.decrypt(stored)
+                    prefs[k] = ApiKeyCrypto.encrypt(plain)
+                }
+            }
+        }
+    }
+
     // P1-6: cloud lookup consent — recipients are disclosed in the consent
     // dialog and Settings (dictionaryapi.dev, mymemory, Gemini/OpenAI/Claude/
     // DeepSeek). Default OFF: no user text leaves the device until opt-in.

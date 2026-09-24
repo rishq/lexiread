@@ -190,7 +190,9 @@ object RetrofitClient {
     /** Key-masking debug logger shared by the catalogue and API clients. */
     private fun sanitizedLogging(): HttpLoggingInterceptor =
         HttpLoggingInterceptor { message ->
-            val sanitized = message.replace(Regex("(?i)(key=)[^&\\s]+"), "$1[REDACTED]")
+            var sanitized = message.replace(Regex("(?i)(key=)[^&\\s]+"), "$1[REDACTED]")
+            sanitized = sanitized.replace(Regex("(?i)([?&]q=)[^&\\s]+"), "$1[REDACTED]")
+            sanitized = sanitized.replace(Regex("(?i)(langpair=)[^&\\s]+"), "$1[REDACTED]")
             if (BuildConfig.DEBUG) {
                 android.util.Log.d("RetrofitClient", sanitized)
             }
@@ -282,7 +284,7 @@ object RetrofitClient {
         val cookies = header.split(';').mapNotNull { pair ->
             val name = pair.substringBefore('=').trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
             val value = pair.substringAfter('=', "").trim()
-            Cookie.Builder().name(name).value(value).domain(httpUrl.host).path("/").build()
+            Cookie.Builder().name(name).value(value).hostOnlyDomain(httpUrl.host).secure().httpOnly().path("/").build()
         }
         if (cookies.isNotEmpty()) appCookieJar.saveFromResponse(httpUrl, cookies)
     }

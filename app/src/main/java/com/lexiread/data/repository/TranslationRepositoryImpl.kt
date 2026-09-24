@@ -40,7 +40,7 @@ class TranslationRepositoryImpl(
             return Result.failure(IllegalArgumentException("Text is empty"))
         }
 
-        val cacheKey = "${cleanText.lowercase()}_$targetLang"
+        val cacheKey = sha256("${cleanText.lowercase()}|$targetLang")
 
         // 1. Check Room cache
         val cached = cacheDao.getTranslationCache(cacheKey)
@@ -69,7 +69,8 @@ class TranslationRepositoryImpl(
 
         // 3. Fallback: MyMemory API
         return try {
-            val response = translationApi.translate(cleanText, "en|$targetLang")
+            val query = sanitizePromptInput(cleanText, maxLen = 500)
+            val response = translationApi.translate(query, "en|$targetLang")
             val translated = response.responseData?.translatedText
 
             if (translated.isNullOrBlank() || translated.contains("QUERY LENGTH LIMIT EXCEEDED")) {
@@ -111,10 +112,11 @@ class TranslationRepositoryImpl(
         val (provider, apiKey) = providerConfigProvider()
         if (apiKey.isBlank()) return null
 
+        val clean = sanitizePromptInput(text, maxLen = 500)
         val langName = languageDisplayName(targetLang)
         val prompt =
             "Translate the following English text into $langName. " +
-                "Respond ONLY with the translation itself — no quotes, no explanations, no transliteration.\n\n$text"
+                "Respond ONLY with the translation itself — no quotes, no explanations, no transliteration.\n\n$clean"
 
         return when (provider) {
             AiProviders.CHATGPT -> requestOpenAi(openAiApi, "gpt-4o-mini", apiKey, prompt)
@@ -164,6 +166,16 @@ class TranslationRepositoryImpl(
         "de" -> "German"
         "fr" -> "French"
         else -> code.uppercase()
+    }
+
+    private fun sanitizePromptInput(input: String, maxLen: Int): String {
+        return input.trim().take(maxLen).replace("\n", " ").replace("\r", " ")
+    }
+
+    private fun sha256(value: String): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { "%02x".format(it) }
     }
 
     private companion object {

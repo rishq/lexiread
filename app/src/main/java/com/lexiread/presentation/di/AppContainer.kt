@@ -180,6 +180,7 @@ class AppContainer(private val context: Context) {
 
     fun initialize() {
         applicationScope.launch {
+            runCatching { userPreferencesManager.migrateLegacyKeys() }
             // Purge expired cache entries once per app start.
             runCatching { database.cacheDao().deleteExpiredDictionaryCache(System.currentTimeMillis() - CACHE_TTL_MS) }
             runCatching { database.cacheDao().deleteExpiredTranslationCache(System.currentTimeMillis() - CACHE_TTL_MS) }
