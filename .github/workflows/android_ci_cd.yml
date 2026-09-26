@@ -61,12 +61,12 @@ jobs:
           cache: 'gradle'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.7.0'
 
       - name: Validate Gradle Wrapper
-        uses: gradle/actions/wrapper-validation@v4
+        uses: gradle/actions/wrapper-validation@v6
 
       - name: Ensure Gradle Wrapper Exists
         run: |
@@ -191,12 +191,12 @@ jobs:
           cache: 'gradle'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.7.0'
 
       - name: Validate Gradle Wrapper
-        uses: gradle/actions/wrapper-validation@v4
+        uses: gradle/actions/wrapper-validation@v6
 
       - name: Ensure Gradle Wrapper Exists
         run: |
