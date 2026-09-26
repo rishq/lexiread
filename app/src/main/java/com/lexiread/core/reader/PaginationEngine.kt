@@ -74,6 +74,7 @@ class PaginationEngine(private val context: Context) : Paginator {
 
         val text = chapter.content
         val pagesText = mutableListOf<String>()
+        val pagesStart = mutableListOf<Int>()
 
         var startOffset = 0
         val length = text.length
@@ -118,6 +119,10 @@ class PaginationEngine(private val context: Context) : Paginator {
             safeEnd = safeEnd.coerceIn(safeStart, length)
 
             pagesText.add(text.substring(safeStart, safeEnd).trim())
+            // Page text is trimmed, so the chapter offset of the visible text
+            // starts past the trimmed leading whitespace.
+            val raw = text.substring(safeStart, safeEnd)
+            pagesStart.add(safeStart + (raw.length - raw.trimStart().length))
             startOffset = safeEnd
         }
 
@@ -128,7 +133,8 @@ class PaginationEngine(private val context: Context) : Paginator {
                 pageIndex = index,
                 totalPagesInChapter = totalPages,
                 text = pageText,
-                chapterTitle = chapter.title
+                chapterTitle = chapter.title,
+                startOffsetInChapter = pagesStart.getOrElse(index) { 0 }
             )
         }
     }

@@ -14,6 +14,7 @@ import com.lexiread.domain.model.Book
 import com.lexiread.domain.model.BookChapter
 import com.lexiread.domain.model.Bookmark
 import com.lexiread.domain.model.DictionaryEntry
+import com.lexiread.domain.model.Highlight
 import com.lexiread.domain.model.ReaderPage
 import com.lexiread.domain.model.ReaderSettings
 import com.lexiread.domain.model.ReaderThemeOption
@@ -62,6 +63,14 @@ data class SelectedWordState(
     val aiBlockedOffline: Boolean = false
 )
 
+data class HighlightBarState(
+    val chapterIndex: Int,
+    val startOffset: Int,
+    val endOffset: Int,
+    val selectedText: String,
+    val existingHighlightId: Long? = null
+)
+
 data class ReaderUiState(
     val book: Book? = null,
     val chapters: List<BookChapter> = emptyList(),
@@ -72,7 +81,14 @@ data class ReaderUiState(
     val pagesForCurrentChapter: List<ReaderPage> = emptyList(),
     val readerSettings: ReaderSettings = ReaderSettings(),
     val bookmarks: List<Bookmark> = emptyList(),
+    val highlights: List<Highlight> = emptyList(),
     val selectedWordState: SelectedWordState? = null,
+    /**
+     * Active text selection awaiting the highlight action. Offsets are
+     * chapter-content offsets; [existingHighlightId] is set when the tap
+     * landed inside an already saved highlight (offers delete/recolor).
+     */
+    val highlightBar: HighlightBarState? = null,
     val showControlsOverlay: Boolean = false,
     val showSettingsDialog: Boolean = false,
     val showBookmarksDialog: Boolean = false,
@@ -83,7 +99,6 @@ data class ReaderUiState(
     val cloudLookupEnabled: Boolean = false,
     val isLoadingBook: Boolean = false,
     val isPaginating: Boolean = false,
-    val isLoadingNextChapter: Boolean = false,
     val errorMessage: String? = null,
     /** Mirror browser-check URL: dialog passes it, then the download retries. */
     val challengeUrl: String? = null
@@ -129,7 +144,7 @@ class ReaderViewModel(
 
     init {
         loadBookAndChapters()
-        observePreferencesAndBookmarks()
+        observePreferencesBookmarksAndHighlights()
         observePendingProgress()
         observeCloudConsent()
     }
@@ -317,20 +332,22 @@ class ReaderViewModel(
         }
     }
 
-    private fun observePreferencesAndBookmarks() {
+    private fun observePreferencesBookmarksAndHighlights() {
         viewModelScope.launch {
             combine(
                 preferencesManager.readerSettings,
                 bookRepository.getBookmarks(bookId),
+                bookRepository.getHighlights(bookId),
                 bookRepository.getReadingProgress(bookId)
-            ) { settings, bookmarks, _ ->
-                settings to bookmarks
-            }.collect { (settings, bookmarks) ->
+            ) { settings, bookmarks, highlights, _ ->
+                Triple(settings, bookmarks, highlights)
+            }.collect { (settings, bookmarks, highlights) ->
                 val prevSettings = _uiState.value.readerSettings
                 _uiState.update {
                     it.copy(
                         readerSettings = settings,
-                        bookmarks = bookmarks
+                        bookmarks = bookmarks,
+                        highlights = highlights
                     )
                 }
                 if (prevSettings != settings) {
@@ -478,8 +495,6 @@ class ReaderViewModel(
         prefetchJob?.cancel()
         prefetchJob = viewModelScope.launch {
             try {
-                _uiState.update { it.copy(isLoadingNextChapter = true) }
-
                 // Load the next chapter from DB/file if we don't have it.
                 // Resolved by index, never by position: a padded placeholder from
                 // an earlier prefetch must not be mistaken for real content.
@@ -500,8 +515,6 @@ class ReaderViewModel(
                 throw e
             } catch (e: Exception) {
                 android.util.Log.w(TAG, "Next-chapter prefetch failed", e)
-            } finally {
-                _uiState.update { it.copy(isLoadingNextChapter = false) }
             }
         }
     }
@@ -858,6 +871,58 @@ class ReaderViewModel(
         viewModelScope.launch {
             bookRepository.deleteBookmark(id)
         }
+    }
+
+    /** Text selection from the reader (page-local offsets already converted). */
+    fun onHighlightSelected(
+        chapterIndex: Int,
+        startOffset: Int,
+        endOffset: Int,
+        selectedText: String,
+        existingHighlightId: Long? = null
+    ) {
+        if (startOffset >= endOffset || selectedText.isBlank()) return
+        _uiState.update {
+            it.copy(
+                highlightBar = HighlightBarState(
+                    chapterIndex = chapterIndex,
+                    startOffset = startOffset,
+                    endOffset = endOffset,
+                    selectedText = selectedText,
+                    existingHighlightId = existingHighlightId
+                )
+            )
+        }
+    }
+
+    /** Persists the pending selection; recolor replaces the old highlight. */
+    fun applyHighlight(colorKey: String) {
+        val bar = _uiState.value.highlightBar ?: return
+        viewModelScope.launch {
+            bar.existingHighlightId?.let { bookRepository.deleteHighlight(it) }
+            bookRepository.addHighlight(
+                Highlight(
+                    bookId = bookId,
+                    chapterIndex = bar.chapterIndex,
+                    startOffset = bar.startOffset,
+                    endOffset = bar.endOffset,
+                    colorKey = colorKey
+                )
+            )
+            _uiState.update { it.copy(highlightBar = null) }
+        }
+    }
+
+    fun deleteHighlightSelection() {
+        val id = _uiState.value.highlightBar?.existingHighlightId ?: return
+        viewModelScope.launch {
+            bookRepository.deleteHighlight(id)
+            _uiState.update { it.copy(highlightBar = null) }
+        }
+    }
+
+    fun dismissHighlightBar() {
+        _uiState.update { it.copy(highlightBar = null) }
     }
 
     fun dismissWordSelection() {

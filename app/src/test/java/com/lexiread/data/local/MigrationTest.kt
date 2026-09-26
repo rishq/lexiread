@@ -144,4 +144,63 @@ class MigrationTest {
 
         v5.close()
     }
+
+    @Test
+    fun `migrate 5 to 6 creates highlights table and keeps books`() {
+        helper.createDatabase(testDatabaseName, 5).use { db ->
+            db.execSQL(
+                "INSERT INTO `books` (`id`, `title`, `author`, `coverUrl`, `description`," +
+                    " `filePath`, `format`, `language`, `subjects`, `isFavorite`, `isSaved`," +
+                    " `isFinished`, `isImported`, `addedTimestamp`)" +
+                    " VALUES ('b1', 'Title', 'Author', NULL, NULL, NULL," +
+                    " 'EPUB', 'en', '[]', 0, 1, 0, 0, 1)"
+            )
+        }
+
+        val v6 = helper.runMigrationsAndValidate(
+            testDatabaseName, 6, true,
+            AppDatabase.MIGRATION_5_6
+        )
+
+        v6.query(
+            "SELECT `name` FROM pragma_table_info('highlights') ORDER BY `cid`"
+        ).use { cursor ->
+            val columns = mutableListOf<String>()
+            while (cursor.moveToNext()) columns += cursor.getString(0)
+            assertEquals(
+                listOf(
+                    "id", "bookId", "chapterIndex", "startOffset",
+                    "endOffset", "colorKey", "createdAt"
+                ),
+                columns
+            )
+        }
+
+        // Round-trip through the migrated table.
+        v6.execSQL(
+            "INSERT INTO `highlights` (`bookId`, `chapterIndex`, `startOffset`," +
+                " `endOffset`, `colorKey`, `createdAt`)" +
+                " VALUES ('b1', 2, 10, 25, 'yellow', 1)"
+        )
+        v6.query(
+            "SELECT `bookId`, `chapterIndex`, `startOffset`, `endOffset`, `colorKey`" +
+                " FROM `highlights`"
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("b1", cursor.getString(0))
+            assertEquals(2, cursor.getInt(1))
+            assertEquals(10, cursor.getInt(2))
+            assertEquals(25, cursor.getInt(3))
+            assertEquals("yellow", cursor.getString(4))
+            assertFalse(cursor.moveToNext())
+        }
+
+        // Pre-existing books survive the additive migration.
+        v6.query("SELECT COUNT(*) FROM `books`").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(1, cursor.getInt(0))
+        }
+
+        v6.close()
+    }
 }

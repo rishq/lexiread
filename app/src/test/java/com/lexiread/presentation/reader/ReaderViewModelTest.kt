@@ -11,6 +11,7 @@ import com.lexiread.domain.model.Book
 import com.lexiread.domain.model.BookChapter
 import com.lexiread.domain.model.Bookmark
 import com.lexiread.domain.model.DictionaryEntry
+import com.lexiread.domain.model.Highlight
 import com.lexiread.domain.model.LearningStatus
 import com.lexiread.domain.model.ReaderPage
 import com.lexiread.domain.model.ReaderSettings
@@ -136,7 +137,6 @@ class ReaderViewModelTest {
         override fun getSavedBooks() = flowOf(emptyList<Book>())
         override fun getFinishedBooks() = flowOf(emptyList<Book>())
         override suspend fun getBookById(id: String) = book
-        override suspend fun searchBooksOnline(query: String) = Result.success(emptyList<Book>())
         override suspend fun fetchAndSaveFullBook(book: Book, forceRefresh: Boolean) = Result.success(book)
         override suspend fun addBookToLibrary(book: Book) {}
         override suspend fun deleteBook(id: String) {}
@@ -148,6 +148,9 @@ class ReaderViewModelTest {
         override fun getBookmarks(bookId: String) = flowOf(emptyList<Bookmark>())
         override suspend fun addBookmark(bookmark: Bookmark) {}
         override suspend fun deleteBookmark(id: Int) {}
+        override fun getHighlights(bookId: String) = flowOf(emptyList<Highlight>())
+        override suspend fun addHighlight(highlight: Highlight) {}
+        override suspend fun deleteHighlight(id: Long) {}
         override suspend fun initializePreloadedBooks() = Unit
     }
 

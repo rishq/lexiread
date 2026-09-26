@@ -9,6 +9,7 @@ import com.lexiread.data.local.dao.BookmarkDao
 import com.lexiread.data.local.dao.CatalogCacheDao
 import com.lexiread.data.local.dao.CacheDao
 import com.lexiread.data.local.dao.ChapterDao
+import com.lexiread.data.local.dao.HighlightDao
 import com.lexiread.data.local.dao.ReadingProgressDao
 import com.lexiread.data.local.dao.SavedWordDao
 import com.lexiread.data.local.entity.AiExplanationEntity
@@ -17,6 +18,7 @@ import com.lexiread.data.local.entity.BookmarkEntity
 import com.lexiread.data.local.entity.CatalogCacheEntity
 import com.lexiread.data.local.entity.ChapterEntity
 import com.lexiread.data.local.entity.DictionaryCacheEntity
+import com.lexiread.data.local.entity.HighlightEntity
 import com.lexiread.data.local.entity.ReadingProgressEntity
 import com.lexiread.data.local.entity.SavedWordEntity
 import com.lexiread.data.local.entity.TranslationCacheEntity
@@ -31,9 +33,10 @@ import com.lexiread.data.local.entity.TranslationCacheEntity
         DictionaryCacheEntity::class,
         TranslationCacheEntity::class,
         AiExplanationEntity::class,
-        CatalogCacheEntity::class
+        CatalogCacheEntity::class,
+        HighlightEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -42,6 +45,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun readingProgressDao(): ReadingProgressDao
     abstract fun savedWordDao(): SavedWordDao
     abstract fun bookmarkDao(): BookmarkDao
+    abstract fun highlightDao(): HighlightDao
     abstract fun cacheDao(): CacheDao
     abstract fun catalogCacheDao(): CatalogCacheDao
 
@@ -175,6 +179,28 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE `saved_words` ADD COLUMN `lastReviewEpoch` INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE `saved_words` ADD COLUMN `nextReviewEpoch` INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_saved_words_nextReviewEpoch` ON `saved_words` (`nextReviewEpoch`)")
+            }
+        }
+
+        /**
+         * Adds the `highlights` table. Additive only — no existing data moves.
+         */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `highlights` (
+                        `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        `bookId` TEXT NOT NULL,
+                        `chapterIndex` INTEGER NOT NULL,
+                        `startOffset` INTEGER NOT NULL,
+                        `endOffset` INTEGER NOT NULL,
+                        `colorKey` TEXT NOT NULL,
+                        `createdAt` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_highlights_bookId_chapterIndex` ON `highlights` (`bookId`, `chapterIndex`)")
             }
         }
     }

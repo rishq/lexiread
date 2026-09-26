@@ -1,7 +1,6 @@
 package com.lexiread.data.repository
 
 import android.util.Log
-import com.lexiread.core.util.BookFormatSelector
 import com.lexiread.core.util.CatalogDeduper
 import com.lexiread.core.util.RetryPolicy
 import com.lexiread.core.util.runSuspendCatching
@@ -156,11 +155,6 @@ class BooksRepositoryImpl(
             id.startsWith(MY_LIB_PREFIX) -> null // MyLib details resolved from search results
             else -> null
         }
-    }
-
-    override suspend fun resolveReadableFormat(book: CatalogBook): BookFormat? {
-        val edition = resolveReadableEdition(book)
-        return BookFormatSelector.pickBest(edition.formats)
     }
 
     override suspend fun downloadForReading(book: CatalogBook): Result<Book> = withContext(dispatcher) {
@@ -448,7 +442,18 @@ class BooksRepositoryImpl(
         pgaIndexCache?.let { return it }
         return pgaIndexLock.withLock {
             pgaIndexCache?.let { return@withLock it }
-            pgaApi.fetch(PGA_INDEX_URL).use { it.string() }.also { pgaIndexCache = it }
+            pgaApi.fetch(PGA_INDEX_URL).use { body ->
+                body.byteStream().use { stream ->
+                    val bytes = com.lexiread.core.util.TextEncoding.readCappedBytes(
+                        stream,
+                        MAX_PGA_INDEX_BYTES + 1
+                    )
+                    require(bytes.size <= MAX_PGA_INDEX_BYTES) {
+                        "PGA index exceeds the ${MAX_PGA_INDEX_BYTES / (1024 * 1024)}MB limit."
+                    }
+                    com.lexiread.core.util.TextEncoding.decode(bytes)
+                }
+            }.also { pgaIndexCache = it }
         }
     }
 
@@ -637,6 +642,7 @@ class BooksRepositoryImpl(
         const val IA_PAGE_SIZE = 20
         const val SE_PAGE_SIZE = 20
         const val PGA_PAGE_SIZE = 20
+        const val MAX_PGA_INDEX_BYTES = 10L * 1024 * 1024
 
         /**
          * Plain, provider-neutral terms. Each fetch wraps them into the query

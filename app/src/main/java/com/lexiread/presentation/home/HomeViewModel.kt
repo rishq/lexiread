@@ -19,8 +19,7 @@ data class HomeUiState(
     val recentBooks: List<Book> = emptyList(),
     val recommendedBooks: List<Book> = emptyList(),
     val savedWordsCount: Int = 0,
-    val knownWordsCount: Int = 0,
-    val isLoading: Boolean = false
+    val knownWordsCount: Int = 0
 )
 
 class HomeViewModel(
@@ -46,13 +45,12 @@ class HomeViewModel(
             recentBooks = allBooks.take(5),
             recommendedBooks = recs,
             savedWordsCount = savedWords.size,
-            knownWordsCount = known,
-            isLoading = false
+            knownWordsCount = known
         )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = HomeUiState(isLoading = true)
+        initialValue = HomeUiState()
     )
 
     fun toggleFavorite(bookId: String, isFav: Boolean) {

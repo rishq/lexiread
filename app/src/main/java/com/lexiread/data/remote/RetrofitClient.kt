@@ -193,6 +193,11 @@ object RetrofitClient {
             var sanitized = message.replace(Regex("(?i)(key=)[^&\\s]+"), "$1[REDACTED]")
             sanitized = sanitized.replace(Regex("(?i)([?&]q=)[^&\\s]+"), "$1[REDACTED]")
             sanitized = sanitized.replace(Regex("(?i)(langpair=)[^&\\s]+"), "$1[REDACTED]")
+            // Latent-header guard: BASIC never logs headers today, but a future
+            // HEADERS/BODY bump must not leak Bearer / API keys.
+            sanitized = sanitized.replace(Regex("(?i)(Authorization:\\s*Bearer\\s+)\\S+"), "$1[REDACTED]")
+            sanitized = sanitized.replace(Regex("(?i)(x-(goog-)?api-key:\\s*)\\S+"), "$1[REDACTED]")
+            sanitized = sanitized.replace(Regex("(?i)(anthropic-version[^\\n]*\\n[^\\n]*x-api-key:\\s*)\\S+"), "$1[REDACTED]")
             if (BuildConfig.DEBUG) {
                 android.util.Log.d("RetrofitClient", sanitized)
             }
@@ -289,58 +294,36 @@ object RetrofitClient {
         if (cookies.isNotEmpty()) appCookieJar.saveFromResponse(httpUrl, cookies)
     }
 
+    private fun <T> buildService(baseUrl: String, client: OkHttpClient, service: Class<T>, moshi: Boolean = true): T {
+        val builder = Retrofit.Builder().baseUrl(baseUrl).client(client)
+        if (moshi) builder.addConverterFactory(MoshiConverterFactory.create(this.moshi))
+        return builder.build().create(service)
+    }
+
     // --- Book catalogues ---
 
     val gutendexApi: GutendexApi by lazy {
-        Retrofit.Builder()
-            .baseUrl("https://gutendex.com/")
-            .client(catalogOkHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
-            .build()
-            .create(GutendexApi::class.java)
+        buildService("https://gutendex.com/", catalogOkHttpClient, GutendexApi::class.java)
     }
 
     val openLibraryApi: OpenLibraryApi by lazy {
-        Retrofit.Builder()
-            .baseUrl("https://openlibrary.org/")
-            .client(catalogOkHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
-            .build()
-            .create(OpenLibraryApi::class.java)
+        buildService("https://openlibrary.org/", catalogOkHttpClient, OpenLibraryApi::class.java)
     }
 
     val googleBooksApi: GoogleBooksApi by lazy {
-        Retrofit.Builder()
-            .baseUrl("https://www.googleapis.com/")
-            .client(catalogOkHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
-            .build()
-            .create(GoogleBooksApi::class.java)
+        buildService("https://www.googleapis.com/", catalogOkHttpClient, GoogleBooksApi::class.java)
     }
 
     val standardEbooksApi: StandardEbooksApi by lazy {
-        Retrofit.Builder()
-            .baseUrl("https://standardebooks.org/")
-            .client(catalogOkHttpClient)
-            .build()
-            .create(StandardEbooksApi::class.java)
+        buildService("https://standardebooks.org/", catalogOkHttpClient, StandardEbooksApi::class.java, moshi = false)
     }
 
     val internetArchiveApi: InternetArchiveApi by lazy {
-        Retrofit.Builder()
-            .baseUrl("https://archive.org/")
-            .client(catalogOkHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
-            .build()
-            .create(InternetArchiveApi::class.java)
+        buildService("https://archive.org/", catalogOkHttpClient, InternetArchiveApi::class.java)
     }
 
     val pgaApi: PgaApi by lazy {
-        Retrofit.Builder()
-            .baseUrl("https://gutenberg.net.au/")
-            .client(catalogOkHttpClient)
-            .build()
-            .create(PgaApi::class.java)
+        buildService("https://gutenberg.net.au/", catalogOkHttpClient, PgaApi::class.java, moshi = false)
     }
 
     /**
@@ -348,11 +331,12 @@ object RetrofitClient {
      * base URL only anchors relative links and is never requested directly.
      */
     val myLibApi: MyLibApi by lazy {
-        Retrofit.Builder()
-            .baseUrl("https://${com.lexiread.data.source.MyLibConfig.DEFAULT_HOST}/")
-            .client(catalogOkHttpClient)
-            .build()
-            .create(MyLibApi::class.java)
+        buildService(
+            "https://${com.lexiread.data.source.MyLibConfig.DEFAULT_HOST}/",
+            catalogOkHttpClient,
+            MyLibApi::class.java,
+            moshi = false
+        )
     }
 
     /**
@@ -360,66 +344,31 @@ object RetrofitClient {
      * its full mirror URL, so failover across mirrors keeps working.
      */
     val myLibEapiApi: MyLibEapiApi by lazy {
-        Retrofit.Builder()
-            .baseUrl("https://z-library.ec/")
-            .client(catalogOkHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
-            .build()
-            .create(MyLibEapiApi::class.java)
+        buildService("https://z-library.ec/", catalogOkHttpClient, MyLibEapiApi::class.java)
     }
 
     val dictionaryApi: DictionaryApi by lazy {
-        Retrofit.Builder()
-            .baseUrl("https://api.dictionaryapi.dev/")
-            .client(apiOkHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
-            .build()
-            .create(DictionaryApi::class.java)
+        buildService("https://api.dictionaryapi.dev/", apiOkHttpClient, DictionaryApi::class.java)
     }
 
     val translationApi: TranslationApi by lazy {
-        Retrofit.Builder()
-            .baseUrl("https://api.mymemory.translated.net/")
-            .client(apiOkHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
-            .build()
-            .create(TranslationApi::class.java)
+        buildService("https://api.mymemory.translated.net/", apiOkHttpClient, TranslationApi::class.java)
     }
 
     val geminiApi: GeminiApi by lazy {
-        Retrofit.Builder()
-            .baseUrl("https://generativelanguage.googleapis.com/")
-            .client(apiOkHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
-            .build()
-            .create(GeminiApi::class.java)
+        buildService("https://generativelanguage.googleapis.com/", apiOkHttpClient, GeminiApi::class.java)
     }
 
     val openAiApi: OpenAiChatApi by lazy {
-        Retrofit.Builder()
-            .baseUrl("https://api.openai.com/")
-            .client(apiOkHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
-            .build()
-            .create(OpenAiChatApi::class.java)
+        buildService("https://api.openai.com/", apiOkHttpClient, OpenAiChatApi::class.java)
     }
 
     val deepSeekApi: OpenAiChatApi by lazy {
-        Retrofit.Builder()
-            .baseUrl("https://api.deepseek.com/")
-            .client(apiOkHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
-            .build()
-            .create(OpenAiChatApi::class.java)
+        buildService("https://api.deepseek.com/", apiOkHttpClient, OpenAiChatApi::class.java)
     }
 
     val claudeApi: ClaudeApi by lazy {
-        Retrofit.Builder()
-            .baseUrl("https://api.anthropic.com/")
-            .client(apiOkHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
-            .build()
-            .create(ClaudeApi::class.java)
+        buildService("https://api.anthropic.com/", apiOkHttpClient, ClaudeApi::class.java)
     }
 }
 

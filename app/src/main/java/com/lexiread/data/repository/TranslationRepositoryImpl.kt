@@ -49,7 +49,6 @@ class TranslationRepositoryImpl(
                 TranslationResult(
                     sourceText = cleanText,
                     translatedText = cached.translatedText,
-                    sourceLang = "en",
                     targetLang = targetLang
                 )
             )
@@ -103,7 +102,6 @@ class TranslationRepositoryImpl(
         return TranslationResult(
             sourceText = source,
             translatedText = translated,
-            sourceLang = "en",
             targetLang = targetLang
         )
     }

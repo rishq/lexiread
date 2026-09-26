@@ -23,6 +23,7 @@ import com.lexiread.data.remote.openlibrary.OpenLibrarySearchResponseDto
 import com.lexiread.domain.model.Book
 import com.lexiread.domain.model.Bookmark
 import com.lexiread.domain.model.CatalogBook
+import com.lexiread.domain.model.Highlight
 import com.lexiread.domain.model.ReadingProgress
 import com.lexiread.domain.model.SourceKind
 import com.lexiread.domain.repository.BookRepository
@@ -120,7 +121,6 @@ class BooksRepositoryImplTest {
         override suspend fun deleteExpired(expireBefore: Long) {
             entries.values.removeIf { it.timestamp < expireBefore }
         }
-        override suspend fun clear() { entries.clear() }
     }
 
     private class FakeBookSource(override val idPrefix: String) : BookSource {
@@ -138,7 +138,6 @@ class BooksRepositoryImplTest {
         override fun getSavedBooks(): Flow<List<Book>> = emptyFlow()
         override fun getFinishedBooks(): Flow<List<Book>> = emptyFlow()
         override suspend fun getBookById(id: String): Book? = null
-        override suspend fun searchBooksOnline(query: String) = Result.success(emptyList<Book>())
         override suspend fun fetchAndSaveFullBook(book: Book, forceRefresh: Boolean) = Result.success(book)
         override suspend fun addBookToLibrary(book: Book) { saved += book }
         override suspend fun deleteBook(id: String) = Unit
@@ -150,6 +149,9 @@ class BooksRepositoryImplTest {
         override fun getBookmarks(bookId: String): Flow<List<Bookmark>> = emptyFlow()
         override suspend fun addBookmark(bookmark: Bookmark) = Unit
         override suspend fun deleteBookmark(id: Int) = Unit
+        override fun getHighlights(bookId: String): Flow<List<Highlight>> = emptyFlow()
+        override suspend fun addHighlight(highlight: Highlight) = Unit
+        override suspend fun deleteHighlight(id: Long) = Unit
         override suspend fun initializePreloadedBooks() = Unit
     }
 

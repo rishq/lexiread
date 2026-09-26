@@ -17,9 +17,7 @@ data class ReaderSettings(
     val fontSizeSp: Float = 18f,
     val lineHeightMultiplier: Float = 1.4f,
     val fontFamilyName: String = "Serif",
-    val contentWidthPercent: Float = 100f,
     val marginDp: Int = 20,
-    val isPaginated: Boolean = true,
     val volumeKeysPageTurn: Boolean = false
 ) {
     companion object {
@@ -62,7 +60,13 @@ data class ReaderPage(
     val pageIndex: Int,
     val totalPagesInChapter: Int,
     val text: String,
-    val chapterTitle: String
+    val chapterTitle: String,
+    /**
+     * Offset of [text] inside the chapter content. Page text is trimmed, so
+     * this already accounts for the trimmed leading whitespace — adding a
+     * page-local offset yields a stable chapter offset for highlights.
+     */
+    val startOffsetInChapter: Int = 0
 )
 
 data class ReadingProgress(
@@ -109,6 +113,29 @@ data class Bookmark(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+/** Highlight color keys. The key is persisted; the actual color lives in UI. */
+object HighlightColorKeys {
+    const val YELLOW = "yellow"
+    const val GREEN = "green"
+    const val BLUE = "blue"
+    const val PINK = "pink"
+    const val DEFAULT = YELLOW
+}
+
+/**
+ * A persisted user text highlight. Offsets are chapter-content offsets
+ * (see [HighlightEntity]), [colorKey] is one of [HighlightColorKeys].
+ */
+data class Highlight(
+    val id: Long = 0,
+    val bookId: String,
+    val chapterIndex: Int,
+    val startOffset: Int,
+    val endOffset: Int,
+    val colorKey: String = HighlightColorKeys.DEFAULT,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
 data class DefinitionMeaning(
     val partOfSpeech: String,
     val definitions: List<String>,
@@ -126,7 +153,6 @@ data class DictionaryEntry(
 data class TranslationResult(
     val sourceText: String,
     val translatedText: String,
-    val sourceLang: String = "en",
     val targetLang: String = "ru"
 )
 

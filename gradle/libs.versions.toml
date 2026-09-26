@@ -30,7 +30,7 @@ turbine = "1.2.0"
 moshiKotlinCodegen = "1.15.2"
 datastorePreferences = "1.1.7"
 robolectric = "4.16.1"
-jsoup = "1.21.1"
+jsoup = "1.23.2"
 secretsGradlePlugin = "2.0.1"
 
 

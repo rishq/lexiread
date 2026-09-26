@@ -34,7 +34,14 @@ android {
     // same counter locally via VERSION_CODE env (fallback 1 for local builds).
     versionCode = (System.getenv("VERSION_CODE")?.toIntOrNull()
       ?: System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1)
-    versionName = "1.0"
+    // versionName tracks release tag (v1.2.3 -> 1.2.3) so Play/support see
+    // real version; fallback 1.0 for local/debug builds without tag context.
+    versionName = sequenceOf(
+      System.getenv("RELEASE_VERSION"),
+      System.getenv("GITHUB_REF_NAME")
+    ).map { it?.trim()?.removePrefix("v").orEmpty() }
+      .firstOrNull { it.matches(Regex("""\d+\.\d+\.\d+(-[0-9A-Za-z._-]+)?""")) }
+      ?: "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -60,14 +67,14 @@ android {
   // So: in CI, refuse to build a release artifact without the real key. The check
   // is driven by the requested task names, which keeps test/debug jobs working in
   // CI without upload secrets (they never ask for a release variant).
-  // ALLOW_DEBUG_SIGNING=true is the explicit opt-out for a debug-signed release.
+  // Fail-closed: no ALLOW_DEBUG_SIGNING opt-out (previously allowed publishing a
+  // debug-signed build as a release).
   val isCi = !System.getenv("CI").isNullOrBlank()
-  val debugSigningAllowed = System.getenv("ALLOW_DEBUG_SIGNING").equals("true", ignoreCase = true)
   val releaseRequested = gradle.startParameter.taskNames.any { requested ->
     val taskName = requested.substringAfterLast(':')
     taskName.contains("Release") || taskName in setOf("assemble", "build", "bundle")
   }
-  if (isCi && releaseRequested && !hasReleaseKeystore && !debugSigningAllowed) {
+  if (isCi && releaseRequested && !hasReleaseKeystore) {
     // Name the specific input that is missing. The three conditions are ANDed
     // above, so a single combined message sends people to the wrong place - and
     // in CI the real cause (a secret that was never configured) is invisible.
@@ -82,8 +89,7 @@ android {
       "Refusing to build a release artifact: release signing is not configured - " +
         missing.joinToString("; ") + ". " +
         "In CI these come from the RELEASE_KEYSTORE_BASE64, STORE_PASSWORD and " +
-        "KEY_PASSWORD repository secrets (see README, 'Setting up Repository Secrets'). " +
-        "Set ALLOW_DEBUG_SIGNING=true to explicitly publish a debug-signed build instead."
+          "KEY_PASSWORD repository secrets (see README, 'Setting up Repository Secrets')."
     )
   }
 
@@ -114,7 +120,7 @@ android {
         logger.warn(
           "Release keystore not found at $releaseKeystorePath or passwords missing - " +
             "signing the release with the debug key. This is a LOCAL-ONLY fallback: in CI " +
-            "(CI env set) the build fails instead unless ALLOW_DEBUG_SIGNING=true."
+            "(CI env set) the build fails instead."
         )
         signingConfigs.getByName("debugConfig")
       }

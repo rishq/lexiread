@@ -4,7 +4,9 @@ import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 
@@ -30,6 +33,12 @@ import androidx.compose.ui.viewinterop.AndroidView
  * this dialog instead of an error. Auto-pass fires only when `cf_clearance`
  * lands in cookies; otherwise user logs in manually then taps Continue,
  * and caller syncs cookies into OkHttp and retries same download.
+ *
+ * The embedded form defeats some logins (no password-manager fill, hostile
+ * captcha), so "Open in browser" hands the same URL to the user's real
+ * browser. The session cannot come back automatically (separate cookie
+ * store) — after logging in outside, finish the check in the view above so
+ * the clearance cookies exist where the app can read them, then Continue.
  */
 @Composable
 fun ChallengeWebViewDialog(
@@ -40,6 +49,10 @@ fun ChallengeWebViewDialog(
     var status by remember { mutableStateOf("Passing the browser check…") }
     var fired by remember { mutableStateOf(false) }
     var webViewRef: WebView? by remember { mutableStateOf(null) }
+    val context = LocalContext.current
+    val initialHost = remember(url) {
+        runCatching { android.net.Uri.parse(url).host?.lowercase() }.getOrNull()
+    }
     DisposableEffect(Unit) {
         onDispose {
             webViewRef?.apply { removeAllViews(); stopLoading(); destroy() }
@@ -54,7 +67,9 @@ fun ChallengeWebViewDialog(
             Column {
                 Text(
                     "The mirror asks for one quick check. Log in inside if asked, " +
-                        "then tap Continue — the download retries on its own.",
+                        "then tap Continue — the download retries on its own. " +
+                        "If the form here won't take your login, open it in your " +
+                        "browser instead, then finish the check here.",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(Modifier.height(8.dp))
@@ -75,7 +90,15 @@ fun ChallengeWebViewDialog(
                                     // Block non-web schemes only (intent:, javascript:, etc).
                                     // Login / Turnstile often hop hosts — blocking
                                     // cross-host https breaks login and looks like refresh.
-                                    return scheme != null && scheme != "http" && scheme != "https"
+                                    // Surface the hop so a phishing redirect is visible.
+                                    val targetHost = request.url?.host?.lowercase()
+                                    if (scheme == "http" || scheme == "https") {
+                                        if (targetHost != null && initialHost != null && targetHost != initialHost) {
+                                            status = "On $targetHost — verify address, then Continue."
+                                        }
+                                        return false
+                                    }
+                                    return true
                                 }
                                 override fun onPageFinished(view: WebView, finishedUrl: String) {
                                     if (fired) return
@@ -121,14 +144,34 @@ fun ChallengeWebViewDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                if (!fired) {
+                if (fired) return@TextButton
+                // Gate Continue on clearance: ungated retry syncs stale cookies.
+                val currentUrl = webViewRef?.url ?: url
+                val cookies = CookieManager.getInstance().getCookie(currentUrl).orEmpty()
+                if ("cf_clearance" in cookies) {
                     fired = true
                     onPassed()
+                } else {
+                    status = "Check not passed yet — complete it, then Continue."
                 }
             }) { Text("Continue") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+                TextButton(onClick = {
+                    runCatching {
+                        context.startActivity(
+                            android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse(webViewRef?.url ?: url)
+                            )
+                        )
+                    }.onFailure {
+                        status = "No browser found to open the link."
+                    }
+                }) { Text("Open in browser") }
+            }
         }
     )
 }

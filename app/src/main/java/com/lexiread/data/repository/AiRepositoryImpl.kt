@@ -25,8 +25,6 @@ object AiProviders {
     const val CLAUDE = "claude"
     const val DEEPSEEK = "deepseek"
 
-    val all = listOf(GEMINI, CHATGPT, CLAUDE, DEEPSEEK)
-
     fun displayName(provider: String): String = when (provider) {
         GEMINI -> "Google Gemini"
         CHATGPT -> "ChatGPT (OpenAI)"

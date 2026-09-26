@@ -109,6 +109,27 @@ data class BookmarkEntity(
     val timestamp: Long
 )
 
+/**
+ * A user text highlight. Anchored to chapter-text offsets, never to screen
+ * coordinates or page text: pages are re-cut on every font/size change, so
+ * page-local offsets would silently drift. Chapter content is immutable, so
+ * [startOffset]/[endOffset] stay valid across repagination, theme changes
+ * and process restarts.
+ */
+@Entity(
+    tableName = "highlights",
+    indices = [Index("bookId", "chapterIndex")]
+)
+data class HighlightEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val bookId: String,
+    val chapterIndex: Int,
+    val startOffset: Int,
+    val endOffset: Int,
+    val colorKey: String,
+    val createdAt: Long
+)
+
 @Entity(tableName = "dictionary_cache")
 data class DictionaryCacheEntity(
     @PrimaryKey val word: String,

@@ -37,11 +37,19 @@ object CrashLogger {
         val file = File(context.filesDir, FILE_NAME)
         if (file.length() > MAX_FILE_BYTES) file.delete()
         val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
-        File(context.filesDir, FILE_NAME).appendText(
+        file.appendText(
             buildString {
                 appendLine("=== CRASH $timestamp (thread: ${thread.name}) ===")
-                appendLine(Log.getStackTraceString(throwable))
+                appendLine(scrub(Log.getStackTraceString(throwable)))
             }
         )
+    }
+
+    // ponytail: regex scrub, structured logging if PII grows
+    private fun scrub(text: String): String {
+        var out = text.replace(Regex("(?i)(key=)[^&\\s]+"), "$1[REDACTED]")
+        out = out.replace(Regex("(?i)(Bearer\\s+)\\S+"), "$1[REDACTED]")
+        out = out.replace(Regex("(?i)(x-(goog-)?api-key:\\s*)\\S+"), "$1[REDACTED]")
+        return out
     }
 }

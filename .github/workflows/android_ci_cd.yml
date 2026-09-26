@@ -65,6 +65,9 @@ jobs:
         with:
           gradle-version: '9.7.0'
 
+      - name: Validate Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
       - name: Ensure Gradle Wrapper Exists
         run: |
           if [ ! -f "gradlew" ]; then
@@ -192,6 +195,9 @@ jobs:
         with:
           gradle-version: '9.7.0'
 
+      - name: Validate Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
       - name: Ensure Gradle Wrapper Exists
         run: |
           if [ ! -f "gradlew" ]; then
@@ -234,6 +240,9 @@ jobs:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           VERSION_CODE: ${{ github.run_number }}
+          # Tag pushes expose version via GITHUB_REF_NAME; dispatch custom
+          # tags arrive only via inputs, so forward explicitly (env:, not bash).
+          RELEASE_VERSION: ${{ github.event.inputs.release_tag }}
         run: |
           # P2-10 + N-2: this step must fail loudly when release signing or the
           # build is broken. app/build.gradle.kts now refuses to assemble a
@@ -276,27 +285,30 @@ jobs:
         # The `push to main` clause that used to be here is gone: the job itself
         # no longer runs on that event, so it was unreachable.
         if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release != 'false')
+        env:
+          RELEASE_TAG_INPUT: ${{ github.event.inputs.release_tag }}
+          GITHUB_RUN_NUMBER_ENV: ${{ github.run_number }}
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG_NAME="${GITHUB_REF#refs/tags/}"
-          elif [ -n "${{ github.event.inputs.release_tag }}" ]; then
-            TAG_NAME="${{ github.event.inputs.release_tag }}"
+          elif [[ -n "$RELEASE_TAG_INPUT" && "$RELEASE_TAG_INPUT" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z._-]+)?$ ]]; then
+            TAG_NAME="$RELEASE_TAG_INPUT"
           else
-            TAG_NAME="v1.0.${{ github.run_number }}"
+            if [ -n "$RELEASE_TAG_INPUT" ]; then echo "::warning::Ignoring invalid release_tag, using default."; fi
+            TAG_NAME="v1.0.$GITHUB_RUN_NUMBER_ENV"
           fi
           echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
           echo "Release tag determined: ${TAG_NAME}"
 
       - name: Create GitHub Release and Upload Assets
-        uses: softprops/action-gh-release@v2
         if: steps.release_info.outputs.tag_name != ''
-        with:
-          tag_name: ${{ steps.release_info.outputs.tag_name }}
-          name: "LexiRead ${{ steps.release_info.outputs.tag_name }}"
-          draft: false
-          prerelease: ${{ github.event.inputs.is_prerelease == 'true' }}
-          generate_release_notes: true
-          files: |
-            outputs/*
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.release_info.outputs.tag_name }}
+          IS_PRERELEASE: ${{ github.event.inputs.is_prerelease }}
+        run: |
+          TAG="$RELEASE_TAG"
+          FLAGS=""
+          if [ "$IS_PRERELEASE" = "true" ]; then FLAGS="$FLAGS --prerelease"; fi
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "LexiRead $TAG" --generate-notes $FLAGS
+          gh release upload "$TAG" outputs/* --clobber

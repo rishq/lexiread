@@ -33,8 +33,7 @@ data class VocabularyUiState(
     val reviewWords: List<SavedWord> = emptyList(),
     val isReviewMode: Boolean = false,
     val currentReviewIndex: Int = 0,
-    val isCardFlipped: Boolean = false,
-    val isLoading: Boolean = false
+    val isCardFlipped: Boolean = false
 )
 
 class VocabularyViewModel(
@@ -80,13 +79,12 @@ class VocabularyViewModel(
             reviewWords = reviewQueue,
             isReviewMode = review.isActive,
             currentReviewIndex = review.index.coerceIn(0, (reviewQueue.size - 1).coerceAtLeast(0)),
-            isCardFlipped = review.isFlipped,
-            isLoading = false
+            isCardFlipped = review.isFlipped
         )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = VocabularyUiState(isLoading = true)
+        initialValue = VocabularyUiState()
     )
 
     fun selectFilter(filter: VocabularyFilter) {

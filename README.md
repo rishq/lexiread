@@ -51,10 +51,10 @@ LexiRead combines an e-book reader with language-learning utilities. Readers can
 
 ## Project Structure
 
-- `app/src/main/java/com/example/core/`: Reader parsers, pagination engine, user preferences, and utilities (TTS, helpers).
-- `app/src/main/java/com/example/data/`: Room database, DAOs, entities, and repository implementations.
-- `app/src/main/java/com/example/domain/`: Domain models and repository interface declarations.
-- `app/src/main/java/com/example/presentation/`: Composables and ViewModels for Library, Reader, Explore, Vocabulary, and Settings screens.
+- `app/src/main/java/com/lexiread/core/`: Reader parsers, pagination engine, user preferences, and utilities (TTS, helpers).
+- `app/src/main/java/com/lexiread/data/`: Room database, DAOs, entities, and repository implementations.
+- `app/src/main/java/com/lexiread/domain/`: Domain models and repository interface declarations.
+- `app/src/main/java/com/lexiread/presentation/`: Composables and ViewModels for Library, Reader, Explore, Vocabulary, and Settings screens.
 
 ## CI/CD Pipeline (GitHub Actions)
 
@@ -77,8 +77,8 @@ variables -> Actions**:
 - `KEY_PASSWORD`: Key alias password.
 
 Local builds still work without them: outside CI the release variant falls back
-to `debug.keystore`. Set `ALLOW_DEBUG_SIGNING=true` to allow that fallback in CI
-too (e.g. for a smoke-test build).
+to `debug.keystore`. In CI there is no fallback — use the debug APK
+(`assembleDebug`) for smoke-test builds.
 
 AI provider keys are **not** injected at build time. `GEMINI_API_KEY` is excluded
 from `BuildConfig` on purpose (see `secrets { ignoreList }`); every provider key

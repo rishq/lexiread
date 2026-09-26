@@ -60,11 +60,11 @@ class ApiKeyCryptoTest {
     }
 
     @Test
-    fun `legacy values remain readable`() {
-        assertEquals("legacy-key", ApiKeyCrypto.decrypt("legacy-key"))
-        assertEquals("test", ApiKeyCrypto.decrypt("test"))
-        assertEquals("legacy-key", ApiKeyCrypto.decrypt("plain:legacy-key"))
+    fun `legacy values fail closed, migration handles them`() {
+        assertEquals("", ApiKeyCrypto.decrypt("legacy-key"))
+        assertEquals("", ApiKeyCrypto.decrypt("test"))
+        assertEquals("", ApiKeyCrypto.decrypt("plain:legacy-key"))
         val oldEnvelope = ApiKeyCrypto.encrypt("legacy-key") { key }.removePrefix("enc:v1:")
-        assertEquals("legacy-key", ApiKeyCrypto.decrypt(oldEnvelope) { key })
+        assertEquals("", ApiKeyCrypto.decrypt(oldEnvelope) { key })
     }
 }

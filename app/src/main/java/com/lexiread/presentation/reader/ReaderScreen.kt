@@ -8,7 +8,6 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -24,10 +23,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FormatListNumbered
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
@@ -47,6 +49,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,12 +58,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalTextToolbar
+import androidx.compose.ui.platform.TextToolbar
+import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -194,11 +206,55 @@ fun ReaderScreen(
                         modifier = Modifier.padding(top = 28.dp, bottom = 8.dp)
                     )
 
-                    // Page Text Canvas — a single Text node keeps composition cheap;
-                    // tapped word is resolved from TextLayoutResult offsets.
+                    // Page Text Canvas — read-only selectable field: long-press or
+                    // mouse drag selects an arbitrary range (highlight bar),
+                    // a plain tap still resolves the tapped word (bottom sheet).
+                    // Highlights render as background spans from chapter-anchored
+                    // offsets, so repagination never moves them.
                     val pageText = currentPage?.text ?: "No page content."
-                    var layoutResult by remember(pageText) {
-                        mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null)
+                    val pageStart = currentPage?.startOffsetInChapter ?: 0
+                    val pageChapterIndex = currentPage?.chapterIndex
+                        ?: uiState.currentChapterIndex
+                    val pageIndex = uiState.currentPageIndex
+
+                    val pageHighlights = remember(
+                        uiState.highlights, pageChapterIndex, pageStart, pageText
+                    ) {
+                        uiState.highlights.filter {
+                            it.chapterIndex == pageChapterIndex &&
+                                it.endOffset > pageStart &&
+                                it.startOffset < pageStart + pageText.length
+                        }
+                    }
+                    val annotatedPageText = remember(pageText, pageHighlights) {
+                        buildAnnotatedString {
+                            append(pageText)
+                            pageHighlights.forEach { highlight ->
+                                val start = (highlight.startOffset - pageStart)
+                                    .coerceIn(0, pageText.length)
+                                val end = (highlight.endOffset - pageStart)
+                                    .coerceIn(0, pageText.length)
+                                if (start < end) {
+                                    addStyle(
+                                        style = SpanStyle(
+                                            background = HighlightColors
+                                                .color(highlight.colorKey)
+                                                .copy(alpha = 0.45f)
+                                        ),
+                                        start = start,
+                                        end = end
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    var pageSelection by remember(pageText) {
+                        mutableStateOf(TextRange.Zero)
+                    }
+
+                    // A new page must never inherit the previous selection bar.
+                    LaunchedEffect(pageChapterIndex, pageIndex) {
+                        viewModel.dismissHighlightBar()
                     }
 
                     val textStyle = MaterialTheme.typography.bodyLarge.copy(
@@ -213,43 +269,81 @@ fun ReaderScreen(
                         color = textColor
                     )
 
-                    Text(
-                        text = pageText,
-                        style = textStyle,
-                        onTextLayout = { layoutResult = it },
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .pointerInput(pageText) {
-                                detectTapGestures { position ->
-                                    runCatching {
-                                        val layout = layoutResult ?: return@detectTapGestures
-                                        val offset = layout.getOffsetForPosition(position)
-                                        if (offset !in pageText.indices) return@detectTapGestures
-
-                                        var start = offset
-                                        var end = offset
-                                        while (start > 0 && !pageText[start - 1].isWhitespace()) start--
-                                        while (end < pageText.length && !pageText[end].isWhitespace()) end++
-                                        val cleanWord = pageText.substring(start, end)
-                                            .trim { !it.isLetterOrDigit() }
-
-                                        if (cleanWord.isNotEmpty()) {
-                                            val paragraphStart = pageText.lastIndexOf("\n\n", offset)
-                                                .let { if (it == -1) 0 else it + 2 }
-                                            val paragraphEnd = pageText.indexOf("\n\n", offset)
-                                                .let { if (it == -1) pageText.length else it }
-                                            viewModel.onWordSelected(
-                                                cleanWord,
-                                                pageText.substring(paragraphStart, paragraphEnd)
+                    CompositionLocalProvider(LocalTextToolbar provides NoOpTextToolbar) {
+                        BasicTextField(
+                            value = TextFieldValue(annotatedPageText, pageSelection),
+                            onValueChange = { fieldValue ->
+                                val newSelection = fieldValue.selection
+                                if (newSelection != pageSelection) {
+                                    pageSelection = newSelection
+                                    if (newSelection.collapsed) {
+                                        viewModel.dismissHighlightBar()
+                                        val offset = newSelection.start
+                                        if (offset in pageText.indices) {
+                                            resolveTappedWord(
+                                                pageText = pageText,
+                                                offset = offset,
+                                                pageStart = pageStart,
+                                                pageChapterIndex = pageChapterIndex,
+                                                pageHighlights = pageHighlights,
+                                                viewModel = viewModel
                                             )
                                         }
-                                    }.onFailure {
-                                        android.util.Log.e("ReaderScreen", "Word tap failed", it)
+                                    } else {
+                                        val start = minOf(newSelection.start, newSelection.end)
+                                            .coerceIn(0, pageText.length)
+                                        val end = maxOf(newSelection.start, newSelection.end)
+                                            .coerceIn(0, pageText.length)
+                                        if (start < end) {
+                                            val chapterStart = pageStart + start
+                                            val chapterEnd = pageStart + end
+                                            val existing = pageHighlights.firstOrNull { highlight ->
+                                                highlight.startOffset <= chapterStart &&
+                                                    highlight.endOffset >= chapterEnd
+                                            }
+                                            viewModel.onHighlightSelected(
+                                                chapterIndex = pageChapterIndex,
+                                                startOffset = chapterStart,
+                                                endOffset = chapterEnd,
+                                                selectedText = pageText.substring(start, end),
+                                                existingHighlightId = existing?.id
+                                            )
+                                        }
                                     }
                                 }
-                            }
-                    )
+                            },
+                            readOnly = true,
+                            textStyle = textStyle,
+                            cursorBrush = SolidColor(Color.Transparent),
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                        )
+                    }
+
+                    // Highlight action bar: colors apply immediately, delete
+                    // removes an existing highlight, X just closes the bar.
+                    AnimatedVisibility(visible = uiState.highlightBar != null) {
+                        val bar = uiState.highlightBar
+                        if (bar != null) {
+                            HighlightBar(
+                                selectedText = bar.selectedText,
+                                canDelete = bar.existingHighlightId != null,
+                                onColorClick = { colorKey ->
+                                    viewModel.applyHighlight(colorKey)
+                                    pageSelection = TextRange.Zero
+                                },
+                                onDeleteClick = {
+                                    viewModel.deleteHighlightSelection()
+                                    pageSelection = TextRange.Zero
+                                },
+                                onCloseClick = {
+                                    viewModel.dismissHighlightBar()
+                                    pageSelection = TextRange.Zero
+                                }
+                            )
+                        }
+                    }
 
                     // Footer Page Counter
                     val totalPages = uiState.pagesForCurrentChapter.size.coerceAtLeast(1)
@@ -265,18 +359,6 @@ fun ReaderScreen(
                     )
 
                     if (currentPage == null) {
-                        // ponytail: diagnostic empty-state — remove once the
-                        // blank-reader root cause is confirmed fixed.
-                        val book = uiState.book
-                        val file = book?.filePath?.let { java.io.File(it) }
-                        Text(
-                            text = "debug: id=${book?.id} format=${book?.format} " +
-                                "chapters=${uiState.chapters.size} pages=${uiState.pagesForCurrentChapter.size} " +
-                                "file=${file?.exists()}:${file?.length()}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = textColor.copy(alpha = 0.5f),
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
-                        )
                         TextButton(onClick = { viewModel.retryLoad() }) {
                             Text("Retry", color = MaterialTheme.colorScheme.primary)
                         }
@@ -475,6 +557,131 @@ internal fun CloudConsentDialog(
             }
         }
     )
+}
+
+/** Suppresses the system copy toolbar — the highlight bar replaces it. */
+private object NoOpTextToolbar : TextToolbar {
+    override val status: TextToolbarStatus = TextToolbarStatus.Hidden
+    override fun showMenu(
+        rect: Rect,
+        onCopyRequested: (() -> Unit)?,
+        onPasteRequested: (() -> Unit)?,
+        onCutRequested: (() -> Unit)?,
+        onSelectAllRequested: (() -> Unit)?
+    ) = Unit
+    override fun hide() = Unit
+}
+
+/**
+ * Plain tap on the page text: resolves the tapped word exactly like the old
+ * tap detector did, or opens the highlight bar when the tap landed inside a
+ * saved highlight (offers recolor/delete).
+ */
+private fun resolveTappedWord(
+    pageText: String,
+    offset: Int,
+    pageStart: Int,
+    pageChapterIndex: Int,
+    pageHighlights: List<com.lexiread.domain.model.Highlight>,
+    viewModel: ReaderViewModel
+) {
+    runCatching {
+        val chapterOffset = pageStart + offset
+        val existing = pageHighlights.firstOrNull { highlight ->
+            highlight.startOffset <= chapterOffset && chapterOffset < highlight.endOffset
+        }
+        if (existing != null) {
+            viewModel.onHighlightSelected(
+                chapterIndex = pageChapterIndex,
+                startOffset = existing.startOffset,
+                endOffset = existing.endOffset,
+                selectedText = pageText.substring(
+                    (existing.startOffset - pageStart).coerceIn(0, pageText.length),
+                    (existing.endOffset - pageStart).coerceIn(0, pageText.length)
+                ),
+                existingHighlightId = existing.id
+            )
+            return
+        }
+
+        var start = offset
+        var end = offset
+        while (start > 0 && !pageText[start - 1].isWhitespace()) start--
+        while (end < pageText.length && !pageText[end].isWhitespace()) end++
+        val cleanWord = pageText.substring(start, end)
+            .trim { !it.isLetterOrDigit() }
+
+        if (cleanWord.isNotEmpty()) {
+            val paragraphStart = pageText.lastIndexOf("\n\n", offset)
+                .let { if (it == -1) 0 else it + 2 }
+            val paragraphEnd = pageText.indexOf("\n\n", offset)
+                .let { if (it == -1) pageText.length else it }
+            viewModel.onWordSelected(
+                cleanWord,
+                pageText.substring(paragraphStart, paragraphEnd)
+            )
+        }
+    }.onFailure {
+        android.util.Log.e("ReaderScreen", "Word tap failed", it)
+    }
+}
+
+/**
+ * Compact highlight action bar: four color dots apply immediately, the trash
+ * icon deletes an existing highlight, X closes without changes.
+ */
+@Composable
+private fun HighlightBar(
+    selectedText: String,
+    canDelete: Boolean,
+    onColorClick: (String) -> Unit,
+    onDeleteClick: () -> Unit,
+    onCloseClick: () -> Unit
+) {
+    Surface(
+        tonalElevation = 6.dp,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = selectedText.trim().replace(Regex("\\s+"), " "),
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            HighlightColors.allKeys.forEach { key ->
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(HighlightColors.color(key))
+                        .clickable { onColorClick(key) }
+                )
+            }
+            if (canDelete) {
+                IconButton(onClick = onDeleteClick, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        imageVector = Icons.Filled.Delete,
+                        contentDescription = "Удалить выделение"
+                    )
+                }
+            }
+            IconButton(onClick = onCloseClick, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Закрыть"
+                )
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

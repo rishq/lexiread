@@ -32,6 +32,5 @@ interface GoogleBooksApi {
 
     companion object {
         const val DEFAULT_MAX_RESULTS = 20
-        const val MAX_MAX_RESULTS = 40
     }
 }

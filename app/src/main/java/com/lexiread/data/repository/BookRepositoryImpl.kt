@@ -6,19 +6,18 @@ import com.lexiread.data.local.PreloadedBooks
 import com.lexiread.data.local.dao.BookDao
 import com.lexiread.data.local.dao.BookmarkDao
 import com.lexiread.data.local.dao.ChapterDao
+import com.lexiread.data.local.dao.HighlightDao
 import com.lexiread.data.local.dao.ReadingProgressDao
 import com.lexiread.data.local.entity.BookEntity
 import com.lexiread.data.local.entity.BookmarkEntity
+import com.lexiread.data.local.entity.HighlightEntity
 import com.lexiread.data.local.entity.ReadingProgressEntity
 import com.lexiread.domain.repository.BookSource
 import com.lexiread.domain.model.Book
 import com.lexiread.domain.model.Bookmark
+import com.lexiread.domain.model.Highlight
 import com.lexiread.domain.model.ReadingProgress
 import com.lexiread.domain.repository.BookRepository
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.supervisorScope
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -28,6 +27,7 @@ class BookRepositoryImpl(
     private val chapterDao: ChapterDao,
     private val readingProgressDao: ReadingProgressDao,
     private val bookmarkDao: BookmarkDao,
+    private val highlightDao: HighlightDao,
     private val sources: List<BookSource>
 ) : BookRepository {
 
@@ -85,69 +85,6 @@ class BookRepositoryImpl(
         return bookDao.getBookMetaById(id)?.toDomain()
     }
 
-    override suspend fun searchBooksOnline(query: String): Result<List<Book>> {
-        if (query.isBlank()) return Result.success(emptyList())
-
-        // Catalogues are independent remote calls. Run them concurrently, while
-        // allowing one failed provider to degrade to an empty result set.
-        val results = supervisorScope {
-            sources.map { source ->
-                async {
-                    val sourceResults = withTimeoutOrNull(CATALOG_SEARCH_TIMEOUT_MS) {
-                        runSuspendCatching { source.search(query) }
-                            .onFailure { error ->
-                                android.util.Log.w("BookRepository", "Source ${source.displayName} failed", error)
-                            }
-                            .getOrDefault(emptyList())
-                    }
-                    if (sourceResults == null) {
-                        android.util.Log.w(
-                            "BookRepository",
-                            "Source ${source.displayName} exceeded ${CATALOG_SEARCH_TIMEOUT_MS}ms"
-                        )
-                    }
-                    sourceResults.orEmpty()
-                }
-            }.awaitAll().flatten()
-        }
-        return Result.success(dedupeCrossSource(results))
-    }
-
-    /**
-     * P2-5: same cross-source dedup policy as BooksRepositoryImpl
-     * (CatalogDeduper), not just distinctBy id — different sources mint
-     * different ids for the same title/author. Keeps the first readable
-     * edition, merges subjects deterministically.
-     */
-    private fun dedupeCrossSource(books: List<Book>): List<Book> {
-        val seen = LinkedHashMap<String, Book>()
-        for (book in books) {
-            val key = buildString {
-                append(com.lexiread.core.util.CatalogDeduper.normalizeTitle(book.title))
-                append('|')
-                append(com.lexiread.core.util.CatalogDeduper.normalizeAuthor(book.author))
-            }
-            val existing = seen[key]
-            if (existing == null) {
-                seen[key] = book
-            } else {
-                val keep = when {
-                    book.filePath != null && existing.filePath == null -> book
-                    existing.filePath != null && book.filePath == null -> existing
-                    book.description.orEmpty().length > existing.description.orEmpty().length -> book
-                    else -> existing
-                }
-                val other = if (keep === book) existing else book
-                seen[key] = keep.copy(
-                    subjects = (keep.subjects + other.subjects).distinct(),
-                    description = keep.description ?: other.description,
-                    coverUrl = keep.coverUrl ?: other.coverUrl
-                )
-            }
-        }
-        return seen.values.toList()
-    }
-
     override suspend fun fetchAndSaveFullBook(book: Book, forceRefresh: Boolean): Result<Book> {
         return runSuspendCatching {
             val existing = bookDao.getBookMetaById(book.id)
@@ -186,6 +123,8 @@ class BookRepositoryImpl(
             .onFailure { android.util.Log.w("BookRepository", "Failed to clear progress for $id", it) }
         runCatching { bookmarkDao.deleteBookmarksForBook(id) }
             .onFailure { android.util.Log.w("BookRepository", "Failed to clear bookmarks for $id", it) }
+        runCatching { highlightDao.deleteHighlightsForBook(id) }
+            .onFailure { android.util.Log.w("BookRepository", "Failed to clear highlights for $id", it) }
         runCatching { chapterDao.deleteChaptersForBook(id) }
             .onFailure { android.util.Log.w("BookRepository", "Failed to clear chapters for $id", it) }
         bookDao.deleteBook(id)
@@ -223,14 +162,36 @@ class BookRepositoryImpl(
         bookmarkDao.deleteBookmark(id)
     }
 
-    private companion object {
-        // A slow optional catalogue must not hold the whole search screen open.
-        private const val CATALOG_SEARCH_TIMEOUT_MS = 5_000L
+    override fun getHighlights(bookId: String): Flow<List<Highlight>> {
+        return highlightDao.getHighlightsForBook(bookId).map { entities -> entities.map { it.toDomain() } }
+    }
+
+    override suspend fun addHighlight(highlight: Highlight) {
+        highlightDao.insertHighlight(highlight.toEntity())
+    }
+
+    override suspend fun deleteHighlight(id: Long) {
+        highlightDao.deleteHighlight(id)
     }
 }
 
-// Mappers
-fun com.lexiread.data.local.entity.BookMeta.toDomain() = Book(
+// Mappers (BookMeta/BookEntity share fields; single helper avoids drift)
+private fun bookToDomain(
+    id: String,
+    title: String,
+    author: String,
+    coverUrl: String?,
+    description: String?,
+    filePath: String?,
+    format: String,
+    language: String,
+    subjects: String,
+    isFavorite: Boolean,
+    isSaved: Boolean,
+    isFinished: Boolean,
+    isImported: Boolean,
+    addedTimestamp: Long
+) = Book(
     id = id,
     title = title,
     author = author,
@@ -248,22 +209,9 @@ fun com.lexiread.data.local.entity.BookMeta.toDomain() = Book(
     addedTimestamp = addedTimestamp
 )
 
-fun BookEntity.toDomain() = Book(
-    id = id,
-    title = title,
-    author = author,
-    coverUrl = coverUrl,
-    description = description,
-    fullText = null,
-    filePath = filePath,
-    format = format,
-    language = language,
-    subjects = if (subjects.isBlank()) emptyList() else subjects.split(", "),
-    isFavorite = isFavorite,
-    isSaved = isSaved,
-    isFinished = isFinished,
-    isImported = isImported,
-    addedTimestamp = addedTimestamp
+fun com.lexiread.data.local.entity.BookMeta.toDomain() = bookToDomain(
+    id, title, author, coverUrl, description, filePath, format, language,
+    subjects, isFavorite, isSaved, isFinished, isImported, addedTimestamp
 )
 
 fun Book.toEntity() = BookEntity(
@@ -321,4 +269,24 @@ fun Bookmark.toEntity() = BookmarkEntity(
     snippet = snippet,
     note = note,
     timestamp = timestamp
+)
+
+fun HighlightEntity.toDomain() = Highlight(
+    id = id,
+    bookId = bookId,
+    chapterIndex = chapterIndex,
+    startOffset = startOffset,
+    endOffset = endOffset,
+    colorKey = colorKey,
+    createdAt = createdAt
+)
+
+fun Highlight.toEntity() = HighlightEntity(
+    id = id,
+    bookId = bookId,
+    chapterIndex = chapterIndex,
+    startOffset = startOffset,
+    endOffset = endOffset,
+    colorKey = colorKey,
+    createdAt = createdAt
 )

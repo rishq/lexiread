@@ -353,11 +353,4 @@ class BookImporter(
         }
         emptyList()
     }
-
-    /**
-     * Returns the total chapter count for a book without loading all content.
-     */
-    suspend fun getChapterCount(bookId: String): Int = withContext(Dispatchers.IO) {
-        chapterDao?.getChapterCount(bookId) ?: 0
-    }
 }

@@ -23,8 +23,7 @@ enum class FormatKind {
     FB2,
     HTML,
     TXT,
-    PDF,
-    UNKNOWN
+    PDF
 }
 
 /**

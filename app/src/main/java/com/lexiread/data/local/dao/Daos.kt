@@ -10,6 +10,7 @@ import com.lexiread.data.local.entity.BookMeta
 import com.lexiread.data.local.entity.BookmarkEntity
 import com.lexiread.data.local.entity.ChapterEntity
 import com.lexiread.data.local.entity.DictionaryCacheEntity
+import com.lexiread.data.local.entity.HighlightEntity
 import com.lexiread.data.local.entity.ReadingProgressEntity
 import com.lexiread.data.local.entity.SavedWordEntity
 import com.lexiread.data.local.entity.TranslationCacheEntity
@@ -105,9 +106,6 @@ interface ChapterDao {
     @Query("SELECT chapterIndex, title FROM book_chapters WHERE bookId = :bookId ORDER BY chapterIndex ASC")
     suspend fun getChapterTitles(bookId: String): List<ChapterTitle>
 
-    @Query("SELECT * FROM book_chapters WHERE bookId = :bookId AND chapterIndex = :chapterIndex LIMIT 1")
-    suspend fun getChapter(bookId: String, chapterIndex: Int): ChapterEntity?
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertChapters(chapters: List<ChapterEntity>)
 
@@ -185,6 +183,21 @@ interface BookmarkDao {
 
     @Query("DELETE FROM bookmarks WHERE bookId = :bookId")
     suspend fun deleteBookmarksForBook(bookId: String)
+}
+
+@Dao
+interface HighlightDao {
+    @Query("SELECT * FROM highlights WHERE bookId = :bookId ORDER BY chapterIndex ASC, startOffset ASC")
+    fun getHighlightsForBook(bookId: String): Flow<List<HighlightEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertHighlight(highlight: HighlightEntity)
+
+    @Query("DELETE FROM highlights WHERE id = :id")
+    suspend fun deleteHighlight(id: Long)
+
+    @Query("DELETE FROM highlights WHERE bookId = :bookId")
+    suspend fun deleteHighlightsForBook(bookId: String)
 }
 
 @Dao

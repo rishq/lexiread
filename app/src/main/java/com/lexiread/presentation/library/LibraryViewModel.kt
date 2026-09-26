@@ -23,7 +23,6 @@ enum class LibraryTab {
 data class LibraryUiState(
     val selectedTab: LibraryTab = LibraryTab.CURRENTLY_READING,
     val books: List<Book> = emptyList(),
-    val isLoading: Boolean = false,
     val importMessage: String? = null
 )
 
@@ -57,13 +56,12 @@ class LibraryViewModel(
         LibraryUiState(
             selectedTab = tab,
             books = booksMap[tab] ?: emptyList(),
-            isLoading = false,
             importMessage = msg
         )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = LibraryUiState(isLoading = true)
+        initialValue = LibraryUiState()
     )
 
     fun selectTab(tab: LibraryTab) {

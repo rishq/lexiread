@@ -35,25 +35,19 @@ object ApiKeyCrypto {
 
     internal fun decrypt(stored: String, keyProvider: () -> java.security.Key): String {
         if (stored.isEmpty()) return ""
-        if (stored.startsWith("plain:")) return stored.removePrefix("plain:")
-        val encrypted = stored.startsWith(ENCRYPTED_PREFIX)
+        // Fail-closed: legacy "plain:" / raw values never return verbatim.
+        if (!stored.startsWith(ENCRYPTED_PREFIX)) return ""
         return try {
             val raw = Base64.decode(stored.removePrefix(ENCRYPTED_PREFIX), Base64.DEFAULT)
-            if (raw.size < IV_BYTES + GCM_TAG_BITS / 8) {
-                return if (encrypted) "" else stored
-            }
+            if (raw.size < IV_BYTES + GCM_TAG_BITS / 8) return ""
             val iv = raw.copyOfRange(0, IV_BYTES)
             val cipherText = raw.copyOfRange(IV_BYTES, raw.size)
             val cipher = Cipher.getInstance(TRANSFORMATION)
             cipher.init(Cipher.DECRYPT_MODE, keyProvider(), GCMParameterSpec(GCM_TAG_BITS, iv))
             String(cipher.doFinal(cipherText), Charsets.UTF_8)
         } catch (e: Exception) {
-            if (encrypted) {
-                Log.w(TAG, "Unable to decrypt API key")
-                ""
-            } else {
-                stored
-            }
+            Log.w(TAG, "Unable to decrypt API key")
+            ""
         }
     }
 

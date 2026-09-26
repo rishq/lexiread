@@ -36,9 +36,6 @@ interface BooksRepository {
      */
     suspend fun getBookDetails(id: String): CatalogBook?
 
-    /** Best readable format for this book, or null when reading is not possible. */
-    suspend fun resolveReadableFormat(book: CatalogBook): BookFormat?
-
     /**
      * Downloads the best format and registers the result in the local library.
      * Returns the stored [Book], ready to be opened by the reader.

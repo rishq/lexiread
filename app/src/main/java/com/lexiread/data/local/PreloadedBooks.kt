@@ -189,8 +189,4 @@ Buck lived at a big house in the sun-kissed Santa Clara Valley. Judge Miller's p
 
     /** Books without chapters, for the legacy insertBooks call. */
     val defaultBooks: List<BookEntity> = preloaded.map { it.book }
-
-    /** All preloaded chapters keyed by bookId. */
-    fun chaptersFor(bookId: String): List<ChapterEntity> =
-        preloaded.firstOrNull { it.book.id == bookId }?.chapters ?: emptyList()
 }

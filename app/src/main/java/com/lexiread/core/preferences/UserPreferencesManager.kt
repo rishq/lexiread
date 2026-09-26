@@ -1,6 +1,7 @@
 ﻿package com.lexiread.core.preferences
 
 import android.content.Context
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -21,7 +22,6 @@ class UserPreferencesManager(private val context: Context) {
         val FONT_FAMILY = stringPreferencesKey("font_family")
         val TARGET_LANG = stringPreferencesKey("target_language")
         val MARGIN_DP = androidx.datastore.preferences.core.intPreferencesKey("margin_dp")
-        val IS_PAGINATED = androidx.datastore.preferences.core.booleanPreferencesKey("is_paginated")
         val VOLUME_KEYS_PAGE_TURN = androidx.datastore.preferences.core.booleanPreferencesKey("volume_keys_page_turn")
         val GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
         val AI_PROVIDER = stringPreferencesKey("ai_provider")
@@ -34,15 +34,18 @@ class UserPreferencesManager(private val context: Context) {
     }
 
     // P1-5: keys are stored encrypted (AES-GCM, Keystore) and decrypted on read.
-    val geminiApiKey: Flow<String> = context.dataStore.data.map { prefs ->
-        ApiKeyCrypto.decrypt(prefs[Keys.GEMINI_API_KEY].orEmpty())
-    }
+    private fun apiKeyFlow(key: Preferences.Key<String>): Flow<String> =
+        context.dataStore.data.map { prefs -> ApiKeyCrypto.decrypt(prefs[key].orEmpty()) }
 
-    suspend fun updateGeminiApiKey(key: String) {
+    private suspend fun updateApiKey(key: Preferences.Key<String>, value: String) {
         context.dataStore.edit { prefs ->
-            prefs[Keys.GEMINI_API_KEY] = ApiKeyCrypto.encrypt(key.trim())
+            prefs[key] = ApiKeyCrypto.encrypt(value.trim())
         }
     }
+
+    val geminiApiKey: Flow<String> = apiKeyFlow(Keys.GEMINI_API_KEY)
+
+    suspend fun updateGeminiApiKey(key: String) = updateApiKey(Keys.GEMINI_API_KEY, key)
 
     val aiProvider: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[Keys.AI_PROVIDER] ?: "gemini"
@@ -54,35 +57,17 @@ class UserPreferencesManager(private val context: Context) {
         }
     }
 
-    val openAiApiKey: Flow<String> = context.dataStore.data.map { prefs ->
-        ApiKeyCrypto.decrypt(prefs[Keys.OPENAI_API_KEY].orEmpty())
-    }
+    val openAiApiKey: Flow<String> = apiKeyFlow(Keys.OPENAI_API_KEY)
 
-    suspend fun updateOpenAiApiKey(key: String) {
-        context.dataStore.edit { prefs ->
-            prefs[Keys.OPENAI_API_KEY] = ApiKeyCrypto.encrypt(key.trim())
-        }
-    }
+    suspend fun updateOpenAiApiKey(key: String) = updateApiKey(Keys.OPENAI_API_KEY, key)
 
-    val claudeApiKey: Flow<String> = context.dataStore.data.map { prefs ->
-        ApiKeyCrypto.decrypt(prefs[Keys.CLAUDE_API_KEY].orEmpty())
-    }
+    val claudeApiKey: Flow<String> = apiKeyFlow(Keys.CLAUDE_API_KEY)
 
-    suspend fun updateClaudeApiKey(key: String) {
-        context.dataStore.edit { prefs ->
-            prefs[Keys.CLAUDE_API_KEY] = ApiKeyCrypto.encrypt(key.trim())
-        }
-    }
+    suspend fun updateClaudeApiKey(key: String) = updateApiKey(Keys.CLAUDE_API_KEY, key)
 
-    val deepSeekApiKey: Flow<String> = context.dataStore.data.map { prefs ->
-        ApiKeyCrypto.decrypt(prefs[Keys.DEEPSEEK_API_KEY].orEmpty())
-    }
+    val deepSeekApiKey: Flow<String> = apiKeyFlow(Keys.DEEPSEEK_API_KEY)
 
-    suspend fun updateDeepSeekApiKey(key: String) {
-        context.dataStore.edit { prefs ->
-            prefs[Keys.DEEPSEEK_API_KEY] = ApiKeyCrypto.encrypt(key.trim())
-        }
-    }
+    suspend fun updateDeepSeekApiKey(key: String) = updateApiKey(Keys.DEEPSEEK_API_KEY, key)
 
     /** One-time migration: re-encrypt legacy `plain:` / raw keys, then drop plaintext. */
     suspend fun migrateLegacyKeys() {
@@ -90,8 +75,8 @@ class UserPreferencesManager(private val context: Context) {
             listOf(Keys.GEMINI_API_KEY, Keys.OPENAI_API_KEY, Keys.CLAUDE_API_KEY, Keys.DEEPSEEK_API_KEY).forEach { k ->
                 val stored = prefs[k].orEmpty()
                 if (stored.isNotEmpty() && !ApiKeyCrypto.isEncrypted(stored)) {
-                    val plain = ApiKeyCrypto.decrypt(stored)
-                    prefs[k] = ApiKeyCrypto.encrypt(plain)
+                    val plain = if (stored.startsWith("plain:")) stored.removePrefix("plain:") else stored
+                    prefs[k] = if (plain.isEmpty()) "" else ApiKeyCrypto.encrypt(plain)
                 }
             }
         }
@@ -126,7 +111,6 @@ class UserPreferencesManager(private val context: Context) {
         val lineHeight = prefs[Keys.LINE_HEIGHT] ?: 1.4f
         val fontFamily = prefs[Keys.FONT_FAMILY] ?: "Serif"
         val marginDp = prefs[Keys.MARGIN_DP] ?: 20
-        val isPaginated = prefs[Keys.IS_PAGINATED] ?: true
         val volumeKeysPageTurn = prefs[Keys.VOLUME_KEYS_PAGE_TURN] ?: false
 
         ReaderSettings(
@@ -135,7 +119,6 @@ class UserPreferencesManager(private val context: Context) {
             lineHeightMultiplier = lineHeight,
             fontFamilyName = fontFamily,
             marginDp = marginDp,
-            isPaginated = isPaginated,
             volumeKeysPageTurn = volumeKeysPageTurn
         )
     }
@@ -177,12 +160,6 @@ class UserPreferencesManager(private val context: Context) {
     suspend fun updateMarginDp(marginDp: Int) {
         context.dataStore.edit { prefs ->
             prefs[Keys.MARGIN_DP] = marginDp
-        }
-    }
-
-    suspend fun updateIsPaginated(isPaginated: Boolean) {
-        context.dataStore.edit { prefs ->
-            prefs[Keys.IS_PAGINATED] = isPaginated
         }
     }
 

@@ -14,6 +14,7 @@ import com.lexiread.data.remote.gutendex.GutendexApi
 import com.lexiread.data.remote.openlibrary.OpenLibraryApi
 import com.lexiread.domain.model.Book
 import com.lexiread.domain.model.Bookmark
+import com.lexiread.domain.model.Highlight
 import com.lexiread.domain.model.ReadingProgress
 import com.lexiread.domain.model.SourceKind
 import com.lexiread.domain.repository.BookRepository
@@ -53,7 +54,6 @@ class CatalogLivePayloadTest {
         override suspend fun get(key: String): CatalogCacheEntity? = null
         override suspend fun insert(entry: CatalogCacheEntity) = Unit
         override suspend fun deleteExpired(expireBefore: Long) = Unit
-        override suspend fun clear() = Unit
     }
 
     private class NoopBookRepository : BookRepository {
@@ -62,7 +62,6 @@ class CatalogLivePayloadTest {
         override fun getSavedBooks(): Flow<List<Book>> = emptyFlow()
         override fun getFinishedBooks(): Flow<List<Book>> = emptyFlow()
         override suspend fun getBookById(id: String): Book? = null
-        override suspend fun searchBooksOnline(query: String) = Result.success(emptyList<Book>())
         override suspend fun fetchAndSaveFullBook(book: Book, forceRefresh: Boolean) = Result.success(book)
         override suspend fun addBookToLibrary(book: Book) = Unit
         override suspend fun deleteBook(id: String) = Unit
@@ -74,6 +73,9 @@ class CatalogLivePayloadTest {
         override fun getBookmarks(bookId: String): Flow<List<Bookmark>> = emptyFlow()
         override suspend fun addBookmark(bookmark: Bookmark) = Unit
         override suspend fun deleteBookmark(id: Int) = Unit
+        override fun getHighlights(bookId: String): Flow<List<Highlight>> = emptyFlow()
+        override suspend fun addHighlight(highlight: Highlight) = Unit
+        override suspend fun deleteHighlight(id: Long) = Unit
         override suspend fun initializePreloadedBooks() = Unit
     }
 

@@ -17,7 +17,4 @@ interface CatalogCacheDao {
 
     @Query("DELETE FROM catalog_cache WHERE timestamp < :expireBefore")
     suspend fun deleteExpired(expireBefore: Long)
-
-    @Query("DELETE FROM catalog_cache")
-    suspend fun clear()
 }
