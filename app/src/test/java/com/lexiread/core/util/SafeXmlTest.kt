@@ -85,6 +85,35 @@ class SafeXmlTest {
         assertEquals(document, SafeXml.requireNoInternalDtdSubset(document))
     }
 
+    /**
+     * Regression: a quoted `>` (legal inside a `SYSTEM`/`PUBLIC` identifier) must
+     * not end the declaration early and hide the internal subset behind it. The
+     * previous quote-unaware scan compared the first `[` against the first `>`
+     * and accepted this document.
+     */
+    @Test
+    fun `rejects an internal subset hidden behind a quoted angle bracket`() {
+        val document =
+            """<!DOCTYPE FictionBook SYSTEM "a>b" [<!ENTITY a "EXPANDED-MARKER">]><FictionBook/>"""
+
+        assertThrows(SecurityException::class.java) {
+            SafeXml.requireNoInternalDtdSubset(document)
+        }
+    }
+
+    /**
+     * Regression: the guard must stay linear. Repeated `<!DOCTYPE` tokens with no
+     * `[` used to rescan the document tail on every occurrence (Θ(K·n), quadratic
+     * on the accepted 40 MB envelope). This input is far larger than any real
+     * document; the timeout fails the test if the scan regresses to quadratic.
+     */
+    @Test(timeout = 10_000)
+    fun `handles many DOCTYPE tokens without rescanning the tail`() {
+        val document = "<!DOCTYPE>".repeat(40_000) + "<FictionBook/>"
+
+        assertEquals(document, SafeXml.requireNoInternalDtdSubset(document))
+    }
+
     @Test
     fun `a declared entity expands with DTD processing on and never with SafeXml`() {
         val document = entityChainDocument()

@@ -14,6 +14,7 @@ import kotlinx.coroutines.runBlocking
 import okhttp3.ResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -183,5 +184,71 @@ class BookSourcesTest {
         )
 
         assertEquals(null, selected)
+    }
+
+    // --- OPDS reader hardening ---
+
+    private fun opdsFeed(vararg entries: String): java.io.InputStream =
+        (
+            """<?xml version="1.0" encoding="utf-8"?>""" +
+                """<feed xmlns="http://www.w3.org/2005/Atom">""" +
+                entries.joinToString("") +
+                "</feed>"
+            ).byteInputStream(Charsets.UTF_8)
+
+    private val sampleEntry = """
+        <entry>
+          <id>https://standardebooks.org/ebooks/jane-austen/pride-and-prejudice</id>
+          <title>Pride and Prejudice</title>
+          <author><name>Jane Austen</name></author>
+          <summary>A novel.</summary>
+          <link rel="http://opds-spec.org/acquisition"
+                type="application/epub+zip"
+                href="/ebooks/jane-austen/pride-and-prejudice/downloads/x.epub"/>
+        </entry>
+    """.trimIndent()
+
+    @Test
+    fun `parses an atom feed into opds entries`() {
+        val entries = StandardEbooksBookSource.parseOpdsEntries(opdsFeed(sampleEntry))
+
+        assertEquals(1, entries.size)
+        assertEquals("jane-austen~pride-and-prejudice", entries[0].id)
+        assertEquals("Pride and Prejudice", entries[0].title)
+        assertEquals("Jane Austen", entries[0].author)
+        assertEquals("A novel.", entries[0].summary)
+        assertEquals(
+            "https://standardebooks.org/ebooks/jane-austen/pride-and-prejudice/downloads/x.epub",
+            entries[0].epubUrl
+        )
+    }
+
+    /**
+     * The OPDS reader streams a network feed, so the internal-subset rejection
+     * (SafeXml control 2) must run on this path too — previously only the
+     * parser-level control applied, which fails open if the platform parser
+     * rejects `FEATURE_PROCESS_DOCDECL`.
+     */
+    @Test
+    fun `rejects an opds feed declaring an internal dtd subset`() {
+        val feed = (
+            """<?xml version="1.0"?>""" +
+                """<!DOCTYPE feed [<!ENTITY x "EXPANDED">]>""" +
+                """<feed xmlns="http://www.w3.org/2005/Atom">$sampleEntry</feed>"""
+            ).byteInputStream(Charsets.UTF_8)
+
+        assertThrows(SecurityException::class.java) {
+            StandardEbooksBookSource.parseOpdsEntries(feed)
+        }
+    }
+
+    @Test
+    fun `rejects an opds feed larger than the byte cap`() {
+        val padding = "x".repeat(5 * 1024 * 1024)
+        val feed = opdsFeed("<entry><title>$padding</title></entry>")
+
+        assertThrows(IllegalArgumentException::class.java) {
+            StandardEbooksBookSource.parseOpdsEntries(feed)
+        }
     }
 }

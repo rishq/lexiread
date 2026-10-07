@@ -1,6 +1,7 @@
 package com.lexiread.data.mapper
 
 import com.lexiread.core.util.BookFormatSelector
+import com.lexiread.core.util.HtmlStripper
 import com.lexiread.core.util.forceHttps
 import com.lexiread.data.remote.googlebooks.GoogleBooksVolumeDto
 import com.lexiread.data.remote.gutendex.GutendexBookDto
@@ -176,14 +177,16 @@ internal fun displayAuthorName(raw: String): String {
 }
 
 /**
- * Google Books descriptions contain markup. The catalogue only needs readable
- * prose, so tags are dropped with a regex rather than pulling `Html.fromHtml`
- * into a pure JVM mapping layer.
+ * Google Books and Gutendex descriptions contain markup. The catalogue only
+ * needs readable prose, so tags are dropped with [HtmlStripper] rather than
+ * pulling `Html.fromHtml` into a pure JVM mapping layer.
+ *
+ * The stripper is linear (the old `Regex("<[^>]*>")` was quadratic on a run of
+ * `<` with no `>`), and the input is additionally capped: a description is
+ * display text, and a hostile catalogue body must not be able to hand this
+ * mapping layer an arbitrarily large string.
  */
-internal fun stripHtml(raw: String): String = raw
-    .replace(Regex("<br\\s*/?>", RegexOption.IGNORE_CASE), "\n")
-    .replace(Regex("</p>", RegexOption.IGNORE_CASE), "\n\n")
-    .replace(Regex("<[^>]*>"), "")
+internal fun stripHtml(raw: String): String = HtmlStripper.stripTags(raw.take(MAX_DESCRIPTION_CHARS))
     .replace("&nbsp;", " ")
     .replace("&amp;", "&")
     .replace("&lt;", "<")
@@ -200,5 +203,6 @@ const val STANDARD_EBOOKS_PREFIX = "se_"
 
 private const val SUBJECT_LIMIT = 8
 private const val DESCRIPTION_SUBJECT_LIMIT = 6
+private const val MAX_DESCRIPTION_CHARS = 32_000
 private const val DEFAULT_LANGUAGE = "en"
 private const val DEFAULT_FORMAT = "TXT"

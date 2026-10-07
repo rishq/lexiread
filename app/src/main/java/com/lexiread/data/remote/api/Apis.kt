@@ -20,6 +20,7 @@ import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
+import retrofit2.http.Streaming
 import retrofit2.http.Url
 
 /**
@@ -29,9 +30,11 @@ import retrofit2.http.Url
 
 /** Standard Ebooks exposes an OPDS (Atom XML) catalog. */
 interface StandardEbooksApi {
+    @Streaming
     @GET
     suspend fun searchOpds(@Url url: String): ResponseBody
 
+    @Streaming
     @GET
     suspend fun downloadFile(@Url url: String): ResponseBody
 }
@@ -43,6 +46,7 @@ interface StandardEbooksApi {
  * individual book files alike.
  */
 interface PgaApi {
+    @Streaming
     @GET
     suspend fun fetch(@Url url: String): ResponseBody
 }
@@ -53,6 +57,7 @@ interface PgaApi {
  * `MyLibBookSource`, so this interface stays trivial.
  */
 interface MyLibApi {
+    @Streaming
     @GET
     suspend fun fetch(@Url url: String): ResponseBody
 }
@@ -90,6 +95,7 @@ interface InternetArchiveApi {
     @GET("metadata/{identifier}")
     suspend fun getMetadata(@Path("identifier") identifier: String): InternetArchiveMetadataResponse
 
+    @Streaming
     @GET
     suspend fun downloadFile(@Url url: String): ResponseBody
 }

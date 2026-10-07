@@ -117,6 +117,7 @@ class BookRepositoryImpl(
         if (book?.filePath != null) {
             runCatching { java.io.File(book.filePath).delete() }
         }
+        deleteDerivedCover(book?.coverUrl)
         // Remove dependent rows first: deleting the book alone would leave
         // orphaned reading progress, chapters, and bookmarks behind forever.
         runCatching { readingProgressDao.deleteProgressForBook(id) }
@@ -128,6 +129,23 @@ class BookRepositoryImpl(
         runCatching { chapterDao.deleteChaptersForBook(id) }
             .onFailure { android.util.Log.w("BookRepository", "Failed to clear chapters for $id", it) }
         bookDao.deleteBook(id)
+    }
+
+    /**
+     * Deletes the app-private cover sidecar a parser wrote next to an imported
+     * book (`<name>_cover.jpg`), whose path was persisted in `coverUrl`.
+     *
+     * Deleting the book file alone left every imported cover on disk forever,
+     * and each import-failure path left one behind too. The guard is deliberate:
+     * catalogue covers are `https://…` URLs and must never be touched, and the
+     * `_cover.jpg` suffix check keeps this from ever deleting an arbitrary path
+     * even if `coverUrl` were somehow attacker-influenced.
+     */
+    private fun deleteDerivedCover(coverUrl: String?) {
+        val path = coverUrl?.takeIf { it.isNotBlank() } ?: return
+        if (path.startsWith("http", ignoreCase = true)) return
+        if (!path.endsWith(COVER_SIDECAR_SUFFIX, ignoreCase = true)) return
+        runCatching { java.io.File(path).delete() }
     }
 
     override suspend fun toggleFavorite(bookId: String, isFavorite: Boolean) {
@@ -290,3 +308,6 @@ fun Highlight.toEntity() = HighlightEntity(
     colorKey = colorKey,
     createdAt = createdAt
 )
+
+/** Suffix of the app-private cover sidecar written by the EPUB/FB2 parsers. */
+private const val COVER_SIDECAR_SUFFIX = "_cover.jpg"

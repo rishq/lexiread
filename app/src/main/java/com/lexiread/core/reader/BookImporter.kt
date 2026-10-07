@@ -48,10 +48,11 @@ class BookImporter(
      * - OOM scenarios
      */
     suspend fun importBookFromUri(uri: Uri): Result<Book> = withContext(Dispatchers.IO) {
+        var bookFile: File? = null
         try {
             val contentResolver = context.contentResolver
             val mimeType = contentResolver.getType(uri) ?: ""
-            var fileName = getFileNameFromUri(uri) ?: "imported_book_${System.currentTimeMillis()}"
+            val fileName = getFileNameFromUri(uri) ?: "imported_book_${System.currentTimeMillis()}"
             val extension = getExtension(fileName, mimeType)
 
             // Size check: query the document for its size before copying.
@@ -73,11 +74,12 @@ class BookImporter(
             }
 
             val bookId = "import_${UUID.randomUUID().toString().take(12)}"
-            val destinationFile = File(importedDir, "$bookId.$extension")
+            val destination = File(importedDir, "$bookId.$extension")
+            bookFile = destination
 
             // Copy with size guard: stop if the stream exceeds the limit.
             contentResolver.openInputStream(uri)?.use { inputStream ->
-                FileOutputStream(destinationFile).use { outputStream ->
+                FileOutputStream(destination).use { outputStream ->
                     val buffer = ByteArray(8192)
                     var totalCopied = 0L
                     while (true) {
@@ -85,7 +87,7 @@ class BookImporter(
                         if (read <= 0) break
                         totalCopied += read
                         if (totalCopied > MAX_IMPORT_BYTES) {
-                            destinationFile.delete()
+                            cleanupFailedImport(destination)
                             return@withContext Result.failure(
                                 IllegalArgumentException(
                                     "File exceeded the ${MAX_IMPORT_BYTES / (1024 * 1024)} MB import limit during copy."
@@ -97,13 +99,13 @@ class BookImporter(
                 }
             } ?: return@withContext Result.failure(Exception("Could not open file stream."))
 
-            val parser = parsers.firstOrNull { it.canParse(extension, destinationFile) }
+            val parser = parsers.firstOrNull { it.canParse(extension, destination) }
                 ?: TxtParser()
 
             val metadata = try {
-                parser.extractMetadata(destinationFile)
+                parser.extractMetadata(destination)
             } catch (e: OutOfMemoryError) {
-                destinationFile.delete()
+                cleanupFailedImport(destination)
                 return@withContext Result.failure(
                     IllegalStateException("Out of memory while reading '$fileName'. The file may be too large or corrupted.")
                 )
@@ -117,9 +119,9 @@ class BookImporter(
             }
 
             val chapters = try {
-                parser.parseChapters(destinationFile)
+                parser.parseChapters(destination)
             } catch (e: OutOfMemoryError) {
-                destinationFile.delete()
+                cleanupFailedImport(destination)
                 return@withContext Result.failure(
                     IllegalStateException("Out of memory while parsing '$fileName'. The file may be a zip bomb or corrupted.")
                 )
@@ -129,6 +131,7 @@ class BookImporter(
             }
 
             if (chapters.isEmpty()) {
+                cleanupFailedImport(destination)
                 return@withContext Result.failure(
                     IllegalStateException(
                         "Could not extract readable text from '$fileName'. " +
@@ -166,7 +169,7 @@ class BookImporter(
                 coverUrl = metadata.coverPath,
                 description = metadata.description ?: "Imported personal book.",
                 fullText = null, // No longer stored inline — chapters are in DB
-                filePath = destinationFile.absolutePath,
+                filePath = destination.absolutePath,
                 format = extension.uppercase(),
                 language = "en",
                 isFavorite = false,
@@ -179,9 +182,28 @@ class BookImporter(
             Result.success(book)
         } catch (e: Exception) {
             Log.e(TAG, "Error importing book from uri: $uri", e)
+            bookFile?.let(::cleanupFailedImport)
             Result.failure(e)
         }
     }
+
+    /**
+     * Removes the imported book file and the `_cover.jpg` sidecar a parser may
+     * have written during metadata extraction.
+     *
+     * The sidecar is derived data nothing else reclaims: leaving it behind on a
+     * failed import (oversize, OOM, zero chapters, or an unexpected error)
+     * accumulates orphaned covers in app storage with no recovery path short of
+     * clearing app data.
+     */
+    private fun cleanupFailedImport(bookFile: File) {
+        runCatching { bookFile.delete() }
+        runCatching { coverSidecar(bookFile).delete() }
+    }
+
+    /** The sidecar path the EPUB/FB2 parsers use for a given book file. */
+    private fun coverSidecar(bookFile: File): File =
+        File(bookFile.parentFile, "${bookFile.nameWithoutExtension}_cover.jpg")
 
     private fun getFileNameFromUri(uri: Uri): String? {
         var name: String? = null

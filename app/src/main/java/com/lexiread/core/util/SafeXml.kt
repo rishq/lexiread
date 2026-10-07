@@ -73,26 +73,53 @@ object SafeXml {
      * expand — no entity resolver is installed and the framework parser never
      * fetches an external subset — so it is deliberately allowed through.
      *
-     * Linear: each DOCTYPE is visited once, and both `indexOf` calls that follow
-     * it start at the end of that match.
+     * The declaration is scanned with XML quoting in mind: a `>` inside a quoted
+     * literal (legal in a `SYSTEM`/`PUBLIC` identifier) does not end the
+     * declaration, so a document such as
+     * `<!DOCTYPE FictionBook SYSTEM "a>b" [<!ENTITY a "x">]>` cannot hide its
+     * internal subset behind a quoted `>`.
+     *
+     * Linear: each character is examined at most once across the whole scan, so
+     * the guard stays O(n) even for a document that repeats `<!DOCTYPE` tokens.
      *
      * @return [document] unchanged, so callers can chain.
      * @throws SecurityException when an internal subset is present.
      */
     fun requireNoInternalDtdSubset(document: String): String {
         var from = 0
+        val length = document.length
         while (true) {
             val match = DOCTYPE_START.find(document, from) ?: return document
-            val afterKeyword = match.range.last + 1
-            val bracket = document.indexOf('[', afterKeyword)
-            val close = document.indexOf('>', afterKeyword)
-            if (bracket >= 0 && (close < 0 || bracket < close)) {
+            var i = match.range.last + 1
+            var quote: Char? = null
+            var sawBracket = false
+            var bracketOffset = -1
+            while (i < length) {
+                val c = document[i]
+                if (quote != null) {
+                    if (c == quote) quote = null
+                } else {
+                    when (c) {
+                        '"', '\'' -> quote = c
+                        '[' -> {
+                            sawBracket = true
+                            bracketOffset = i
+                            // A subset is fatal regardless of whether a closing
+                            // `>` follows; stop scanning this declaration.
+                            break
+                        }
+                        '>' -> break
+                    }
+                }
+                i++
+            }
+            if (sawBracket) {
                 throw SecurityException(
-                    "Rejected XML document: internal DTD subset at offset $bracket is not allowed."
+                    "Rejected XML document: internal DTD subset at offset $bracketOffset is not allowed."
                 )
             }
-            if (close < 0) return document
-            from = close + 1
+            if (i >= length) return document
+            from = i + 1
         }
     }
 }

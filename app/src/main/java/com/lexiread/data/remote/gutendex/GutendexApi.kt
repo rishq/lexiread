@@ -4,6 +4,7 @@ import okhttp3.ResponseBody
 import retrofit2.http.GET
 import retrofit2.http.Path
 import retrofit2.http.Query
+import retrofit2.http.Streaming
 import retrofit2.http.Url
 
 /**
@@ -32,6 +33,7 @@ interface GutendexApi {
     suspend fun getBookById(@Path("id") id: Int): GutendexBookDto
 
     /** Absolute URL taken from the `formats` map of a book, never built by hand. */
+    @Streaming
     @GET
     suspend fun downloadFile(@Url url: String): ResponseBody
 }

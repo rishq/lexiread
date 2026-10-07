@@ -6,6 +6,18 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!--
+      TTS engine visibility. On API 30+ package visibility is restricted, and
+      without a <queries> entry for the TTS service intent TextToSpeech cannot
+      resolve an engine (targetSdk 36). The pronunciation feature binds the
+      platform text-to-speech service, so it must be declared here.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
+    <!--
       N-6: both backup attributes are required, and both are deliberate.
       `allowBackup="false"` disables Auto Backup on every API level, but from
       Android 12 on it is deprecated and no longer covers device-to-device

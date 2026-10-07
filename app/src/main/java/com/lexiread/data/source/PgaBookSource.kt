@@ -1,6 +1,7 @@
 package com.lexiread.data.source
 
 import android.content.Context
+import com.lexiread.core.util.HtmlStripper
 import com.lexiread.core.util.TextEncoding
 import com.lexiread.core.util.UrlValidator
 import com.lexiread.data.remote.api.PgaApi
@@ -129,7 +130,6 @@ class PgaBookSource(
         private val NUMBER_PATTERN = Regex("\\d{7}")
         private val URL_PATTERN =
             Regex("""https?://gutenberg\.net\.au/ebooks(\d{2})/(\d{7})(h)?\.(html|txt)""")
-        private val AUTHOR_OVERRIDE_PATTERN = Regex("""\[Author:\s*(.+?)\s*]""", RegexOption.IGNORE_CASE)
         private val DATE_PREFIX_PATTERN = Regex("""^\s*[A-Z][a-z]{2}\s+\d{4}\s+""")
 
         /**
@@ -178,9 +178,9 @@ class PgaBookSource(
                     continue
                 }
 
-                val authorMatch = AUTHOR_OVERRIDE_PATTERN.find(line)
+                val authorMatch = authorOverrideOf(line)
                 if (authorMatch != null) {
-                    authorOverride = authorMatch.groupValues[1].trim()
+                    authorOverride = authorMatch
                     continue
                 }
 
@@ -190,6 +190,28 @@ class PgaBookSource(
             }
             flush()
             return entries
+        }
+
+        /**
+         * Reads an `[Author: …]` override with a single linear scan.
+         *
+         * The previous pattern `\[Author:\s*(.+?)\s*]` backtracks: on a line of
+         * `[Author:` followed by many spaces and no `]` it re-runs `\s*` for every
+         * lazy expansion, which is quadratic in the line length. A hostile index
+         * can repeat such a line across the 10MB index cap, so the scan is now a
+         * plain `indexOf` pair.
+         *
+         * Returns null when there is no override, or when the brackets hold no
+         * content (matching the regex, whose `.+?` required at least one char).
+         */
+        private fun authorOverrideOf(line: String): String? {
+            val marker = "[Author:"
+            val start = line.indexOf(marker, ignoreCase = true)
+            if (start < 0) return null
+            val contentStart = start + marker.length
+            val end = line.indexOf(']', contentStart)
+            if (end <= contentStart) return null
+            return line.substring(contentStart, end).trim()
         }
 
         private fun parseTitleAuthor(line: String, override: String?): Pair<String, String> {
@@ -225,14 +247,14 @@ class PgaBookSource(
         /**
          * Strips HTML to readable prose: drops script/style/head blocks, removes
          * tags, decodes the common entities and collapses whitespace.
+         *
+         * Tag removal is delegated to [HtmlStripper] so the pass stays linear:
+         * the previous `Regex("(?is)<[^>]*>")` was quadratic on a run of `<` with
+         * no `>`, and this method is fed up to `MAX_BOOK_BYTES` of a
+         * catalogue-controlled page.
          */
         internal fun stripHtml(html: String): String {
-            val withoutBlocks = html.replace(
-                Regex("(?is)<(script|style|head)[^>]*>.*?</\\1>", RegexOption.IGNORE_CASE),
-                " "
-            )
-            return withoutBlocks
-                .replace(Regex("(?is)<[^>]*>"), " ")
+            return HtmlStripper.stripTags(html, tagReplacement = " ")
                 .replace("&nbsp;", " ")
                 .replace("&amp;", "&")
                 .replace("&quot;", "\"")

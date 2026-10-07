@@ -3,7 +3,7 @@
 
     <!-- P1-6 cloud-consent dialog (P2-14: new UI ships with resources, not literals) -->
     <string name="cloud_consent_title">Allow cloud lookups?</string>
-    <string name="cloud_consent_body">Tapping a word sends the selected fragment to:\n• api.dictionaryapi.dev (definitions)\n• api.mymemory.translated.net (translation)\n• your AI provider (Gemini / OpenAI / Claude / DeepSeek, only when you request an explanation)\n\nYou can turn this off anytime in Settings → Privacy &amp; Cloud Lookups.</string>
+    <string name="cloud_consent_body">Tapping a word sends the selected fragment to:\n• api.dictionaryapi.dev (definitions)\n• api.mymemory.translated.net (translation)\n• your AI provider (Gemini / OpenAI / Claude / DeepSeek, for translation and explanations)\n\nPronunciation uses the device text-to-speech engine, which may send the spoken text off-device if you have selected a network voice.\n\nYou can turn this off anytime in Settings → Privacy &amp; Cloud Lookups.</string>
     <string name="cloud_consent_allow">Allow</string>
     <string name="cloud_consent_offline">Stay offline</string>
     <string name="cloud_lookups_off_hint">Cloud lookups are off. Enable them in Settings to see definitions.</string>
@@ -11,7 +11,7 @@
 
     <!-- P1-6 Settings privacy card -->
     <string name="privacy_title">Privacy &amp; Cloud Lookups</string>
-    <string name="privacy_body">Word tap sends the selected fragment to: dictionaryapi.dev, mymemory.translated.net and your selected AI provider (Gemini / OpenAI / Claude / DeepSeek). No text leaves the device while this is off.</string>
+    <string name="privacy_body">Word tap sends the selected fragment to: dictionaryapi.dev, mymemory.translated.net and your selected AI provider (Gemini / OpenAI / Claude / DeepSeek). Pronunciation uses the device text-to-speech engine, which may send the spoken text off-device if you have selected a network voice. No other text leaves the device while this is off.</string>
     <string name="privacy_switch_label">Cloud word lookups</string>
     <string name="privacy_switch_on">On — fragments are sent to the services above</string>
     <string name="privacy_switch_off">Off — offline only</string>

@@ -353,6 +353,12 @@ class StandardEbooksBookSource(
         private const val SEARCH_URL = "https://standardebooks.org/feeds/atom/all?query="
         private const val HOST = "standardebooks.org"
         private const val MAX_EPUB_BYTES = 40 * 1024 * 1024L
+        // OPDS hardening: cap the buffered feed and each accumulated field, and
+        // stop after a sane number of entries, so a hostile feed cannot drive
+        // unbounded memory or quadratic parse work.
+        private const val MAX_OPDS_BYTES = 4L * 1024 * 1024
+        private const val MAX_FIELD_CHARS = 100_000
+        private const val MAX_ENTRIES = 500
         // P2-6: acquisition links resolved during search (id -> epubUrl).
         // Bounded to avoid unbounded growth; evicts oldest on overflow.
         private const val ACQUISITION_CACHE_MAX = 200
@@ -373,28 +379,53 @@ class StandardEbooksBookSource(
 
         fun parseOpdsEntries(stream: java.io.InputStream): List<OpdsEntry> {
             // SafeXml: the feed arrives over the network, so a `<!DOCTYPE>` with an
-            // internal subset must not be able to expand inside the parser. The
-            // subset check the file parsers also use needs the document as a
-            // String, and this reader deliberately streams rather than buffering
-            // the whole response, so only the parser-level control applies here.
+            // internal subset must not be able to expand inside the parser. Both
+            // controls now apply here: the body is read with a hard cap so the
+            // internal-subset rejection can run over the document text, and the
+            // parser itself has DTD processing cleared. The cap also bounds a
+            // hostile feed that answers with an arbitrarily large body.
+            val bytes = TextEncoding.readCappedBytes(stream, MAX_OPDS_BYTES + 1)
+            require(bytes.size <= MAX_OPDS_BYTES) {
+                "OPDS feed exceeds the ${MAX_OPDS_BYTES / (1024 * 1024)}MB limit."
+            }
+            val document = TextEncoding.decode(bytes)
+            SafeXml.requireNoInternalDtdSubset(document)
+
             val parser = SafeXml.newPullParser()
             parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
-            parser.setInput(stream, null)
+            parser.setInput(java.io.StringReader(document))
 
             val entries = mutableListOf<OpdsEntry>()
-            var currentId = ""
-            var currentTitle = ""
+            val id = StringBuilder()
+            val title = StringBuilder()
+            val summary = StringBuilder()
             var currentAuthor: String? = null
-            var currentSummary: String? = null
             var currentCover: String? = null
             var currentEpub: String? = null
             var inEntry = false
             var tag: String? = null
             var authorDone = false
 
+            fun resetFields() {
+                id.setLength(0); title.setLength(0); summary.setLength(0)
+                currentAuthor = null; currentCover = null; currentEpub = null
+                authorDone = false
+            }
+
             fun flush() {
-                if (inEntry && currentTitle.isNotBlank()) {
-                    entries.add(OpdsEntry(currentId, currentTitle, currentAuthor, currentSummary, currentCover, currentEpub))
+                if (inEntry && title.isNotBlank()) {
+                    entries.add(
+                        OpdsEntry(
+                            // OPDS ids look like "https://standardebooks.org/ebooks/author/title".
+                            // Retain the author because titles can repeat across authors.
+                            id = id.toString().substringAfter("/ebooks/").trimEnd('/').replace("/", "~"),
+                            title = title.toString(),
+                            author = currentAuthor,
+                            summary = summary.toString().ifBlank { null },
+                            coverUrl = currentCover,
+                            epubUrl = currentEpub
+                        )
+                    )
                 }
             }
 
@@ -406,14 +437,12 @@ class StandardEbooksBookSource(
                             "entry" -> {
                                 flush()
                                 inEntry = true
-                                currentId = ""; currentTitle = ""; currentAuthor = null
-                                currentSummary = null; currentCover = null; currentEpub = null
-                                authorDone = false
+                                resetFields()
                             }
-                            "id" -> if (inEntry) { tag = "id"; currentId = "" }
-                            "title" -> if (inEntry) { tag = "title"; currentTitle = "" }
+                            "id" -> if (inEntry) { tag = "id"; id.setLength(0) }
+                            "title" -> if (inEntry) { tag = "title"; title.setLength(0) }
                             "name" -> if (inEntry && !authorDone) tag = "name"
-                            "summary" -> if (inEntry) { tag = "summary"; currentSummary = "" }
+                            "summary" -> if (inEntry) { tag = "summary"; summary.setLength(0) }
                             "thumbnail" -> if (inEntry) {
                                 val url = parser.getAttributeValue(null, "url")
                                 if (url != null && currentCover == null) {
@@ -438,20 +467,13 @@ class StandardEbooksBookSource(
                     XmlPullParser.TEXT -> {
                         val text = parser.text?.trim().orEmpty()
                         when (tag) {
-                            "id" -> {
-                                // OPDS ids look like "https://standardebooks.org/ebooks/author/title".
-                                // Retain the author because titles can repeat across authors.
-                                currentId = (currentId + text)
-                                    .substringAfter("/ebooks/")
-                                    .trimEnd('/')
-                                    .replace("/", "~")
-                            }
-                            "title" -> currentTitle += text
+                            "id" -> appendBounded(id, text)
+                            "title" -> appendBounded(title, text)
                             "name" -> if (currentAuthor.isNullOrBlank()) {
-                                currentAuthor = text
+                                currentAuthor = text.take(MAX_FIELD_CHARS)
                                 authorDone = true
                             }
-                            "summary" -> currentSummary = (currentSummary ?: "") + text
+                            "summary" -> appendBounded(summary, text)
                         }
                     }
                     XmlPullParser.END_TAG -> {
@@ -464,12 +486,29 @@ class StandardEbooksBookSource(
                         }
                     }
                 }
+                if (entries.size >= MAX_ENTRIES) break
                 event = parser.next()
             }
             flush()
 
             Log.d(TAG, "Parsed ${entries.size} OPDS entries")
             return entries
+        }
+
+        /**
+         * Appends [text] to [builder] without letting the field grow past
+         * [MAX_FIELD_CHARS].
+         *
+         * StringBuilder keeps each append amortised O(1) and the cap keeps the
+         * total work linear: the previous `currentTitle += text` reallocated and
+         * copied the entire field on every TEXT event, so a feed split into
+         * k = Θ(N) segments cost Θ(k·N) = Θ(N²) character copies inside the app.
+         */
+        private fun appendBounded(builder: StringBuilder, text: String) {
+            if (text.isEmpty()) return
+            val room = MAX_FIELD_CHARS - builder.length
+            if (room <= 0) return
+            builder.append(text, 0, minOf(text.length, room))
         }
 
         private fun absolutize(href: String): String =

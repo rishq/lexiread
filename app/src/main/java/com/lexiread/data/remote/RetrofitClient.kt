@@ -24,7 +24,12 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
+import okhttp3.ResponseBody
 import okhttp3.logging.HttpLoggingInterceptor
+import okio.Buffer
+import okio.BufferedSource
+import okio.ForwardingSource
+import okio.buffer
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import java.io.File
@@ -36,6 +41,30 @@ object RetrofitClient {
     private const val HTTP_CACHE_MAX_AGE_SECONDS = 60 * 60 * 6
     private const val CACHE_DIRECTORY = "http_cache"
     private const val MAX_REDIRECTS = 3
+
+    /**
+     * Hard response-size caps for the clients whose callers do not enforce one.
+     *
+     * Book and page downloads stream through [com.lexiread.core.util.SafeDownloader]
+     * or [com.lexiread.core.util.TextEncoding] with their own caps, so they are
+     * deliberately left unbounded at the client level. The typed catalogue JSON
+     * and the Coil cover fetches had no cap anywhere: a hostile allow-listed host
+     * (or mirror) could stream an arbitrarily large body into heap before Moshi
+     * decoded it or Coil rejected it.
+     */
+    private const val MAX_JSON_BYTES = 4L * 1024 * 1024
+    private const val MAX_IMAGE_BYTES = 10L * 1024 * 1024
+
+    /**
+     * Backstop for every catalogue response.
+     *
+     * The JSON guard keys off `Content-Type`, which a hostile mirror controls: it
+     * can answer a typed search with a huge body mislabelled `text/plain` so the
+     * JSON cap is skipped and Retrofit's buffering converter reads it all. This
+     * ceiling sits above the largest legitimate download (40 MB) so it never
+     * interferes with real content, but bounds the spoofed case.
+     */
+    private const val MAX_CATALOG_RESPONSE_BYTES = 64L * 1024 * 1024
 
     private val moshi: Moshi = Moshi.Builder()
         .build()
@@ -87,6 +116,66 @@ object RetrofitClient {
     }
 
     /**
+     * Rejects a response whose body exceeds [maxBytes], checking the declared
+     * `Content-Length` first and enforcing the limit while the body is read.
+     *
+     * The streaming half matters: a hostile server can omit `Content-Length`
+     * (chunked transfer) and keep sending, so a header-only check would not bound
+     * anything. The wrapped source throws as soon as the running total crosses
+     * the cap, which closes the connection instead of buffering the whole body.
+     *
+     * [onlyJson] scopes the guard to JSON responses so it can sit on the shared
+     * catalogue client without capping the book/page downloads that share it and
+     * carry their own, larger limits.
+     */
+    private class ResponseSizeLimitInterceptor(
+        private val maxBytes: Long,
+        private val label: String,
+        private val onlyJson: Boolean = false
+    ) : Interceptor {
+        override fun intercept(chain: Interceptor.Chain): Response {
+            val response = chain.proceed(chain.request())
+            if (onlyJson &&
+                !response.header("Content-Type").orEmpty().contains("json", ignoreCase = true)
+            ) {
+                return response
+            }
+            val body = response.body ?: return response
+            if (body.contentLength() > maxBytes) {
+                response.close()
+                throw java.io.IOException(tooLarge())
+            }
+            return response.newBuilder().body(body.bounded(maxBytes, ::tooLarge)).build()
+        }
+
+        private fun tooLarge(): String =
+            "$label exceeds the ${maxBytes / (1024 * 1024)}MB limit."
+    }
+
+    /** Wraps [this] so reading past [maxBytes] fails instead of buffering. */
+    private fun ResponseBody.bounded(maxBytes: Long, message: () -> String): ResponseBody {
+        val delegate = this
+        return object : ResponseBody() {
+            override fun contentType() = delegate.contentType()
+            override fun contentLength() = delegate.contentLength()
+            override fun source(): BufferedSource {
+                val counting = object : ForwardingSource(delegate.source()) {
+                    private var read = 0L
+                    override fun read(sink: Buffer, byteCount: Long): Long {
+                        val n = super.read(sink, byteCount)
+                        if (n > 0) {
+                            read += n
+                            if (read > maxBytes) throw java.io.IOException(message())
+                        }
+                        return n
+                    }
+                }
+                return counting.buffer()
+            }
+        }
+    }
+
+    /**
      * Which allow-list a redirect hop is checked against.
      *
      * There is more than one because the app fetches more than one kind of thing:
@@ -134,32 +223,43 @@ object RetrofitClient {
                 if (target == null) {
                     return response
                 }
-                when (policy) {
-                    RedirectPolicy.SAME_HOST_ONLY ->
-                        com.lexiread.core.util.UrlValidator.requireSameHostRedirect(
-                            request.url.toString(),
-                            target.toString()
-                        )
+                try {
+                    when (policy) {
+                        RedirectPolicy.SAME_HOST_ONLY ->
+                            com.lexiread.core.util.UrlValidator.requireSameHostRedirect(
+                                request.url.toString(),
+                                target.toString()
+                            )
 
-                    RedirectPolicy.IMAGE_HOSTS -> {
-                        val fromHost = request.url.host?.lowercase()?.trimEnd('.')?.takeIf { it.isNotBlank() }
-                        val extra = if (fromHost != null) setOf(fromHost) else emptySet()
-                        com.lexiread.core.util.UrlValidator.requireTrustedImageRedirect(
-                            request.url.toString(),
-                            target.toString(),
-                            extra
-                        )
-                    }
+                        RedirectPolicy.IMAGE_HOSTS -> {
+                            val fromHost = request.url.host?.lowercase()?.trimEnd('.')?.takeIf { it.isNotBlank() }
+                            val extra = if (fromHost != null) setOf(fromHost) else emptySet()
+                            com.lexiread.core.util.UrlValidator.requireTrustedImageRedirect(
+                                request.url.toString(),
+                                target.toString(),
+                                extra
+                            )
+                        }
 
-                    RedirectPolicy.TRUSTED_HOSTS -> {
-                        val fromHost = request.url.host?.lowercase()?.trimEnd('.')?.takeIf { it.isNotBlank() }
-                        val extra = if (fromHost != null) setOf(fromHost) else emptySet()
-                        com.lexiread.core.util.UrlValidator.requireTrustedRedirect(
-                            request.url.toString(),
-                            target.toString(),
-                            extra
-                        )
+                        RedirectPolicy.TRUSTED_HOSTS -> {
+                            val fromHost = request.url.host?.lowercase()?.trimEnd('.')?.takeIf { it.isNotBlank() }
+                            val extra = if (fromHost != null) setOf(fromHost) else emptySet()
+                            com.lexiread.core.util.UrlValidator.requireTrustedRedirect(
+                                request.url.toString(),
+                                target.toString(),
+                                extra
+                            )
+                        }
                     }
+                } catch (e: Throwable) {
+                    // The validator rejected this hop (SecurityException) or a
+                    // resolver failed: the 3xx response is still open and this
+                    // interceptor is its only owner, so close it before the
+                    // exception propagates. Without this the body and its pooled
+                    // connection leak on every rejected redirect — cheap and
+                    // repeatable during scrolled cover rendering.
+                    response.close()
+                    throw e
                 }
                 response.close()
                 request = request.newBuilder().url(target).build()
@@ -214,6 +314,16 @@ object RetrofitClient {
             .cookieJar(appCookieJar)
             .addInterceptor(CatalogCacheInterceptor())
             .addInterceptor(sanitizedLogging())
+            .addInterceptor(
+                ResponseSizeLimitInterceptor(MAX_CATALOG_RESPONSE_BYTES, "Catalogue response")
+            )
+            .addInterceptor(
+                ResponseSizeLimitInterceptor(
+                    MAX_JSON_BYTES,
+                    "Catalogue JSON response",
+                    onlyJson = true
+                )
+            )
             .applyCache()
             .applyRedirectGuard()
             .build()
@@ -249,6 +359,7 @@ object RetrofitClient {
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
+            .addInterceptor(ResponseSizeLimitInterceptor(MAX_IMAGE_BYTES, "Cover image"))
             .applyRedirectGuard(RedirectPolicy.IMAGE_HOSTS)
             .build()
     }
