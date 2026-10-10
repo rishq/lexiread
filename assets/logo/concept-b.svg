@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LexiRead app icon — concept B "Spine + Bookmark".
+
+  The slab gains a gold spine band down its left edge (the part of a book you
+  actually hold) while the bookmark keeps concept A's right-hand position, so
+  the two gold notes balance instead of crowding each other. Still unmistakably
+  the same family as Openlib's mark.
+
+  Construction (viewBox 0 0 256 256, tile 224 px, mark 100 x 126):
+    tile     x 16..240, rx 50
+    slab     x 78..178, y 65..191, rx 13
+    spine    x 78..93 (15 wide), rounded on the left corners only, r 13
+    ribbon   x 145..167 (22 wide), flush to the slab's top edge, 66 long;
+             tail notch 19 deep over an 11 px half-width (60°)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img"
+     aria-label="LexiRead">
+  <title>LexiRead</title>
+  <rect x="16" y="16" width="224" height="224" rx="50" fill="#F6F2EB"/>
+  <rect x="78" y="65" width="100" height="126" rx="13" fill="#0F172A"/>
+  <path d="M93 65 H91 A13 13 0 0 0 78 78 V178 A13 13 0 0 0 91 191 H93 Z" fill="#D4AC54"/>
+  <path d="M145 65 H167 V131 L156 112 L145 131 Z" fill="#D4AC54"/>
+</svg>

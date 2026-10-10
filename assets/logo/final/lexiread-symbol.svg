@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LexiRead — symbol master (transparent ground).
+
+  The mark alone, on a 256 x 256 canvas, centred on (128,128). Use this
+  whenever the ground is supplied by the surrounding layout (splash screens,
+  headers, badges). For the launcher icon use lexiread-app-icon.svg.
+
+  Construction
+    slab     x 78..178 (100 wide), y 65..191 (126 tall), rx 13 (13 % of width)
+    ribbon   x 143..165 (22 wide), flush to the slab's top edge, 66 long
+             tail notch 19 deep over an 11 px half-width (60deg)
+    margin   13 units of slab clear to the right of the ribbon, i.e. exactly the
+             corner radius — the ribbon's right edge lands on the tangent point
+             where the slab's top edge becomes the corner arc.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img"
+     aria-label="LexiRead">
+  <title>LexiRead</title>
+  <rect x="78" y="65" width="100" height="126" rx="13" fill="#0F172A"/>
+  <path d="M143 65 H165 V131 L154 112 L143 131 Z" fill="#D4AC54"/>
+</svg>

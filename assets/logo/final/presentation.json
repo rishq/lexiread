@@ -1,0 +1,48 @@
+{
+  "brand": "LexiRead",
+  "tagline": "Read anything, learn every word",
+  "brief": "LexiRead is an offline-first Android e-book reader with language learning built in: it imports EPUB, PDF and FB2 from a dozen catalogues, paginates them itself, and lets you look up and save any word without leaving the page. The mark has to survive a 48 px launcher slot and still read as 'a book you keep your place in'.",
+  "adjectives": [
+    "warm",
+    "literate",
+    "focused",
+    "quiet"
+  ],
+  "criteria": "Success: recognisable at 48 px, distinct from Openlib's mark without abandoning its book-and-bookmark reading, works in one colour, and does not depend on the wordmark to be understood.",
+  "industry": "consumer-app",
+  "nav": [
+    "Library",
+    "Sources",
+    "Settings"
+  ],
+  "brand_color": "#0F172A",
+  "tile_color": "#F6F2EB",
+  "greyscale": false,
+  "final": true,
+  "round": 1,
+  "concepts": [
+    {
+      "name": "Bookmark Right",
+      "symbol": "lexiread-symbol.svg",
+      "symbol_on_tile": "lexiread-symbol.svg",
+      "symbol_on_dark": "lexiread-symbol-reversed.svg",
+      "lockup": "lexiread-lockup-horizontal.svg",
+      "stacked": "lexiread-lockup-stacked.svg",
+      "avatar": "lexiread-app-icon-round.svg",
+      "idea": "Openlib's book-and-bookmark reading, mirrored and recoloured: a navy slab with a gold ribbon on the right, on a warm cream ground.",
+      "rationale": [
+        "One slab and one ribbon: legible at 48 px with no detail that disappears",
+        "The ribbon moves to the right and the palette becomes LexiRead's own, so it is a variation rather than a copy",
+        "Built from three primitives on a 256 grid, so every density renders crisply",
+        "A separate mono cut punches the ribbon out of the slab, so the mark survives one-colour and Android themed icons",
+        "The wordmark is gone from the icon: it was illegible at 48 px and a mark should not need one"
+      ]
+    }
+  ],
+  "recommendation": "Bookmark Right, as approved. Shipped as an adaptive icon (cream background layer, mark foreground layer sized inside the 66 dp safe circle, plus a monochrome layer) and as legacy WebP rasters at all five densities.",
+  "next_steps": [
+    "Launcher icon replaced in app/src/main/res — adaptive icon layers plus all five mipmap densities",
+    "Check the cream ground against the app's navy chrome on a real device",
+    "Run a trademark search before publishing; this is a variation on Openlib's mark"
+  ]
+}

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LexiRead app icon — concept A "Bookmark Right".
+
+  Same idea as Openlib's mark (a solid book slab with a bookmark ribbon), with
+  four deliberate changes:
+    1. the ribbon sits on the RIGHT instead of the left;
+    2. the palette is LexiRead's (navy slab, gold ribbon, cream ground);
+    3. the ground is a warm cream tile, not white;
+    4. the wordmark is gone — it was illegible at 48 px and is not part of a mark.
+
+  Construction (viewBox 0 0 256 256, tile 224 px, mark 100 x 126):
+    tile     x 16..240, rx 50  (Android squircle, ~22 % of the side)
+    slab     x 78..178, y 65..191, rx 13 (13 % of width, matching Openlib)
+    ribbon   x 143..165 (22 wide, 22 % of the slab), flush to the slab's top
+             edge, 66 long; tail notch 19 deep over an 11 px half-width (60°)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img"
+     aria-label="LexiRead">
+  <title>LexiRead</title>
+  <rect x="16" y="16" width="224" height="224" rx="50" fill="#F6F2EB"/>
+  <rect x="78" y="65" width="100" height="126" rx="13" fill="#0F172A"/>
+  <path d="M143 65 H165 V131 L154 112 L143 131 Z" fill="#D4AC54"/>
+</svg>

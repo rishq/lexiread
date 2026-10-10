@@ -1,0 +1,305 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1600" height="840" viewBox="0 0 1600 840"><rect width="1600" height="840" fill="#f7f7f4"/><text x="60" y="78" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="40" font-weight="700" fill="#161616">LexiRead - app icon concepts</text><text x="60" y="116" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="20" fill="#6b6b6b">Openlib&#x27;s book-and-bookmark reading, varied.  navy #0F172A / gold #D4AC54 / cream #F6F2EB</text><rect x="60" y="150" width="474.667" height="630" rx="18" fill="#fff" stroke="#e4e4e0" stroke-width="1"/><g>
+<!--
+  LexiRead app icon — concept A "Bookmark Right".
+
+  Same idea as Openlib's mark (a solid book slab with a bookmark ribbon), with
+  four deliberate changes:
+    1. the ribbon sits on the RIGHT instead of the left;
+    2. the palette is LexiRead's (navy slab, gold ribbon, cream ground);
+    3. the ground is a warm cream tile, not white;
+    4. the wordmark is gone — it was illegible at 48 px and is not part of a mark.
+
+  Construction (viewBox 0 0 256 256, tile 224 px, mark 100 x 126):
+    tile     x 16..240, rx 50  (Android squircle, ~22 % of the side)
+    slab     x 78..178, y 65..191, rx 13 (13 % of width, matching Openlib)
+    ribbon   x 143..165 (22 wide, 22 % of the slab), flush to the slab's top
+             edge, 66 long; tail notch 19 deep over an 11 px half-width (60°)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="LexiRead" viewBox="0 0 256 256" x="90" y="190" width="414.667" height="300" preserveAspectRatio="xMidYMid meet">
+  <title>LexiRead</title>
+  <rect x="16" y="16" width="224" height="224" rx="50" fill="#F6F2EB"/>
+  <rect x="78" y="65" width="100" height="126" rx="13" fill="#0F172A"/>
+  <path d="M143 65 H165 V131 L154 112 L143 131 Z" fill="#D4AC54"/>
+</svg>
+</g><g>
+<!--
+  LexiRead app icon — concept A "Bookmark Right".
+
+  Same idea as Openlib's mark (a solid book slab with a bookmark ribbon), with
+  four deliberate changes:
+    1. the ribbon sits on the RIGHT instead of the left;
+    2. the palette is LexiRead's (navy slab, gold ribbon, cream ground);
+    3. the ground is a warm cream tile, not white;
+    4. the wordmark is gone — it was illegible at 48 px and is not part of a mark.
+
+  Construction (viewBox 0 0 256 256, tile 224 px, mark 100 x 126):
+    tile     x 16..240, rx 50  (Android squircle, ~22 % of the side)
+    slab     x 78..178, y 65..191, rx 13 (13 % of width, matching Openlib)
+    ribbon   x 143..165 (22 wide, 22 % of the slab), flush to the slab's top
+             edge, 66 long; tail notch 19 deep over an 11 px half-width (60°)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="LexiRead" viewBox="0 0 256 256" x="90" y="516" width="64" height="64" preserveAspectRatio="xMidYMid meet">
+  <title>LexiRead</title>
+  <rect x="16" y="16" width="224" height="224" rx="50" fill="#F6F2EB"/>
+  <rect x="78" y="65" width="100" height="126" rx="13" fill="#0F172A"/>
+  <path d="M143 65 H165 V131 L154 112 L143 131 Z" fill="#D4AC54"/>
+</svg>
+</g><text x="122" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">64px</text><g>
+<!--
+  LexiRead app icon — concept A "Bookmark Right".
+
+  Same idea as Openlib's mark (a solid book slab with a bookmark ribbon), with
+  four deliberate changes:
+    1. the ribbon sits on the RIGHT instead of the left;
+    2. the palette is LexiRead's (navy slab, gold ribbon, cream ground);
+    3. the ground is a warm cream tile, not white;
+    4. the wordmark is gone — it was illegible at 48 px and is not part of a mark.
+
+  Construction (viewBox 0 0 256 256, tile 224 px, mark 100 x 126):
+    tile     x 16..240, rx 50  (Android squircle, ~22 % of the side)
+    slab     x 78..178, y 65..191, rx 13 (13 % of width, matching Openlib)
+    ribbon   x 143..165 (22 wide, 22 % of the slab), flush to the slab's top
+             edge, 66 long; tail notch 19 deep over an 11 px half-width (60°)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="LexiRead" viewBox="0 0 256 256" x="180" y="548" width="32" height="32" preserveAspectRatio="xMidYMid meet">
+  <title>LexiRead</title>
+  <rect x="16" y="16" width="224" height="224" rx="50" fill="#F6F2EB"/>
+  <rect x="78" y="65" width="100" height="126" rx="13" fill="#0F172A"/>
+  <path d="M143 65 H165 V131 L154 112 L143 131 Z" fill="#D4AC54"/>
+</svg>
+</g><text x="196" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">32px</text><g>
+<!--
+  LexiRead app icon — concept A "Bookmark Right".
+
+  Same idea as Openlib's mark (a solid book slab with a bookmark ribbon), with
+  four deliberate changes:
+    1. the ribbon sits on the RIGHT instead of the left;
+    2. the palette is LexiRead's (navy slab, gold ribbon, cream ground);
+    3. the ground is a warm cream tile, not white;
+    4. the wordmark is gone — it was illegible at 48 px and is not part of a mark.
+
+  Construction (viewBox 0 0 256 256, tile 224 px, mark 100 x 126):
+    tile     x 16..240, rx 50  (Android squircle, ~22 % of the side)
+    slab     x 78..178, y 65..191, rx 13 (13 % of width, matching Openlib)
+    ribbon   x 143..165 (22 wide, 22 % of the slab), flush to the slab's top
+             edge, 66 long; tail notch 19 deep over an 11 px half-width (60°)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="LexiRead" viewBox="0 0 256 256" x="238" y="564" width="16" height="16" preserveAspectRatio="xMidYMid meet">
+  <title>LexiRead</title>
+  <rect x="16" y="16" width="224" height="224" rx="50" fill="#F6F2EB"/>
+  <rect x="78" y="65" width="100" height="126" rx="13" fill="#0F172A"/>
+  <path d="M143 65 H165 V131 L154 112 L143 131 Z" fill="#D4AC54"/>
+</svg>
+</g><text x="246" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">16px</text><text x="90.0" y="636" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="26" font-weight="700" fill="#161616">A · Bookmark Right</text><text x="90.0" y="670" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="19" fill="#555">Openlib&#x27;s book-and-ribbon, mirrored and</text><text x="90.0" y="696" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="19" fill="#555">recoloured: navy slab, gold ribbon, warm</text><text x="90.0" y="722" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="19" fill="#555">cream tile.</text><rect x="562.667" y="150" width="474.667" height="630" rx="18" fill="#fff" stroke="#161616" stroke-width="2"/><g>
+<!--
+  LexiRead app icon — concept B "Spine + Bookmark".
+
+  The slab gains a gold spine band down its left edge (the part of a book you
+  actually hold) while the bookmark keeps concept A's right-hand position, so
+  the two gold notes balance instead of crowding each other. Still unmistakably
+  the same family as Openlib's mark.
+
+  Construction (viewBox 0 0 256 256, tile 224 px, mark 100 x 126):
+    tile     x 16..240, rx 50
+    slab     x 78..178, y 65..191, rx 13
+    spine    x 78..93 (15 wide), rounded on the left corners only, r 13
+    ribbon   x 145..167 (22 wide), flush to the slab's top edge, 66 long;
+             tail notch 19 deep over an 11 px half-width (60°)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="LexiRead" viewBox="0 0 256 256" x="592.667" y="190" width="414.667" height="300" preserveAspectRatio="xMidYMid meet">
+  <title>LexiRead</title>
+  <rect x="16" y="16" width="224" height="224" rx="50" fill="#F6F2EB"/>
+  <rect x="78" y="65" width="100" height="126" rx="13" fill="#0F172A"/>
+  <path d="M93 65 H91 A13 13 0 0 0 78 78 V178 A13 13 0 0 0 91 191 H93 Z" fill="#D4AC54"/>
+  <path d="M145 65 H167 V131 L156 112 L145 131 Z" fill="#D4AC54"/>
+</svg>
+</g><g>
+<!--
+  LexiRead app icon — concept B "Spine + Bookmark".
+
+  The slab gains a gold spine band down its left edge (the part of a book you
+  actually hold) while the bookmark keeps concept A's right-hand position, so
+  the two gold notes balance instead of crowding each other. Still unmistakably
+  the same family as Openlib's mark.
+
+  Construction (viewBox 0 0 256 256, tile 224 px, mark 100 x 126):
+    tile     x 16..240, rx 50
+    slab     x 78..178, y 65..191, rx 13
+    spine    x 78..93 (15 wide), rounded on the left corners only, r 13
+    ribbon   x 145..167 (22 wide), flush to the slab's top edge, 66 long;
+             tail notch 19 deep over an 11 px half-width (60°)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="LexiRead" viewBox="0 0 256 256" x="592.667" y="516" width="64" height="64" preserveAspectRatio="xMidYMid meet">
+  <title>LexiRead</title>
+  <rect x="16" y="16" width="224" height="224" rx="50" fill="#F6F2EB"/>
+  <rect x="78" y="65" width="100" height="126" rx="13" fill="#0F172A"/>
+  <path d="M93 65 H91 A13 13 0 0 0 78 78 V178 A13 13 0 0 0 91 191 H93 Z" fill="#D4AC54"/>
+  <path d="M145 65 H167 V131 L156 112 L145 131 Z" fill="#D4AC54"/>
+</svg>
+</g><text x="624.667" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">64px</text><g>
+<!--
+  LexiRead app icon — concept B "Spine + Bookmark".
+
+  The slab gains a gold spine band down its left edge (the part of a book you
+  actually hold) while the bookmark keeps concept A's right-hand position, so
+  the two gold notes balance instead of crowding each other. Still unmistakably
+  the same family as Openlib's mark.
+
+  Construction (viewBox 0 0 256 256, tile 224 px, mark 100 x 126):
+    tile     x 16..240, rx 50
+    slab     x 78..178, y 65..191, rx 13
+    spine    x 78..93 (15 wide), rounded on the left corners only, r 13
+    ribbon   x 145..167 (22 wide), flush to the slab's top edge, 66 long;
+             tail notch 19 deep over an 11 px half-width (60°)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="LexiRead" viewBox="0 0 256 256" x="682.667" y="548" width="32" height="32" preserveAspectRatio="xMidYMid meet">
+  <title>LexiRead</title>
+  <rect x="16" y="16" width="224" height="224" rx="50" fill="#F6F2EB"/>
+  <rect x="78" y="65" width="100" height="126" rx="13" fill="#0F172A"/>
+  <path d="M93 65 H91 A13 13 0 0 0 78 78 V178 A13 13 0 0 0 91 191 H93 Z" fill="#D4AC54"/>
+  <path d="M145 65 H167 V131 L156 112 L145 131 Z" fill="#D4AC54"/>
+</svg>
+</g><text x="698.667" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">32px</text><g>
+<!--
+  LexiRead app icon — concept B "Spine + Bookmark".
+
+  The slab gains a gold spine band down its left edge (the part of a book you
+  actually hold) while the bookmark keeps concept A's right-hand position, so
+  the two gold notes balance instead of crowding each other. Still unmistakably
+  the same family as Openlib's mark.
+
+  Construction (viewBox 0 0 256 256, tile 224 px, mark 100 x 126):
+    tile     x 16..240, rx 50
+    slab     x 78..178, y 65..191, rx 13
+    spine    x 78..93 (15 wide), rounded on the left corners only, r 13
+    ribbon   x 145..167 (22 wide), flush to the slab's top edge, 66 long;
+             tail notch 19 deep over an 11 px half-width (60°)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="LexiRead" viewBox="0 0 256 256" x="740.667" y="564" width="16" height="16" preserveAspectRatio="xMidYMid meet">
+  <title>LexiRead</title>
+  <rect x="16" y="16" width="224" height="224" rx="50" fill="#F6F2EB"/>
+  <rect x="78" y="65" width="100" height="126" rx="13" fill="#0F172A"/>
+  <path d="M93 65 H91 A13 13 0 0 0 78 78 V178 A13 13 0 0 0 91 191 H93 Z" fill="#D4AC54"/>
+  <path d="M145 65 H167 V131 L156 112 L145 131 Z" fill="#D4AC54"/>
+</svg>
+</g><text x="748.667" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">16px</text><text x="592.6666666666667" y="636" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="26" font-weight="700" fill="#161616">B · Spine + Bookmark</text><text x="592.6666666666667" y="664" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="15" font-weight="700" fill="#161616" letter-spacing="1.5">RECOMMENDED</text><text x="592.6666666666667" y="698" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="19" fill="#555">Gold spine on the left, bookmark on the</text><text x="592.6666666666667" y="724" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="19" fill="#555">right - the two gold notes balance.</text><rect x="1065.33" y="150" width="474.667" height="630" rx="18" fill="#fff" stroke="#e4e4e0" stroke-width="1"/><g>
+<!--
+  LexiRead app icon — concept C "Open Book".
+
+  The biggest departure: the slab opens into two leaves with a bookmark rising
+  out of the gutter. Still a book and still a bookmark, but the silhouette is
+  now LexiRead's own rather than a variation on Openlib's closed slab.
+
+  Construction (viewBox 0 0 256 256, tile 224 px):
+    tile     x 16..240, rx 50
+    fold     x 128 — the two leaves butt together, so the mark stays one solid
+             shape with no slit to read as a rendering fault
+    leaves   outer edges x 46 / 210; each top edge falls 22 px over 82 px of run
+             (15.03°, i.e. a clean 15°) from the outer edge down to the fold, and
+             each bottom edge falls the same way, giving the classic open-book V.
+             left  leaf (128,92) (46,70) (46,166) (128,188)
+             right leaf (128,92) (210,70) (210,166) (128,188)
+    ribbon   x 117..139, centred on the fold; top y 66 (23 px clear of the leaf
+             edge), bottom y 154, notch 19 deep over an 11 px half-width (60°)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="LexiRead" viewBox="0 0 256 256" x="1095.33" y="190" width="414.667" height="300" preserveAspectRatio="xMidYMid meet">
+  <title>LexiRead</title>
+  <rect x="16" y="16" width="224" height="224" rx="50" fill="#F6F2EB"/>
+  <path d="M128 92 L46 70 L46 166 L128 188 Z" fill="#0F172A"/>
+  <path d="M128 92 L210 70 L210 166 L128 188 Z" fill="#0F172A"/>
+  <path d="M117 66 H139 V154 L128 135 L117 154 Z" fill="#D4AC54"/>
+</svg>
+</g><g>
+<!--
+  LexiRead app icon — concept C "Open Book".
+
+  The biggest departure: the slab opens into two leaves with a bookmark rising
+  out of the gutter. Still a book and still a bookmark, but the silhouette is
+  now LexiRead's own rather than a variation on Openlib's closed slab.
+
+  Construction (viewBox 0 0 256 256, tile 224 px):
+    tile     x 16..240, rx 50
+    fold     x 128 — the two leaves butt together, so the mark stays one solid
+             shape with no slit to read as a rendering fault
+    leaves   outer edges x 46 / 210; each top edge falls 22 px over 82 px of run
+             (15.03°, i.e. a clean 15°) from the outer edge down to the fold, and
+             each bottom edge falls the same way, giving the classic open-book V.
+             left  leaf (128,92) (46,70) (46,166) (128,188)
+             right leaf (128,92) (210,70) (210,166) (128,188)
+    ribbon   x 117..139, centred on the fold; top y 66 (23 px clear of the leaf
+             edge), bottom y 154, notch 19 deep over an 11 px half-width (60°)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="LexiRead" viewBox="0 0 256 256" x="1095.33" y="516" width="64" height="64" preserveAspectRatio="xMidYMid meet">
+  <title>LexiRead</title>
+  <rect x="16" y="16" width="224" height="224" rx="50" fill="#F6F2EB"/>
+  <path d="M128 92 L46 70 L46 166 L128 188 Z" fill="#0F172A"/>
+  <path d="M128 92 L210 70 L210 166 L128 188 Z" fill="#0F172A"/>
+  <path d="M117 66 H139 V154 L128 135 L117 154 Z" fill="#D4AC54"/>
+</svg>
+</g><text x="1127.33" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">64px</text><g>
+<!--
+  LexiRead app icon — concept C "Open Book".
+
+  The biggest departure: the slab opens into two leaves with a bookmark rising
+  out of the gutter. Still a book and still a bookmark, but the silhouette is
+  now LexiRead's own rather than a variation on Openlib's closed slab.
+
+  Construction (viewBox 0 0 256 256, tile 224 px):
+    tile     x 16..240, rx 50
+    fold     x 128 — the two leaves butt together, so the mark stays one solid
+             shape with no slit to read as a rendering fault
+    leaves   outer edges x 46 / 210; each top edge falls 22 px over 82 px of run
+             (15.03°, i.e. a clean 15°) from the outer edge down to the fold, and
+             each bottom edge falls the same way, giving the classic open-book V.
+             left  leaf (128,92) (46,70) (46,166) (128,188)
+             right leaf (128,92) (210,70) (210,166) (128,188)
+    ribbon   x 117..139, centred on the fold; top y 66 (23 px clear of the leaf
+             edge), bottom y 154, notch 19 deep over an 11 px half-width (60°)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="LexiRead" viewBox="0 0 256 256" x="1185.33" y="548" width="32" height="32" preserveAspectRatio="xMidYMid meet">
+  <title>LexiRead</title>
+  <rect x="16" y="16" width="224" height="224" rx="50" fill="#F6F2EB"/>
+  <path d="M128 92 L46 70 L46 166 L128 188 Z" fill="#0F172A"/>
+  <path d="M128 92 L210 70 L210 166 L128 188 Z" fill="#0F172A"/>
+  <path d="M117 66 H139 V154 L128 135 L117 154 Z" fill="#D4AC54"/>
+</svg>
+</g><text x="1201.33" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">32px</text><g>
+<!--
+  LexiRead app icon — concept C "Open Book".
+
+  The biggest departure: the slab opens into two leaves with a bookmark rising
+  out of the gutter. Still a book and still a bookmark, but the silhouette is
+  now LexiRead's own rather than a variation on Openlib's closed slab.
+
+  Construction (viewBox 0 0 256 256, tile 224 px):
+    tile     x 16..240, rx 50
+    fold     x 128 — the two leaves butt together, so the mark stays one solid
+             shape with no slit to read as a rendering fault
+    leaves   outer edges x 46 / 210; each top edge falls 22 px over 82 px of run
+             (15.03°, i.e. a clean 15°) from the outer edge down to the fold, and
+             each bottom edge falls the same way, giving the classic open-book V.
+             left  leaf (128,92) (46,70) (46,166) (128,188)
+             right leaf (128,92) (210,70) (210,166) (128,188)
+    ribbon   x 117..139, centred on the fold; top y 66 (23 px clear of the leaf
+             edge), bottom y 154, notch 19 deep over an 11 px half-width (60°)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="LexiRead" viewBox="0 0 256 256" x="1243.33" y="564" width="16" height="16" preserveAspectRatio="xMidYMid meet">
+  <title>LexiRead</title>
+  <rect x="16" y="16" width="224" height="224" rx="50" fill="#F6F2EB"/>
+  <path d="M128 92 L46 70 L46 166 L128 188 Z" fill="#0F172A"/>
+  <path d="M128 92 L210 70 L210 166 L128 188 Z" fill="#0F172A"/>
+  <path d="M117 66 H139 V154 L128 135 L117 154 Z" fill="#D4AC54"/>
+</svg>
+</g><text x="1251.33" y="600" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#8a8a8a" text-anchor="middle">16px</text><text x="1095.3333333333335" y="636" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="26" font-weight="700" fill="#161616">C · Open Book</text><text x="1095.3333333333335" y="670" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="19" fill="#555">The slab opens into two leaves with the</text><text x="1095.3333333333335" y="696" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="19" fill="#555">bookmark rising from the fold - a book and</text><text x="1095.3333333333335" y="722" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="19" fill="#555">a bookmark, but LexiRead&#x27;s own silhouette.</text></svg>

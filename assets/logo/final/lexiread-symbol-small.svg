@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LexiRead — small-size cut (16-24 px).
+
+  At 16 px the 22-unit ribbon lands on 1.4 px and greys out. This cut widens the
+  ribbon to 30 units (36 % of the slab instead of 22 %) and keeps its right edge
+  on the same 13-unit margin, so the bookmark survives as a distinct shape rather
+  than a tinted smear. Everything else is identical to the master.
+
+  Use below 32 px: favicons, notification icons, list avatars.
+    ribbon   x 135..165 (30 wide), 70 long, notch 26 deep over a 15 px
+             half-width (60deg)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img"
+     aria-label="LexiRead">
+  <title>LexiRead</title>
+  <rect x="78" y="65" width="100" height="126" rx="13" fill="#0F172A"/>
+  <path d="M135 65 H165 V135 L150 109 L135 135 Z" fill="#D4AC54"/>
+</svg>

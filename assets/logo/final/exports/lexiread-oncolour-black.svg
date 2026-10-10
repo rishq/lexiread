@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LexiRead — one-colour / monochrome cut.
+
+  A single ink: the slab is solid and the ribbon is punched out of it with
+  fill-rule="evenodd". Because the ribbon sits flush with the slab's top edge the
+  cut-out reads as an open notch rather than a closed hole, so the bookmark
+  survives the loss of the gold.
+
+  This is the artwork behind drawable/ic_launcher_monochrome.xml (Android 13+
+  themed icons) and the black/white exports.
+-->
+<svg fill="#000000" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img"
+     aria-label="LexiRead">
+  <title>LexiRead</title>
+  <path fill="#000000" fill-rule="evenodd" d="M91 65 H165 A13 13 0 0 1 178 78 V178 A13 13 0 0 1 165 191 H91 A13 13 0 0 1 78 178 V78 A13 13 0 0 1 91 65 Z M143 65 H165 V131 L154 112 L143 131 Z"/>
+</svg>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LexiRead — app icon, dark ground.
+
+  For launchers and store assets that sit on dark surfaces: the ground and the
+  slab trade places (navy ground, cream slab) and the ribbon stays gold. This is
+  the only variant where the cream is the book rather than the ground.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img"
+     aria-label="LexiRead">
+  <title>LexiRead</title>
+  <rect x="16" y="16" width="224" height="224" rx="50" fill="#0F172A"/>
+  <rect x="78" y="65" width="100" height="126" rx="13" fill="#F6F2EB"/>
+  <path d="M143 65 H165 V131 L154 112 L143 131 Z" fill="#D4AC54"/>
+</svg>

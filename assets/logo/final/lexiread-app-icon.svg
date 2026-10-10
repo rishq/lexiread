@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LexiRead — app icon, squircle tile (the master for the legacy mipmap rasters).
+
+  Ground  warm cream #F6F2EB, x 16..240, rx 50 (22 % of the side — the Android
+          squircle proportion).
+  Mark    the symbol master, unchanged and centred.
+
+  On Android 8+ the tile shape is supplied by the launcher mask and this file is
+  only used for the legacy mipmap-* rasters; the adaptive icon is built from
+  drawable/ic_launcher_background.xml + ic_launcher_foreground.xml.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img"
+     aria-label="LexiRead">
+  <title>LexiRead</title>
+  <rect x="16" y="16" width="224" height="224" rx="50" fill="#F6F2EB"/>
+  <rect x="78" y="65" width="100" height="126" rx="13" fill="#0F172A"/>
+  <path d="M143 65 H165 V131 L154 112 L143 131 Z" fill="#D4AC54"/>
+</svg>

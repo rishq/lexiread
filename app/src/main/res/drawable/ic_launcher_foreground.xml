@@ -1,9 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- P0-2: 432x432 artwork lives in drawable-nodpi (was a 379 KB densityless JPEG). -->
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item
-        android:width="72dp"
-        android:height="72dp"
-        android:drawable="@drawable/lexiread_fg_432"
-        android:gravity="center" />
-</layer-list>
+<!--
+  LexiRead adaptive icon — foreground layer.
+
+  The symbol master scaled 0.4x onto the 108dp canvas and centred on (54,54).
+  The mark ends up 40 x 50.4dp, so its corners sit 32.17dp from the centre —
+  inside Android's 33dp (66dp diameter) safe circle and well inside the 72dp
+  viewable area, so no launcher mask can clip it.
+
+  Source of truth: assets/logo/final/lexiread-symbol.svg (viewBox 0 0 256 256).
+    slab    x 78..178, y 65..191, rx 13   ->  x 34..74,  y 28.8..79.2, rx 5.2
+    ribbon  x 143..165, y 65..131         ->  x 60..68.8, y 28.8..55.2
+            tail notch apex (154,112)     ->  (64.4,47.6)
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#0F172A"
+        android:pathData="M39.2 28.8 H68.8 A5.2 5.2 0 0 1 74 34 V74 A5.2 5.2 0 0 1 68.8 79.2 H39.2 A5.2 5.2 0 0 1 34 74 V34 A5.2 5.2 0 0 1 39.2 28.8 Z" />
+    <path
+        android:fillColor="#D4AC54"
+        android:pathData="M60 28.8 H68.8 V55.2 L64.4 47.6 L60 55.2 Z" />
+</vector>

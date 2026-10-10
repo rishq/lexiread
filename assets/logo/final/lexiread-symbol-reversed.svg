@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LexiRead — reversed symbol, for dark grounds.
+
+  Ground and ink trade places: the slab becomes cream and the ribbon stays gold,
+  so the mark holds its two-tone reading on a navy or black surface instead of
+  dissolving into it.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img"
+     aria-label="LexiRead">
+  <title>LexiRead</title>
+  <rect x="78" y="65" width="100" height="126" rx="13" fill="#F6F2EB"/>
+  <path d="M143 65 H165 V131 L154 112 L143 131 Z" fill="#D4AC54"/>
+</svg>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LexiRead — app icon, circular tile (legacy mipmap-*/ic_launcher_round.webp).
+
+  Same mark, ground as a full circle r 112 so nothing is clipped by a round
+  launcher mask on API < 26.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img"
+     aria-label="LexiRead">
+  <title>LexiRead</title>
+  <circle cx="128" cy="128" r="112" fill="#F6F2EB"/>
+  <rect x="78" y="65" width="100" height="126" rx="13" fill="#0F172A"/>
+  <path d="M143 65 H165 V131 L154 112 L143 131 Z" fill="#D4AC54"/>
+</svg>
