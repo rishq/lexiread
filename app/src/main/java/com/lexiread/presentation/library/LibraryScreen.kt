@@ -267,7 +267,7 @@ private fun LibraryBookCard(
                     .background(MaterialTheme.colorScheme.primaryContainer)
             ) {
                 val safeCover = remember(book.coverUrl) {
-                    val extraHosts = if (book.id.startsWith("mylib_")) MyLibConfig.COVER_HOSTS else emptySet()
+                    val extraHosts = com.lexiread.data.source.catalogCoverHostsFor(book.id)
                 com.lexiread.core.util.CoverUrls.sanitize(book.coverUrl, extraHosts)
                 }
                 if (safeCover != null) {

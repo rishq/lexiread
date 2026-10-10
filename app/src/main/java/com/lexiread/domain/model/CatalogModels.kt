@@ -14,7 +14,8 @@ enum class SourceKind(val label: String) {
     INTERNET_ARCHIVE("Archive"),
     STANDARD_EBOOKS("Std Ebooks"),
     GUTENDEX_AUSTRALIA("Gutenberg AU"),
-    MY_LIB("My Library")
+    MY_LIB("My Library"),
+    ANNAS_ARCHIVE("Anna's Archive")
 }
 
 /** Physical container of a readable file. */
@@ -69,6 +70,18 @@ data class CatalogBook(
     val identifiers: BookIdentifiers = BookIdentifiers(),
     /** True when the source declares the work free of copyright restrictions. */
     val isPublicDomain: Boolean = false,
+    /**
+     * True when the source can hand over the file itself, whatever its
+     * copyright status.
+     *
+     * Kept separate from [isPublicDomain] on purpose: Anna's Archive and My
+     * Library are shadow libraries. Their works are emphatically *not* public
+     * domain, but the app can still fetch the file, and a card that hides its
+     * Read button would be wrong. Conflating the two facts — the way a single
+     * `isPublicDomain = true` would — would make the model assert something
+     * untrue about the work.
+     */
+    val isDownloadable: Boolean = false,
     val downloadCount: Int? = null,
     val publishedYear: Int? = null
 ) {
@@ -81,7 +94,7 @@ data class CatalogBook(
      * their protected content is deliberately never downloaded.
      */
     val canRead: Boolean
-        get() = isPublicDomain && formats.isNotEmpty()
+        get() = formats.isNotEmpty() && (isPublicDomain || isDownloadable)
 
     companion object {
         const val UNKNOWN_AUTHOR = "Unknown Author"

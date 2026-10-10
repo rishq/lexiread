@@ -272,7 +272,7 @@ private class CatalogBookAdapter(private val moshi: Moshi) : JsonAdapter<Catalog
     private val options = JsonReader.Options.of(
         "id", "title", "authors", "coverUrl", "description", "language",
         "subjects", "source", "formats", "identifiers", "isPublicDomain",
-        "downloadCount", "publishedYear"
+        "isDownloadable", "downloadCount", "publishedYear"
     )
 
     override fun fromJson(reader: JsonReader): CatalogBook {
@@ -287,6 +287,7 @@ private class CatalogBookAdapter(private val moshi: Moshi) : JsonAdapter<Catalog
         var formats: List<BookFormat> = emptyList()
         var identifiers: BookIdentifiers = BookIdentifiers()
         var isPublicDomain = false
+        var isDownloadable = false
         var downloadCount: Int? = null
         var publishedYear: Int? = null
 
@@ -309,8 +310,9 @@ private class CatalogBookAdapter(private val moshi: Moshi) : JsonAdapter<Catalog
                     bookIdentifiersAdapter.fromJson(reader) ?: BookIdentifiers()
                 }
                 10 -> isPublicDomain = reader.nextBooleanOrNull() ?: false
-                11 -> downloadCount = reader.nextIntOrNull()
-                12 -> publishedYear = reader.nextIntOrNull()
+                11 -> isDownloadable = reader.nextBooleanOrNull() ?: false
+                12 -> downloadCount = reader.nextIntOrNull()
+                13 -> publishedYear = reader.nextIntOrNull()
                 else -> {
                     reader.skipName()
                     reader.skipValue()
@@ -331,6 +333,7 @@ private class CatalogBookAdapter(private val moshi: Moshi) : JsonAdapter<Catalog
             formats = formats,
             identifiers = identifiers,
             isPublicDomain = isPublicDomain,
+            isDownloadable = isDownloadable,
             downloadCount = downloadCount,
             publishedYear = publishedYear
         )
@@ -353,6 +356,7 @@ private class CatalogBookAdapter(private val moshi: Moshi) : JsonAdapter<Catalog
         writer.name("formats").writeListOrNull(bookFormatListAdapter, value.formats)
         writer.name("identifiers").let { bookIdentifiersAdapter.toJson(writer, value.identifiers) }
         writer.name("isPublicDomain").value(value.isPublicDomain)
+        writer.name("isDownloadable").value(value.isDownloadable)
         writer.name("downloadCount").value(value.downloadCount)
         writer.name("publishedYear").value(value.publishedYear)
         writer.endObject()

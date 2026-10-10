@@ -16,6 +16,8 @@ import com.lexiread.data.remote.dto.OpenAiMessageDto
 import com.lexiread.data.remote.api.TranslationApi
 import com.lexiread.domain.model.TranslationResult
 import com.lexiread.domain.repository.TranslationRepository
+import com.lexiread.core.util.PromptSanitizer.sanitizePromptInput
+import com.lexiread.core.util.PromptSanitizer.sha256
 
 /**
  * Translates text using the user's configured AI provider for high quality,
@@ -164,16 +166,6 @@ class TranslationRepositoryImpl(
         "de" -> "German"
         "fr" -> "French"
         else -> code.uppercase()
-    }
-
-    private fun sanitizePromptInput(input: String, maxLen: Int): String {
-        return input.trim().take(maxLen).replace("\n", " ").replace("\r", " ")
-    }
-
-    private fun sha256(value: String): String {
-        val digest = java.security.MessageDigest.getInstance("SHA-256")
-            .digest(value.toByteArray(Charsets.UTF_8))
-        return digest.joinToString("") { "%02x".format(it) }
     }
 
     private companion object {

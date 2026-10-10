@@ -9,6 +9,8 @@ import com.lexiread.data.local.dao.CatalogCacheDao
 import com.lexiread.data.local.entity.CatalogCacheEntity
 import com.lexiread.data.mapper.toCatalogBook
 import com.lexiread.data.mapper.toDomainBook
+import com.lexiread.data.source.AnnasArchiveBookSource
+import com.lexiread.data.source.AnnasArchiveBookSource.Companion.toCatalogBook
 import com.lexiread.data.source.MyLibBookSource
 import com.lexiread.data.source.MyLibConfig
 import com.lexiread.data.source.PgaBookSource
@@ -66,7 +68,6 @@ class BooksRepositoryImpl(
     private val serializer: CatalogCacheSerializer = CatalogCacheSerializer(),
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : BooksRepository {
-
     override fun categories(): List<Category> = DEFAULT_CATEGORIES
 
     override suspend fun search(query: String, page: Int, sources: Set<SourceKind>): CatalogPage {
@@ -82,6 +83,7 @@ class BooksRepositoryImpl(
                 if (SourceKind.STANDARD_EBOOKS in active) add(source(SourceKind.STANDARD_EBOOKS) { fetchStandardEbooks(normalized, page) })
                 if (SourceKind.GUTENDEX_AUSTRALIA in active) add(source(SourceKind.GUTENDEX_AUSTRALIA) { fetchGutenbergAustralia(normalized, page) })
                 if (SourceKind.MY_LIB in active) add(source(SourceKind.MY_LIB) { fetchMyLib(normalized, page) })
+                if (SourceKind.ANNAS_ARCHIVE in active) add(source(SourceKind.ANNAS_ARCHIVE) { fetchAnnasArchive(normalized, page) })
             })
         }
     }
@@ -96,6 +98,8 @@ class BooksRepositoryImpl(
                 if (SourceKind.STANDARD_EBOOKS in active) add(source(SourceKind.STANDARD_EBOOKS) { fetchStandardEbooks(POPULAR_SE_QUERY, page) })
                 if (SourceKind.GUTENDEX_AUSTRALIA in active) add(source(SourceKind.GUTENDEX_AUSTRALIA) { fetchGutenbergAustralia(POPULAR_PGA_QUERY, page) })
                 if (SourceKind.MY_LIB in active) add(source(SourceKind.MY_LIB) { fetchMyLib(POPULAR_MY_LIB_QUERY, page) })
+                // No "popular" route either; the blank-query guard makes it a no-op.
+                if (SourceKind.ANNAS_ARCHIVE in active) add(source(SourceKind.ANNAS_ARCHIVE) { fetchAnnasArchive(POPULAR_ANNAS_ARCHIVE_QUERY, page) })
             })
         }
 
@@ -112,6 +116,7 @@ class BooksRepositoryImpl(
             if (SourceKind.STANDARD_EBOOKS in active) add(source(SourceKind.STANDARD_EBOOKS) { fetchStandardEbooks(category.query, page) })
             if (SourceKind.GUTENDEX_AUSTRALIA in active) add(source(SourceKind.GUTENDEX_AUSTRALIA) { fetchGutenbergAustralia(category.query, page) })
             if (SourceKind.MY_LIB in active) add(source(SourceKind.MY_LIB) { fetchMyLib(category.query, page) })
+            if (SourceKind.ANNAS_ARCHIVE in active) add(source(SourceKind.ANNAS_ARCHIVE) { fetchAnnasArchive(category.query, page) })
             })
         }
 
@@ -153,6 +158,7 @@ class BooksRepositoryImpl(
             id.startsWith(STANDARD_EBOOKS_PREFIX) -> null // SE details resolved from search results
             id.startsWith(PGA_PREFIX) -> null // PGA details resolved from search results
             id.startsWith(MY_LIB_PREFIX) -> null // MyLib details resolved from search results
+            id.startsWith(ANNAS_ARCHIVE_PREFIX) -> null // Anna's Archive details resolved from search results
             else -> null
         }
     }
@@ -538,6 +544,34 @@ class BooksRepositoryImpl(
     private fun myLibSource(): MyLibBookSource? =
         sources.filterIsInstance<MyLibBookSource>().firstOrNull()
 
+    /**
+     * Anna's Archive, scraped. The fetch-and-parse lives in
+     * [AnnasArchiveBookSource]; this only maps the parsed rows into the
+     * catalogue model, exactly as [fetchMyLib] does for My Library.
+     *
+     * The source is resolved from [sources] rather than injected as a second
+     * reference, so the instance that downloads is the instance that parsed.
+     * A missing source is an error, not an empty page: silently contributing
+     * nothing would look like "no results".
+     */
+    private suspend fun fetchAnnasArchive(query: String, page: Int): CatalogPage =
+        withContext(dispatcher) {
+            if (query.isBlank()) return@withContext CatalogPage.empty(page)
+
+            val source = sources.filterIsInstance<AnnasArchiveBookSource>().firstOrNull()
+                ?: throw IOException("The Anna's Archive source is not configured.")
+
+            val entries = source.searchEntries(query, page)
+            CatalogPage(
+                books = entries.map { it.toCatalogBook(source.config) },
+                page = page,
+                // The site reports no total; a full page is the only signal that
+                // more exist, which is what `hasMore` means everywhere else.
+                totalResults = null,
+                hasMore = entries.size >= ANNAS_ARCHIVE_PAGE_SIZE
+            )
+        }
+
     // --- caching ------------------------------------------------------------
 
     /**
@@ -622,6 +656,7 @@ class BooksRepositoryImpl(
         const val STANDARD_EBOOKS_PREFIX = "se_"
         const val PGA_PREFIX = "pga_"
         const val MY_LIB_PREFIX = "mylib_"
+        const val ANNAS_ARCHIVE_PREFIX = "annas_"
         const val PGA_INDEX_URL = "https://gutenberg.net.au/gutindex_aus.txt"
         const val POPULAR_CACHE_KEY = "popular"
         const val POPULAR_OPEN_LIBRARY_QUERY = "subject:fiction"
@@ -631,6 +666,10 @@ class BooksRepositoryImpl(
         const val POPULAR_PGA_QUERY = ""
         /** The site has no "popular" route, so it simply contributes nothing there. */
         const val POPULAR_MY_LIB_QUERY = ""
+        /** Same: no popular route, and a blank query is rejected before any request. */
+        const val POPULAR_ANNAS_ARCHIVE_QUERY = ""
+        /** Rows the source keeps per page; a full page means "ask for more". */
+        const val ANNAS_ARCHIVE_PAGE_SIZE = 50
 
         /**
          * Host, route, filters and selectors for the scraped catalogue. This is

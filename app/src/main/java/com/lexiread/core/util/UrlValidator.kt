@@ -9,6 +9,46 @@ package com.lexiread.core.util
  */
 object UrlValidator {
 
+    /**
+     * Anna's Archive itself. Declared here rather than in
+     * `AnnasArchiveConfig` so the redirect guard, the source's own entry check
+     * and the UI's cover check all read one list.
+     */
+    val ANNAS_ARCHIVE_HOSTS: Set<String> = setOf(
+        "annas-archive.se",
+        "annas-archive.org",
+        "annas-archive.li"
+    )
+
+    /**
+     * The partner servers a `/slow_download/…` page may hand out.
+     *
+     * The download link Anna's Archive serves is a redirect to one of these, so
+     * they have to be trusted for redirects as well as for the initial fetch —
+     * otherwise the guard rejects the very hop the site exists to make. The list
+     * is deliberately explicit rather than "whatever the page says": a scraped
+     * page is attacker-controlled, and `UrlValidator` is the thing that stops it
+     * from pointing the downloader anywhere it likes.
+     *
+     * Extend this when Anna's Archive adds a partner; a host that is missing
+     * fails closed with a clear message instead of silently downloading.
+     */
+    val ANNAS_ARCHIVE_MIRROR_HOSTS: Set<String> = setOf(
+        // Library Genesis mirrors used as Anna's Archive download partners.
+        "libgen.li",
+        "libgen.gs",
+        "libgen.la",
+        "libgen.is",
+        "libgen.rs",
+        "libgen.st",
+        // IPFS gateways.
+        "ipfs.io",
+        "cloudflare-ipfs.com",
+        "gateway.pinata.cloud",
+        "dweb.link",
+        "w3s.link"
+    )
+
     /** Hosts we are willing to download book files from. */
     val TRUSTED_DOWNLOAD_HOSTS: Set<String> = setOf(
         "gutenberg.org",
@@ -16,7 +56,7 @@ object UrlValidator {
         "gutenberg.net.au",
         "archive.org",
         "standardebooks.org"
-    )
+    ) + ANNAS_ARCHIVE_HOSTS + ANNAS_ARCHIVE_MIRROR_HOSTS
 
     /** Hosts we are willing to load images from. */
     val TRUSTED_IMAGE_HOSTS: Set<String> = setOf(
@@ -27,7 +67,7 @@ object UrlValidator {
         "standardebooks.org",
         "books.google.com",
         "books.googleusercontent.com"
-    )
+    ) + ANNAS_ARCHIVE_HOSTS
 
     /**
      * Validates a book-file URL. Returns it unchanged so callers can chain:

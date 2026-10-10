@@ -10,6 +10,7 @@ import com.lexiread.core.util.TTSHelper
 import com.lexiread.data.local.AppDatabase
 import com.lexiread.data.remote.RetrofitClient
 import com.lexiread.data.repository.BooksRepositoryImpl
+import com.lexiread.data.source.AnnasArchiveBookSource
 import com.lexiread.data.source.GutendexBookSource
 import com.lexiread.data.source.InternetArchiveBookSource
 import com.lexiread.data.source.MyLibBookSource
@@ -94,7 +95,11 @@ class AppContainer(private val context: Context) {
                 // trusted for downloads, never silently dropped.
                 MyLibConfig.defaultConfig(),
                 RetrofitClient.myLibEapiApi
-            )
+            ),
+            // Anna's Archive: scraped HTML, same as the Openlib app does it. The
+            // default config is the one the repository reads back for the
+            // record-page URLs it puts on catalogue cards.
+            AnnasArchiveBookSource(RetrofitClient.annasArchiveApi, context)
         )
     }
 

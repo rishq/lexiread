@@ -434,7 +434,7 @@ private fun CatalogBookCard(
  */
 @Composable
 private fun CoverImage(url: String?, title: String, source: SourceKind) {
-    val extraHosts = if (source == SourceKind.MY_LIB) MyLibConfig.COVER_HOSTS else emptySet()
+    val extraHosts = com.lexiread.data.source.catalogCoverHostsFor(source)
     val safeUrl = remember(url) { com.lexiread.core.util.CoverUrls.sanitize(url, extraHosts) }
     Box(
         modifier = Modifier

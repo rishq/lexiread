@@ -96,6 +96,7 @@ object CatalogDeduper {
             downloadCount = base.downloadCount ?: other.downloadCount,
             formats = base.formats.ifEmpty { other.formats },
             isPublicDomain = base.isPublicDomain || other.isPublicDomain,
+            isDownloadable = base.isDownloadable || other.isDownloadable,
             identifiers = mergeIdentifiers(base.identifiers, other.identifiers)
         )
     }

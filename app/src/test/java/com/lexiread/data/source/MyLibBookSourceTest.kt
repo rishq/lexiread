@@ -159,6 +159,36 @@ class MyLibBookSourceTest {
         assertTrue(!page.hasNextPage)
     }
 
+    @Test
+    fun `parseSearchPage reads the byline from the title's siblings`() {
+        // No `.author` element anywhere. The byline is the title link's next
+        // sibling and the publisher the one after that — the Openlib technique,
+        // which survives a restyle because it depends on order, not class names.
+        val page = MyLibBookSource.parseSearchPage(SIBLING_PAGE, BASE_URL)
+
+        assertEquals(1, page.entries.size)
+        assertEquals("12345", page.entries[0].id)
+        assertEquals("Pride and Prejudice", page.entries[0].title)
+        assertEquals("Jane Austen", page.entries[0].author)
+        assertEquals("Publisher: Penguin", page.entries[0].description)
+    }
+
+    @Test
+    fun `parseSearchPage uses the metadata line as the blurb`() {
+        val page = MyLibBookSource.parseSearchPage(INFO_LINE_PAGE, BASE_URL)
+
+        assertEquals("English [en] · EPUB · 1.2 MB", page.entries[0].description)
+    }
+
+    @Test
+    fun `parseSearchPage ignores a non-search sibling`() {
+        // The link after the title points off-site: navigation, not a byline.
+        val page = MyLibBookSource.parseSearchPage(NON_SEARCH_SIBLING_PAGE, BASE_URL)
+
+        assertEquals(1, page.entries.size)
+        assertNull(page.entries[0].author)
+    }
+
     // --- source ------------------------------------------------------------
 
     @Test
@@ -374,6 +404,42 @@ class MyLibBookSourceTest {
                 </div>
               </div>
               <div class="pager"><a href="/s/?q=test&amp;page=2">2</a></div>
+            </body></html>
+        """
+
+        /**
+         * The title link and the byline are siblings, and nothing carries an
+         * `author` class — the Openlib shape.
+         */
+        const val SIBLING_PAGE = """
+            <html><body>
+              <div class="book-item">
+                <a href="/book/12345/pride-and-prejudice">Pride and Prejudice</a>
+                <a href="/s/?q=Jane+Austen">Jane Austen</a>
+                <a href="/s/?q=Penguin">Penguin</a>
+                <a href="/download/12345.epub">EPUB</a>
+              </div>
+            </body></html>
+        """
+
+        /** A row whose only metadata is its dedicated info line. */
+        const val INFO_LINE_PAGE = """
+            <html><body>
+              <div class="book-item">
+                <a href="/book/12345/pride-and-prejudice">Pride and Prejudice</a>
+                <div class="meta">English [en] · EPUB · 1.2 MB</div>
+              </div>
+            </body></html>
+        """
+
+        /** The sibling after the title is an off-site link, not a byline. */
+        const val NON_SEARCH_SIBLING_PAGE = """
+            <html><body>
+              <div class="book-item">
+                <a href="/book/12345/pride-and-prejudice">Pride and Prejudice</a>
+                <a href="https://example.com/about">About us</a>
+                <a href="/download/12345.epub">EPUB</a>
+              </div>
             </body></html>
         """
 

@@ -45,6 +45,13 @@ import java.util.Locale
  * the CSS selectors and the parser degrades gracefully: every lookup walks a
  * list of candidate selectors, and if none of them match it falls back to
  * detecting the repeated row structure instead of returning nothing.
+ *
+ * Row extraction follows the technique the Openlib app uses for Anna's Archive
+ * (`lib/services/annas_archieve.dart`): the author and publisher are read from
+ * the title link's *sequential siblings* rather than from class names, and the
+ * row's own metadata line is read as a dedicated element instead of being
+ * rebuilt from scattered fields. Class names change on every restyle; the order
+ * of siblings does not.
  */
 class MyLibBookSource(
     private val api: MyLibApi,
@@ -140,10 +147,19 @@ class MyLibBookSource(
 
     /** Parses one search page. Exposed so the repository can page without a second fetch. */
     internal suspend fun fetchPage(url: String, page: Int): MyLibSearchPage {
-        val html = api.fetch(url).use { body ->
-            // Size-capped and charset-detected: a scraped page is attacker-controlled
-            // input, and plenty of catalogues are still served as windows-1251.
-            TextEncoding.readText(body.byteStream(), config.maxPageBytes)
+        val html = try {
+            api.fetch(url).use { body ->
+                // Size-capped and charset-detected: a scraped page is attacker-controlled
+                // input, and plenty of catalogues are still served as windows-1251.
+                TextEncoding.readText(body.byteStream(), config.maxPageBytes)
+            }
+        } catch (error: retrofit2.HttpException) {
+            // The HTML search route is behind the same browser check the download
+            // route is. Reporting it as a challenge (rather than a raw 503) lets
+            // the UI clear it once in a WebView and retry, which is the only way
+            // a plain HTTP client ever gets past it.
+            if (error.code() == 503 || error.code() == 403) throw ChallengeRequiredException(url)
+            throw error
         }
         return parseSearchPage(html, url, page, config)
     }
@@ -331,17 +347,67 @@ class MyLibBookSource(
             val detailUrl = parseDetailUrl(item, config, titleAnchor)
             val id = deriveId(detailUrl, title, meta) ?: return null
 
+            // Openlib's technique, and the reason it survives restyling better
+            // than a class-name hunt: the author and the publisher sit *next to*
+            // the title link, in that order, and count only when they are search
+            // links. Structure survives a rename; `class="author"` does not.
+            val (siblingAuthor, siblingPublisher) = parseTitleSiblings(titleAnchor, config)
+
             return MyLibEntry(
                 id = id,
                 title = title.take(MAX_TITLE_LENGTH),
-                author = parseAuthor(item, config, meta),
+                author = parseAuthor(item, config, meta) ?: siblingAuthor,
                 coverUrl = parseCover(item, config),
                 detailUrl = detailUrl,
                 formats = parseFormats(item),
                 language = meta["language"] ?: meta["lang"] ?: meta["язык"],
                 year = parseYear(meta),
+                // Openlib shows the catalogue's own metadata line as the blurb.
+                // It beats a blurb synthesized from the same fields, so it is
+                // tried before them and after an explicit description element.
                 description = parseDescription(item, config, meta)
+                    ?: parseInfoLine(item, config)
+                    ?: siblingPublisher?.let { "Publisher: $it" }
             )
+        }
+
+        /**
+         * The author and publisher adjacent to the title link.
+         *
+         * Both are only accepted when they link into the site's own search: an
+         * adjacent link to somewhere else is navigation, not a byline.
+         */
+        private fun parseTitleSiblings(
+            titleAnchor: Element?,
+            config: MyLibConfig
+        ): Pair<String?, String?> {
+            val anchor = titleAnchor ?: return null to null
+            val authorElement = anchor.nextElementSibling()?.takeIf { it.isSearchLink(config) }
+            val publisherElement = authorElement?.nextElementSibling()?.takeIf { it.isSearchLink(config) }
+
+            val author = authorElement?.text()?.clean()?.takeIf { it.isNotBlank() }?.let(::cleanAuthor)
+            val publisher = publisherElement?.text()?.clean()?.takeIf { it.isNotBlank() }
+            return author to publisher
+        }
+
+        private fun Element.isSearchLink(config: MyLibConfig): Boolean {
+            if (!tagName().equals("a", ignoreCase = true)) return false
+            val href = attr("href").takeIf { it.isNotBlank() } ?: return false
+            val searchPath = "/${config.searchPath.trim('/')}"
+            return href.startsWith(searchPath) || href.contains("?${config.queryParameter}=")
+        }
+
+        /**
+         * The row's metadata line — format, size, language, publisher. A
+         * dedicated line, rather than the row's whole text, so the blurb does
+         * not end up as a concatenation of every link label.
+         */
+        private fun parseInfoLine(item: Element, config: MyLibConfig): String? {
+            for (css in config.selectors.info) {
+                val text = firstMatch(item, css)?.text()?.clean()
+                if (!text.isNullOrBlank()) return text.take(MAX_DESCRIPTION_LENGTH)
+            }
+            return null
         }
 
         private fun parseTitleAnchor(item: Element, config: MyLibConfig): Element? {
@@ -796,6 +862,14 @@ data class MyLibSelectors(
     ),
     val description: List<String> = listOf(
         ".description", ".annotation", ".summary", ".snippet"
+    ),
+    /**
+     * The row's metadata line. Openlib reads the same idea from
+     * `div.text-gray-800` on Anna's Archive, and a scraped catalogue almost
+     * always has one: it is where format, size, language and publisher live.
+     */
+    val info: List<String> = listOf(
+        ".book-info", ".book-meta", ".meta", "div.text-gray-800", "div[class*=book-info]"
     ),
     val pagination: List<String> = listOf(
         ".pagination", "nav.pagination", "div.pager", "ul.pager", ".pages"

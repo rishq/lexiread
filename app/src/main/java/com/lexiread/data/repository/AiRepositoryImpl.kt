@@ -17,6 +17,9 @@ import com.lexiread.data.remote.dto.OpenAiMessageDto
 import com.lexiread.data.remote.dto.OpenAiResponseFormatDto
 import com.lexiread.domain.model.AiExplanation
 import com.lexiread.domain.repository.AiRepository
+import com.lexiread.core.util.PromptSanitizer.escapeForPrompt
+import com.lexiread.core.util.PromptSanitizer.sanitizePromptInput
+import com.lexiread.core.util.PromptSanitizer.sha256
 import org.json.JSONObject
 
 object AiProviders {
@@ -215,24 +218,6 @@ class AiRepositoryImpl(
         )
         return claudeApi.createMessage(apiKey, "2023-06-01", request)
             .content?.firstOrNull { it?.type == "text" }?.text
-    }
-
-    private fun sha256(value: String): String {
-        val digest = java.security.MessageDigest.getInstance("SHA-256")
-            .digest(value.toByteArray(Charsets.UTF_8))
-        return digest.joinToString("") { "%02x".format(it) }
-    }
-
-    private fun sanitizePromptInput(input: String, maxLen: Int): String {
-        return input.trim()
-            .take(maxLen)
-            .replace("\n", " ")
-            .replace("\r", " ")
-    }
-
-    /** Escapes only for embedding inside the <word_to_analyze> prompt tags. */
-    private fun escapeForPrompt(input: String): String {
-        return input.replace("<", "&lt;").replace(">", "&gt;")
     }
 }
 

@@ -74,11 +74,17 @@ internal const val FIRST_PAGE = 1
  * Note it still contributes nothing to Popular (no popular route — blank
  * queries are rejected in fetchMyLib), and its mirror host can rotate; see
  * MyLibConfig.DEFAULT_HOST.
+ *
+ * ANNAS_ARCHIVE added 2026-10-10 at the owner's request, on the same reasoning:
+ * the app scrapes it and can download from it, so hiding it behind a toggle
+ * would make the source effectively invisible. It likewise has no popular
+ * route and contributes nothing there.
  */
 val DEFAULT_SOURCES: Set<SourceKind> = setOf(
     SourceKind.GUTENDEX,
     SourceKind.INTERNET_ARCHIVE,
     SourceKind.STANDARD_EBOOKS,
     SourceKind.GUTENDEX_AUSTRALIA,
-    SourceKind.MY_LIB
+    SourceKind.MY_LIB,
+    SourceKind.ANNAS_ARCHIVE
 )

@@ -2,6 +2,7 @@
 
 import android.content.Context
 import com.lexiread.BuildConfig
+import com.lexiread.data.remote.api.AnnasArchiveApi
 import com.lexiread.data.remote.api.ClaudeApi
 import com.lexiread.data.remote.api.DictionaryApi
 import com.lexiread.data.remote.api.InternetArchiveApi
@@ -456,6 +457,21 @@ object RetrofitClient {
      */
     val myLibEapiApi: MyLibEapiApi by lazy {
         buildService("https://z-library.ec/", catalogOkHttpClient, MyLibEapiApi::class.java)
+    }
+
+    /**
+     * Anna's Archive. Scraped HTML, so no converter: the raw body goes straight
+     * to Jsoup. Shares [catalogOkHttpClient] on purpose — that is the client
+     * carrying `appCookieJar`, so the `cf_clearance` cookie the WebView earns
+     * during a challenge is sent on the retry.
+     */
+    val annasArchiveApi: AnnasArchiveApi by lazy {
+        buildService(
+            "https://${com.lexiread.data.source.AnnasArchiveConfig.DEFAULT_HOST}/",
+            catalogOkHttpClient,
+            AnnasArchiveApi::class.java,
+            moshi = false
+        )
     }
 
     val dictionaryApi: DictionaryApi by lazy {
