@@ -143,9 +143,11 @@ class ReaderViewModelTest {
         private val fetchCalls = AtomicInteger(0)
         private val activeFetches = AtomicInteger(0)
         private val peakFetches = AtomicInteger(0)
+        private val completedFetches = AtomicInteger(0)
 
         val fetchCount: Int get() = fetchCalls.get()
         val maxConcurrentFetches: Int get() = peakFetches.get()
+        val completedFetchCount: Int get() = completedFetches.get()
 
         override fun getAllBooks() = flowOf(listOf(book))
         override fun getFavoriteBooks() = flowOf(emptyList<Book>())
@@ -158,6 +160,8 @@ class ReaderViewModelTest {
             peakFetches.updateAndGet { prev -> maxOf(prev, active) }
             try {
                 fetchGate?.await()
+                // Only a fetch whose job survived cancellation reaches here.
+                completedFetches.incrementAndGet()
             } finally {
                 activeFetches.decrementAndGet()
             }
@@ -451,6 +455,9 @@ class ReaderViewModelTest {
         gate.complete(Unit)
 
         awaitUntil { !vm.uiState.value.isLoadingBook }
-        assertEquals(1, repo.maxConcurrentFetches)
+        // The two superseded loads are cancelled at the gate; only the last
+        // retry's fetch completes. Counting started fetches would race with
+        // cancellation delivery (it passed locally, flaked on CI).
+        assertEquals(1, repo.completedFetchCount)
     }
 }
