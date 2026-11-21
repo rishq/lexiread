@@ -54,7 +54,8 @@ class AppContainer(private val context: Context) {
             AppDatabase.MIGRATION_2_3,
             AppDatabase.MIGRATION_3_4,
             AppDatabase.MIGRATION_4_5,
-            AppDatabase.MIGRATION_5_6
+            AppDatabase.MIGRATION_5_6,
+            AppDatabase.MIGRATION_6_7
         )
             .build()
     }
@@ -98,8 +99,17 @@ class AppContainer(private val context: Context) {
             ),
             // Anna's Archive: scraped HTML, same as the Openlib app does it. The
             // default config is the one the repository reads back for the
-            // record-page URLs it puts on catalogue cards.
-            AnnasArchiveBookSource(RetrofitClient.annasArchiveApi, context)
+            // record-page URLs it puts on catalogue cards. The host override is
+            // read per request, so a Settings edit takes effect on the next
+            // search instead of needing a restart — which matters because the
+            // site's domains are seized and replaced every few months.
+            AnnasArchiveBookSource(
+                RetrofitClient.annasArchiveApi,
+                context,
+                hostOverride = {
+                    userPreferencesManager.annasArchiveHost.first().takeIf { it.isNotBlank() }
+                }
+            )
         )
     }
 

@@ -80,6 +80,7 @@ class CatalogViewModel(
     fun onQueryChange(value: String) {
         _uiState.update { it.copy(query = value, activeCategory = null) }
         searchJob?.cancel()
+        challengeShown = false
 
         if (value.isBlank()) {
             loadPopular()
@@ -97,6 +98,7 @@ class CatalogViewModel(
         searchJob?.cancel()
         _uiState.update { it.copy(activeCategory = category, query = "") }
         loadJob?.cancel()
+        challengeShown = false
         if (category == null) {
             loadPopular()
         } else {
@@ -193,6 +195,17 @@ class CatalogViewModel(
                 } else null
             )
         }
+
+        // A source behind a browser check needs one WebView pass. The retry
+        // runs this same query again with the clearance cookie attached, so
+        // the source contributes its books instead of failing silently.
+        result.challengeUrl?.let { url ->
+            if (!challengeShown) {
+                challengeShown = true
+                pendingSearchChallenge = true
+                _effects.tryEmit(CatalogEffect.ShowChallenge(url))
+            }
+        }
     }
 
     fun openBook(book: CatalogBook) {
@@ -219,14 +232,40 @@ class CatalogViewModel(
 
     private var pendingChallengeBook: CatalogBook? = null
 
-    /** Retries the book that raised the browser challenge, after its cookies cleared. */
+    /** The search that hit a browser check, to be run again once it is cleared. */
+    private var pendingSearchChallenge = false
+
+    /**
+     * Whether the browser check has already been offered for this query.
+     *
+     * Without it the auto-retry after a cleared check would reopen the dialog
+     * forever on a site that still refuses. A new query or a dismissed dialog
+     * offers the check again.
+     */
+    private var challengeShown = false
+
+    /**
+     * Retries what raised the browser challenge: the book that was being
+     * opened, or the search that was running.
+     */
     fun retryOpenAfterChallenge() {
-        pendingChallengeBook?.let { openBook(it) }
+        val book = pendingChallengeBook
         pendingChallengeBook = null
+        if (book != null) {
+            openBook(book)
+            return
+        }
+        if (pendingSearchChallenge) {
+            pendingSearchChallenge = false
+            retry()
+        }
     }
 
     fun dismissChallenge() {
         pendingChallengeBook = null
+        pendingSearchChallenge = false
+        // Dismissing means the user wants another go at the check.
+        challengeShown = false
     }
 
     /** Saves metadata only, without waiting for a download. */

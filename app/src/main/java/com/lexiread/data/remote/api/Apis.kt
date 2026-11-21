@@ -17,7 +17,6 @@ import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.Header
-import retrofit2.http.Headers
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -68,16 +67,13 @@ interface MyLibApi {
  * `/slow_download/…` mirror pages are all fetched through this one `@Url`
  * method and parsed by Jsoup in `AnnasArchiveBookSource`.
  *
- * The browser User-Agent is not optional: the site answers a default OkHttp UA
- * with a Cloudflare challenge far more often, and the Openlib app sends exactly
- * this string (`lib/services/annas_archieve.dart`). It is a header on the
- * request, so it cannot be lost by a caller that forgets to pass it.
+ * The site sits behind a JavaScript browser check that refuses a request
+ * without a browser's User-Agent, so the header is not optional. It is *not*
+ * declared here: the client sets it, because the value has to be the one the
+ * browser that cleared the check used — see
+ * [com.lexiread.data.remote.RetrofitClient.setBrowserUserAgent].
  */
 interface AnnasArchiveApi {
-    @Headers(
-        "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
-    )
     @GET
     suspend fun fetch(@Url url: String): ResponseBody
 }

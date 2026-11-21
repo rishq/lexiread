@@ -36,7 +36,7 @@ import com.lexiread.data.local.entity.TranslationCacheEntity
         CatalogCacheEntity::class,
         HighlightEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -201,6 +201,21 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_highlights_bookId_chapterIndex` ON `highlights` (`bookId`, `chapterIndex`)")
+            }
+        }
+
+        /**
+         * Preloaded books used to be seeded as favorites. Clear that flag on
+         * upgrade so the demo titles stop filling the Favorites tab. Only the
+         * two IDs that were seeded as favorites are touched — a favorite the
+         * user added to another preloaded book is left alone.
+         */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "UPDATE `books` SET `isFavorite` = 0 " +
+                        "WHERE `id` IN ('gutenberg_1342', 'gutenberg_1661')"
+                )
             }
         }
     }

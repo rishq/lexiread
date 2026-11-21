@@ -33,7 +33,7 @@ import java.util.Locale
  *
  * The three pages this source reads, in the order the download walks them:
  *
- * 1. **Search** — `https://annas-archive.se/search?index=&q=…&content=&ext=&sort=`.
+ * 1. **Search** — `https://<host>/search?index=&q=…&content=&ext=&sort=`.
  *    Rows are `div.flex.pt-3.pb-3.border-b`. The title anchor is
  *    `a.line-clamp-[3].js-vim-focus`; author and publisher are its *next two
  *    siblings* (not `:nth-of-type` — that was the bug Openlib fixed), and only
@@ -48,6 +48,15 @@ import java.util.Locale
  * 3. **Mirror** — the `/slow_download/…` page, which lists the partner servers
  *    that actually serve the file.
  *
+ * ## Which host
+ *
+ * The host is not a constant. Anna's Archive has lost `.org`, `.se`, `.li`,
+ * `.pm` and `.gs` to seizures, deletions and squatters since 2025, and the
+ * replacements land on domains nobody can predict — so the compiled-in host is
+ * a *starting point* that is walked over at request time. See
+ * [AnnasArchiveConfig.DEFAULT_HOSTS], [AnnasArchiveBookSource.candidateHosts]
+ * and the user override in Settings.
+ *
  * Two rules are inherited from the rest of the app rather than from Openlib:
  *
  * - **Jsoup parses, it does not fetch.** The page is fetched through the app's
@@ -60,27 +69,47 @@ import java.util.Locale
  *
  * ## The browser check
  *
- * Anna's Archive sits behind Cloudflare. When a fetch comes back 503 the source
- * throws [ChallengeRequiredException] — the same signal `MyLibBookSource` uses —
- * and the UI opens [com.lexiread.presentation.common.ChallengeWebViewDialog].
- * The WebView clears the check, the clearance cookie is copied into the shared
- * cookie jar, and the download is retried with the session attached.
+ * Anna's Archive sits behind DDoS-Guard, which answers a plain request with a
+ * JavaScript check that fingerprints the browser. When a fetch comes back 403 —
+ * or comes back with the check page itself — the source throws
+ * [ChallengeRequiredException], the same signal `MyLibBookSource` uses, and the
+ * UI opens [com.lexiread.presentation.common.ChallengeWebViewDialog]. The WebView
+ * clears the check, the clearance cookie is copied into the shared cookie jar,
+ * and the request is retried with the session attached.
  */
 class AnnasArchiveBookSource(
     private val api: AnnasArchiveApi,
     context: Context,
     /**
-     * Host, routes and selectors. Public so the repository can build the same
+     * Hosts, routes and selectors. Public so the repository can build the same
      * record-page URLs the parser used; there is one instance of this source and
      * one config behind it.
      */
-    val config: AnnasArchiveConfig = AnnasArchiveConfig()
+    val config: AnnasArchiveConfig = AnnasArchiveConfig(),
+    /**
+     * The user's host override from Settings, read per request rather than
+     * captured once, so changing it takes effect without a restart.
+     *
+     * This exists because the compiled-in host is not dependable: the project
+     * has lost `.org`, `.se`, `.li`, `.pm` and `.gs` to seizures and squatters
+     * since 2025, and each replacement lands on a domain nobody can predict. An
+     * override means the next takedown costs the user a Settings edit instead of
+     * an app release.
+     */
+    private val hostOverride: (suspend () -> String?)? = null
 ) : BookSource {
 
     override val idPrefix = ID_PREFIX
     override val displayName = "Anna's Archive"
 
     private val booksDir = File(context.applicationContext.filesDir, DOWNLOAD_DIR).apply { mkdirs() }
+
+    /**
+     * The host that last served a real page, tried before the rest so a normal
+     * session pays for the failover walk once at most.
+     */
+    @Volatile
+    private var workingHost: String? = null
 
     override suspend fun search(query: String): List<Book> = withContext(Dispatchers.IO) {
         searchEntries(query, FIRST_PAGE).map { it.toBook() }
@@ -100,8 +129,12 @@ class AnnasArchiveBookSource(
             // An empty `q` asks the site for its whole catalogue; that is not a search.
             if (normalized.isBlank()) return@withContext emptyList()
 
-            val html = fetchHtml(buildSearchUrl(normalized, page, config))
-            parseSearchPage(html, config).take(SEARCH_LIMIT)
+            withHostFailover(
+                build = { host -> buildSearchUrl(normalized, page, config, host) },
+                // A real page with no rows is a legitimate "no results", not a
+                // bad host, so an empty list is accepted rather than retried.
+                parse = { _, html -> parseSearchPage(html, config).take(SEARCH_LIMIT) }
+            )
         }
 
     override fun canDownload(book: Book): Boolean = owns(book)
@@ -112,10 +145,13 @@ class AnnasArchiveBookSource(
 
         // 1. The detail page carries the mirror link. It is derived from the md5
         //    rather than remembered from search, so a book restored from the
-        //    library still downloads after a process restart.
-        val detailUrl = detailUrlFor(md5)
-        val info = parseBookInfo(fetchHtml(detailUrl), detailUrl, config)
-            ?: throw IllegalStateException("Anna's Archive returned no record for '${book.title}'.")
+        //    library still downloads after a process restart. *Which host* serves
+        //    it is discovered here, because the compiled-in one is regularly
+        //    seized — see `candidateHosts`.
+        val (_, info) = withHostFailover(
+            build = { host -> recordUrl(md5, config, host) },
+            parse = { url, html -> parseBookInfo(html, url, config)?.let { url to it } }
+        )
 
         val mirrorPage = info.mirrorUrl
             ?: throw UnsupportedOperationException(
@@ -171,7 +207,7 @@ class AnnasArchiveBookSource(
     // --- fetching -----------------------------------------------------------
 
     /**
-     * Fetches one page. A Cloudflare 503 becomes [ChallengeRequiredException] so
+     * Fetches one page. A browser check becomes [ChallengeRequiredException] so
      * the UI can open its WebView; anything else propagates untouched.
      */
     private suspend fun fetchHtml(url: String): String {
@@ -186,6 +222,108 @@ class AnnasArchiveBookSource(
             // attacker-controlled input and is not always UTF-8.
             TextEncoding.readText(response.byteStream(), config.maxPageBytes)
         }
+    }
+
+    /**
+     * The hosts to try, best first: the user's override, then whichever host
+     * last answered, then the compiled-in order.
+     *
+     * This is the whole answer to "the source is unavailable". The domains are
+     * not stable — `.org` and `.se` stopped resolving, `.li` was deleted and is
+     * now a domain-sale page — so the working host is found by asking, not by
+     * being compiled in.
+     */
+    private suspend fun candidateHosts(): List<String> {
+        val override = sanitizeHost(runCatching { hostOverride?.invoke() }.getOrNull())
+        return (listOfNotNull(override, workingHost) + config.hosts).distinct()
+    }
+
+    /**
+     * Runs [build] against each candidate host until [parse] yields a value.
+     *
+     * `parse` returning `null` means "this host did not give me what I asked
+     * for" — a lapsed domain, a squatted parking page, a restyled error — and
+     * the next host is tried.
+     *
+     * A [ChallengeRequiredException] is remembered rather than re-raised
+     * immediately: another host may serve the page without a challenge, and
+     * walking the list only to hand the user a WebView is a worse outcome. If
+     * *every* host challenges, the challenge is rethrown so the UI can still
+     * offer the WebView.
+     */
+    private suspend fun <T> withHostFailover(
+        build: (host: String) -> String,
+        parse: (url: String, html: String) -> T?
+    ): T {
+        var lastError: Throwable? = null
+        var challenge: ChallengeRequiredException? = null
+
+        for (host in candidateHosts()) {
+            val url = try {
+                build(host)
+            } catch (error: Throwable) {
+                // A malformed host (the override is user input) must skip the
+                // host, not abort the walk.
+                lastError = error
+                continue
+            }
+            val html = try {
+                fetchHtml(url)
+            } catch (error: ChallengeRequiredException) {
+                challenge = error
+                continue
+            } catch (error: Throwable) {
+                lastError = error
+                continue
+            }
+            // Some configurations answer the check with 200 instead of 403. The
+            // page itself is the reliable signal, so it is checked before the
+            // archive markers: a challenge page is not a host that went stale.
+            if (looksLikeChallenge(html)) {
+                challenge = ChallengeRequiredException(url)
+                continue
+            }
+            if (!looksLikeArchive(html)) {
+                lastError = IllegalStateException(
+                    "Anna's Archive host '$host' answered, but not with the archive."
+                )
+                continue
+            }
+            val parsed = parse(url, html)
+            if (parsed == null) {
+                lastError = IllegalStateException("Anna's Archive host '$host' returned no usable page.")
+                continue
+            }
+            workingHost = host
+            // Covers are fetched by Coil through a separate allow-list, which has
+            // to know about a host we only discovered at runtime.
+            AnnasArchiveConfig.rememberDiscoveredHost(host)
+            return parsed
+        }
+        throw challenge ?: lastError
+        ?: IllegalStateException("No Anna's Archive host is reachable.")
+    }
+
+    /**
+     * Reduces user input to a bare hostname, or `null` if it is not one.
+     *
+     * The override is the user's own instruction, so it is not required to be in
+     * the compiled-in allow-list — that list is exactly what rots. It is still
+     * reduced to a hostname: a value like `evil.example/x`, `host:8080` or
+     * `javascript:` must never reach the URL builder, and `HttpUrl.Builder`
+     * throwing on a bad host would otherwise surface as an opaque crash.
+     */
+    internal fun sanitizeHost(raw: String?): String? {
+        val trimmed = raw?.trim()?.lowercase(Locale.US) ?: return null
+        val withoutScheme = trimmed.removePrefix("https://").removePrefix("http://")
+        val host = withoutScheme
+            .substringBefore('/')
+            .substringBefore('?')
+            .substringBefore('#')
+            .substringBefore(':')
+            .trimEnd('.')
+        if (host.isBlank() || host.length > MAX_HOST_LENGTH) return null
+        return host.takeIf { HOST_PATTERN.matches(it) }
     }
 
     /**
@@ -222,8 +360,6 @@ class AnnasArchiveBookSource(
         }
     }
 
-    private fun detailUrlFor(md5: String): String = recordUrl(md5, config)
-
     private fun safeStem(value: String): String =
         value.replace(Regex("[^A-Za-z0-9._-]"), "_").take(MAX_ID_LENGTH)
 
@@ -242,9 +378,12 @@ class AnnasArchiveBookSource(
 
         // --- URL ------------------------------------------------------------
 
-        /** The `/md5/<md5>` record page for a book. */
-        internal fun recordUrl(md5: String, config: AnnasArchiveConfig = AnnasArchiveConfig()): String =
-            "https://${config.host}${config.detailPath.trimEnd('/')}/$md5"
+        /** The `/md5/<md5>` record page for a book, on [host]. */
+        internal fun recordUrl(
+            md5: String,
+            config: AnnasArchiveConfig = AnnasArchiveConfig(),
+            host: String = config.host
+        ): String = "https://$host${config.detailPath.trimEnd('/')}/$md5"
 
         /** The MIME type a downloaded file of [kind] is stored with. */
         internal fun mimeFor(kind: FormatKind): String = when (kind) {
@@ -267,9 +406,10 @@ class AnnasArchiveBookSource(
         fun buildSearchUrl(
             query: String,
             page: Int = FIRST_PAGE,
-            config: AnnasArchiveConfig = AnnasArchiveConfig()
+            config: AnnasArchiveConfig = AnnasArchiveConfig(),
+            host: String = config.host
         ): String {
-            val builder = HttpUrl.Builder().scheme("https").host(config.host)
+            val builder = HttpUrl.Builder().scheme("https").host(host)
             val path = config.searchPath.trim('/')
             if (path.isNotBlank()) builder.addPathSegment(path)
             // The site expects every filter key present, even when empty.
@@ -612,6 +752,81 @@ class AnnasArchiveBookSource(
         private const val SLOW_DOWNLOAD_MARKER = "/slow_download/"
         private const val MAX_ANCHORS = 400
         private const val MAX_CLIMB = 6
+        private const val MAX_HOST_LENGTH = 253
+        /** How much of a page is scanned for markers. The markers are early in the markup. */
+        private const val MARKER_SCAN_CHARS = 200_000
+
+        /** A bare DNS hostname — labels of alphanumerics and hyphens, no port and no path. */
+        private val HOST_PATTERN = Regex(
+            "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
+        )
+
+        /**
+         * Text only a domain-squatting or ad page carries.
+         *
+         * These are the services actually seen serving Anna's Archive's lapsed
+         * domains on 2026-10-10: AboveDomains on `.li`, ParkLogic on `.pm`, and
+         * an ad-network hop on `.gs`.
+         */
+        private val PARKING_MARKERS = listOf(
+            "abovedomains",
+            "parklogic",
+            "clickpathworks",
+            "sedoparking",
+            "buy this domain",
+            "domain is for sale",
+            "domain for sale",
+            "forsale",
+            "domain parking"
+        )
+
+        /**
+         * Whether a fetched page is a browser check rather than content.
+         *
+         * Anna's Archive sits behind DDoS-Guard, which answers a plain request
+         * with a JavaScript check that fingerprints the browser. The check is
+         * usually a 403, but it can also be served with 200 — the page, not
+         * the status code, is the reliable signal.
+         *
+         * Only a WebView can pass it, so the page is reported as a challenge
+         * and the UI is asked to open a browser on it.
+         */
+        internal fun looksLikeChallenge(html: String): Boolean {
+            if (html.isBlank()) return false
+            val sample = html.take(MARKER_SCAN_CHARS).lowercase(Locale.US)
+            return CHALLENGE_MARKERS.any { sample.contains(it) }
+        }
+
+        /**
+         * Text the real site always carries, so a blank or gutted page is not taken for it.
+         */
+        private val ARCHIVE_MARKERS = listOf("anna's archive", "annas-archive", "annasarchive")
+
+        /** Markers of the browser checks the site answers plain requests with. */
+        private val CHALLENGE_MARKERS = listOf(
+            "ddos-guard",
+            "ddg-l10n-title",
+            "checking your browser",
+            "just a moment",
+            "cf-browser-verification",
+            "challenge-platform"
+        )
+
+        /**
+         * Whether a fetched page really is Anna's Archive.
+         *
+         * A 200 response proves nothing here. `.li` answers 200 with an
+         * AboveDomains sale page, `.pm` with a ParkLogic parking page and `.gs`
+         * with an ad-network redirect; each of those would otherwise be parsed as
+         * a search result, or — worse — accepted as a working host and asked for
+         * a book file.
+         */
+        internal fun looksLikeArchive(html: String): Boolean {
+            if (html.isBlank()) return false
+            val sample = html.take(MARKER_SCAN_CHARS).lowercase(Locale.US)
+            if (PARKING_MARKERS.any { sample.contains(it) }) return false
+            return ARCHIVE_MARKERS.any { sample.contains(it) }
+        }
 
         private val LAZY_IMAGE_ATTRIBUTES = listOf(
             "src", "data-src", "data-original", "data-lazy-src", "data-echo", "data-url"
@@ -629,7 +844,14 @@ class AnnasArchiveBookSource(
  * outdated selector degrades instead of emptying the results.
  */
 data class AnnasArchiveConfig(
-    val host: String = DEFAULT_HOST,
+    /**
+     * Candidate hosts, best first — a *failover order*, not a constant.
+     *
+     * The project's domains are seized and re-registered every few months, so
+     * the source walks this list until one answers with a real page. [host]
+     * below is the preferred entry.
+     */
+    val hosts: List<String> = DEFAULT_HOSTS,
     val searchPath: String = "/search",
     /** The record page prefix; the md5 is appended. */
     val detailPath: String = "/md5",
@@ -651,12 +873,50 @@ data class AnnasArchiveConfig(
      */
     val requireKnownFormat: Boolean = true
 ) {
+    /** The preferred host — used to build URLs until failover moves on. */
+    val host: String get() = hosts.firstOrNull() ?: DEFAULT_HOST
+
     companion object {
-        const val DEFAULT_HOST = "annas-archive.se"
+        /**
+         * The current preferred host. Verified by DNS-over-HTTPS on 2026-10-10:
+         * `.org`, `.se` and `.in` no longer resolve at all, and `.li`, `.pm` and
+         * `.gs` have been taken over by domain-sale, parking and ad services.
+         *
+         * See `UrlValidator.ANNAS_ARCHIVE_HOSTS` for the full history.
+         * **Re-verify before changing this, and never add a lapsed domain back**
+         * — a squatted host in the trusted set is worse than a missing one.
+         */
+        const val DEFAULT_HOST = "annas-archive.gl"
+
+        /** Failover order. All three resolved on 2026-10-10. */
+        val DEFAULT_HOSTS: List<String> = listOf(
+            DEFAULT_HOST,
+            "annas-archive.pk",
+            "annas-archive.gd"
+        )
+
         const val DEFAULT_MAX_PAGE_BYTES = 4L * 1024 * 1024
 
-        /** Hosts Anna's Archive covers are served from. */
-        val COVER_HOSTS: Set<String> = UrlValidator.ANNAS_ARCHIVE_HOSTS
+        /**
+         * Hosts discovered at request time: the user's override, or whichever
+         * host answered when the compiled-in ones were down.
+         *
+         * Covers are loaded by Coil through `CoverUrls.sanitize`, which is handed
+         * the allowed hosts by `catalogCoverHostsFor`. That is a pure mapping
+         * from a book id and cannot read Settings, so this registry is how a host
+         * discovered at request time becomes trusted for the cover of the book
+         * that came from it. Only the source writes it, and only with a host it
+         * actually fetched from.
+         */
+        @Volatile
+        private var discoveredHosts: Set<String> = emptySet()
+
+        internal fun rememberDiscoveredHost(host: String) {
+            discoveredHosts = discoveredHosts + host
+        }
+
+        /** Hosts Anna's Archive covers may be served from. */
+        val COVER_HOSTS: Set<String> get() = UrlValidator.ANNAS_ARCHIVE_HOSTS + discoveredHosts
     }
 }
 

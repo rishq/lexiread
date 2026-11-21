@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -321,6 +322,28 @@ private fun LibraryBookCard(
                             )
                         }
                     }
+
+                    // The marked state has to be readable on the card itself:
+                    // a finished book leaves the "Reading" tab, so the icon is
+                    // the only thing left that says it was marked.
+                    if (book.isFinished) {
+                        Box(
+                            modifier = Modifier
+                                .padding(start = 4.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.primaryContainer,
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "Finished",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
 
                 Text(
@@ -363,11 +386,14 @@ private fun LibraryBookCard(
 
                     PulseIconButton(
                         active = book.isFinished,
-                        contentDescription = "Mark Finished",
+                        // Two different glyphs, not two tints: a filled circle
+                        // for a finished book and a hollow one for an unfinished
+                        // one. The tint alone was too quiet to read as a state.
+                        contentDescription = if (book.isFinished) "Finished" else "Mark Finished",
                         activeTint = MaterialTheme.colorScheme.primary,
-                        inactiveTint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        inactiveTint = MaterialTheme.colorScheme.onSurfaceVariant,
                         activeIcon = Icons.Filled.CheckCircle,
-                        inactiveIcon = Icons.Filled.CheckCircle,
+                        inactiveIcon = Icons.Outlined.CheckCircle,
                         onClick = onToggleFinished
                     )
 

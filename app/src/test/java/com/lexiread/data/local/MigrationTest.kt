@@ -203,4 +203,37 @@ class MigrationTest {
 
         v6.close()
     }
+
+    @Test
+    fun `migrate 6 to 7 unfavorites only the seeded demo books`() {
+        helper.createDatabase(testDatabaseName, 6).use { db ->
+            listOf("gutenberg_1342", "gutenberg_1661", "gutenberg_11", "my_book").forEach { id ->
+                db.execSQL(
+                    "INSERT INTO `books` (`id`, `title`, `author`, `coverUrl`, `description`," +
+                        " `filePath`, `format`, `language`, `subjects`, `isFavorite`, `isSaved`," +
+                        " `isFinished`, `isImported`, `addedTimestamp`)" +
+                        " VALUES (?, 'Title', 'Author', NULL, NULL, NULL," +
+                        " 'EPUB', 'en', '[]', 1, 1, 0, 0, 1)",
+                    arrayOf<Any?>(id)
+                )
+            }
+        }
+
+        val v7 = helper.runMigrationsAndValidate(
+            testDatabaseName, 7, true,
+            AppDatabase.MIGRATION_6_7
+        )
+
+        v7.query("SELECT `id`, `isFavorite` FROM `books` ORDER BY `id`").use { cursor ->
+            val favorites = mutableMapOf<String, Int>()
+            while (cursor.moveToNext()) favorites[cursor.getString(0)] = cursor.getInt(1)
+            assertEquals(0, favorites["gutenberg_1342"])
+            assertEquals(0, favorites["gutenberg_1661"])
+            // A favorite the user set on another book must survive the upgrade.
+            assertEquals(1, favorites["gutenberg_11"])
+            assertEquals(1, favorites["my_book"])
+        }
+
+        v7.close()
+    }
 }

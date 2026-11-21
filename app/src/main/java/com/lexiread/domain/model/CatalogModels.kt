@@ -107,7 +107,16 @@ data class CatalogPage(
     val totalResults: Int?,
     val hasMore: Boolean,
     /** Names of sources that failed and were excluded from this page. */
-    val failedSources: List<String> = emptyList()
+    val failedSources: List<String> = emptyList(),
+    /**
+     * URL of a browser check one of the sources asked for, if any.
+     *
+     * A challenged source is not a dead end: the site answers a plain request
+     * with a JavaScript check that only a real browser can pass. The URL is
+     * carried out of the repository so the UI can open a WebView on it, copy
+     * the clearance cookie into the HTTP client and retry.
+     */
+    val challengeUrl: String? = null
 ) {
     companion object {
         fun empty(page: Int = 1): CatalogPage = CatalogPage(

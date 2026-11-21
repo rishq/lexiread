@@ -10,7 +10,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -62,7 +61,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.platform.TextToolbarStatus
@@ -100,35 +99,48 @@ fun ReaderScreen(
         ReaderThemeOption.SEPIA -> Pair(Color(0xFFFBF0D9), Color(0xFF3D2C1E))
     }
 
-    BoxWithConstraints(
+    Box(
         modifier = modifier
             .fillMaxSize()
             .background(backgroundColor)
             .testTag("reader_screen")
     ) {
-        val density = LocalDensity.current
-        val widthPx = with(density) { constraints.maxWidth }
-        val heightPx = with(density) { constraints.maxHeight }
-
-        LaunchedEffect(widthPx, heightPx) {
-            viewModel.onContainerDimensionsChanged(widthPx, heightPx)
-        }
-
+        // Pagination must use the text field's own bounds, not this outer box:
+        // the column's padding, header and footer are not part of the page canvas.
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .pointerInput(Unit) {
                     var totalDragX = 0f
+                    var lastDragX = 0f
+                    var lastMoveTime = 0L
+                    var velocityX = 0f
                     detectHorizontalDragGestures(
-                        onDragStart = { totalDragX = 0f },
+                        onDragStart = {
+                            totalDragX = 0f
+                            lastDragX = 0f
+                            velocityX = 0f
+                            lastMoveTime = System.currentTimeMillis()
+                        },
                         onHorizontalDrag = { change, dragAmount ->
                             change.consume()
                             totalDragX += dragAmount
+                            val now = System.currentTimeMillis()
+                            val elapsed = now - lastMoveTime
+                            // Recent speed only: an earlier fast move must not
+                            // turn the page after the finger has slowed down.
+                            velocityX = if (elapsed in 1..100) {
+                                (totalDragX - lastDragX) * 1000f / elapsed
+                            } else 0f
+                            lastDragX = totalDragX
+                            lastMoveTime = now
                         },
+                        // A quick flick turns the page even when it fell short of
+                        // the distance threshold — the gesture should not feel ignored.
                         onDragEnd = {
-                            if (totalDragX < -50f) {
+                            if (totalDragX < -50f || velocityX <= -500f) {
                                 viewModel.nextPage()
-                            } else if (totalDragX > 50f) {
+                            } else if (totalDragX > 50f || velocityX >= 500f) {
                                 viewModel.previousPage()
                             }
                         }
@@ -318,6 +330,15 @@ fun ReaderScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth()
+                                .onSizeChanged { size ->
+                                    // Ignore the transient shrink while the highlight bar
+                                    // is open; repaginate only from the stable text bounds.
+                                    if (uiState.highlightBar == null) {
+                                        viewModel.onTextAreaDimensionsChanged(
+                                            size.width, size.height
+                                        )
+                                    }
+                                }
                         )
                     }
 

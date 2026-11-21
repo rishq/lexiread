@@ -31,6 +31,9 @@ class UserPreferencesManager(private val context: Context) {
         // P1-6: explicit consent for cloud word lookups (dictionary, translation, AI).
         val CLOUD_LOOKUP_ENABLED = androidx.datastore.preferences.core.booleanPreferencesKey("cloud_lookup_enabled")
         val CLOUD_CONSENT_ASKED = androidx.datastore.preferences.core.booleanPreferencesKey("cloud_consent_asked")
+        // Anna's Archive loses its domain to takedowns every few months, so the
+        // host is user-editable rather than only compiled in.
+        val ANNAS_ARCHIVE_HOST = stringPreferencesKey("annas_archive_host")
     }
 
     // P1-5: keys are stored encrypted (AES-GCM, Keystore) and decrypted on read.
@@ -166,6 +169,24 @@ class UserPreferencesManager(private val context: Context) {
     suspend fun updateVolumeKeysPageTurn(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[Keys.VOLUME_KEYS_PAGE_TURN] = enabled
+        }
+    }
+
+    /**
+     * A hostname the user typed to replace the compiled-in Anna's Archive host,
+     * or empty to use the built-in failover list.
+     *
+     * Stored raw and validated where it is used (`AnnasArchiveBookSource.
+     * sanitizeHost`), so a typo degrades to "use the built-in list" rather than
+     * to a crash on the next search.
+     */
+    val annasArchiveHost: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[Keys.ANNAS_ARCHIVE_HOST].orEmpty()
+    }
+
+    suspend fun updateAnnasArchiveHost(host: String) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.ANNAS_ARCHIVE_HOST] = host.trim()
         }
     }
 }

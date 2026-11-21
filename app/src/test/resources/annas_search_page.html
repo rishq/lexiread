@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8">
+<title>Search - Anna's Archive</title></head>
+<body>
+<div class="js-aarecord-list-outer"> <!-- Keep in sync with below (partial results) -->
+                
+  <script>
+    // We can't do this in Jinja because of https://github.com/pallets/jinja/issues/1693 :(
+    if (!window.aarecord_list_code_loaded) {
+      window.aarecord_list_code_loaded = true;
+
+      document.addEventListener("keydown", e => {
+        const fields = Array.from(document.querySelectorAll('.js-vim-focus'));
+        if (fields.length === 0) {
+          return;
+        }
+
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        if ((e.target.tagName.toLowerCase() == 'input' && ['text','search'].includes(e.target.type.toLowerCase())) || (e.target.tagName.toLowerCase() == 'textarea') || (e.target.tagName.toLowerCase() == 'select')) {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            fields[0].focus();
+            return;
+          }
+          return;
+        }
+        if (e.key === "j" || e.key === "k") {
+          e.preventDefault();
+          const activeIndex = fields.indexOf(document.activeElement);
+          if (activeIndex === -1) {
+            fields[0].focus();
+          } else {
+            if (e.key === "j") {
+              const newIndex = Math.min(activeIndex+1, fields.length-1);
+              fields[newIndex].focus();
+            } else {
+              const newIndex = Math.max(activeIndex-1, 0);
+              fields[newIndex].focus();
+            }
+          }
+        }
+      });
+    }
+
+    window.addReadMoreButton = function(el) {
+      var elChild = el.children[0];
+      if (elChild.offsetHeight < elChild.scrollHeight || elChild.offsetWidth < elChild.scrollWidth) {
+        el.querySelector('.js-aarecord-list-read-more').classList.remove('hidden');
+      }
+    }
+  </script>
+
+
+
+      <div class="flex  pt-3 pb-3 border-b last:border-b-0 border-gray-100">
+        <a href="/md5/2ca737f4dbc7cd4d0cf9b6019ca4c26c" class="custom-a block mr-2 sm:mr-4 hover:opacity-80">
+          <div id="list_cover_aarecord_id__md5:2ca737f4dbc7cd4d0cf9b6019ca4c26c" class="w-20 h-[7.5rem] sm:w-24 sm:h-36 rounded shadow relative overflow-hidden text-left">
+    <img class="w-full h-full object-cover transition-transform relative z-10 rounded" src="https://s3proxy.cdn-zlib.sk//covers299/collections/userbooks/1277dad9bd46459e5c346caa173918797c8451602eaf30ddc2d5cd3d0e04e6c7.png" alt="" referrerpolicy="no-referrer" loading="lazy" decoding="async" onerror="this.parentNode.querySelector('.js-aarecord-list-fallback-cover').classList.remove('hidden'); this.parentNode.removeChild(this)">
+    <div class="absolute top-0 left-0 w-full h-full p-2 flex flex-col text-[7pt] leading-[1.1] break-words overflow-hidden select-none hidden js-aarecord-list-fallback-cover" style="background-color: hsl(220, 30%, 90%)">
+      <div class="font-bold text-violet-900 line-clamp-[5]" data-content="A Very Vampy Christmas: From Sugarplums and Scandal"></div>
+      <div class="font-bold text-amber-900 line-clamp-[2] mt-2" data-content="Kerrelyn Sparks"></div>
+    </div>
+  </div>
+        </a>
+        <div class="max-w-full overflow-hidden flex flex-col justify-around">
+          <div>
+              <div class="line-clamp-[2] overflow-hidden break-words text-[9px] text-gray-500 font-mono">upload/bibliotik/V/Very Vampy Christmas, A - Kerrelyn Sparks.epub</div>
+<a href="/md5/2ca737f4dbc7cd4d0cf9b6019ca4c26c" class="line-clamp-[3] overflow-hidden break-words js-vim-focus custom-a text-[#2563eb] inline-block outline-offset-[-2px] outline-2 rounded-[3px] focus:outline font-semibold text-lg leading-[1.2] hover:opacity-80 mt-1">A Very Vampy Christmas: From Sugarplums and Scandal</a><a href="/search?q=Kerrelyn%20Sparks" class="line-clamp-[2] overflow-hidden break-words block custom-a text-sm hover:opacity-70 leading-[1.2] mt-1"><span class="icon-[mdi--user-edit] text-base align-sub"></span> Kerrelyn Sparks</a><a href="/search?q=HarperCollins%20Publishers;%20Avon%20Impulse" class="line-clamp-[2] overflow-hidden break-words block custom-a text-sm hover:opacity-70 leading-[1.2] mt-1"><span class="icon-[mdi--company] text-base align-sub"></span> HarperCollins Publishers; Avon Impulse, 2011</a>          </div>
+          <div>
+            <div class="line-clamp-[5]"></div><!-- Only to make sure Tailwind generates it -->
+<div class="relative"><div class="line-clamp-[2] overflow-hidden break-words text-sm text-gray-600 mt-2 mb-2 leading-[1.3]">"It's over, Don Orlando." Maggie O'Brian lowered her gaze.</div> <a href="#" class="hidden js-aarecord-list-read-more absolute bottom-[-1px] right-0 text-xs bg-white pl-[6px] pr-1 py-[2px]" onclick="this.parentElement.children[0].classList.remove('line-clamp-[2]'); this.parentElement.children[0].classList.add('line-clamp-[5]'); this.parentNode.removeChild(this); event.preventDefault(); return false;">Read more…</a> <script>window.addReadMoreButton(document.currentScript.parentElement);</script></div>          </div>
+          <div class="text-gray-800 dark:text-slate-400 font-semibold text-sm leading-[1.2] mt-2">✅ English [en] · EPUB · 1.3MB · 2011 · 📕 Book (fiction) · 🚀/lgli/upload/zlib    · <a href="#" class="custom-a text-[#2563eb] inline-block outline-offset-[-2px] outline-2 rounded-[3px] focus:outline font-semibold text-sm leading-none hover:opacity-80 relative"><span class="text-[15px] align-text-bottom inline-block icon-[pepicons-pencil--bookmark-filled] mr-[1px]"></span><!--TODO:TRANSLATE-->Save<script>
+      (function() {
+        var scriptParent = document.currentScript.parentElement;
+        scriptParent.addEventListener("click", (event) => {
+          var aarecord_id = "md5:2ca737f4dbc7cd4d0cf9b6019ca4c26c";
+          var leftPos = 0;
+          var innerStyles = 'width: calc(100% - 16px); margin-left: 8px'
+          if (document.body.clientWidth > 800) {
+            leftPos = (scriptParent.getBoundingClientRect().left + window.scrollX);
+            innerStyles = 'transform: translateX(-100%); max-width: ' + (scriptParent.getBoundingClientRect().left + window.scrollX) + 'px';
+          }
+
+          var reloadNode = document.createElement('div');
+          document.body.appendChild(reloadNode);
+          reloadNode.innerHTML = '<div class="absolute left-0 top-0 right-0 bottom-0" style="background:rgba(0,0,0,0.2); z-index: 9999999"><div role="dialog" class="js-lists-popover-inner absolute p-4 cursor-auto bg-white shadow-xl rounded-lg" style="left: ' + leftPos + 'px; top: ' + (scriptParent.getBoundingClientRect().top + window.scrollY) + 'px; ' + innerStyles + '"><span class="leading-none align-[-3px] text-[#555] inline-block icon-[svg-spinners--ring-resize]"></span></span></div></div>'
+
+          fetch("/dyn/lists/" + aarecord_id + '?is_popover=true').then((response) => response.ok ? response.text() : 'Error 921857').then((text) => {
+            reloadNode.querySelector('.js-lists-popover-inner').innerHTML = text;
+            window.executeScriptElements(reloadNode);
+
+            function closePopover() {
+              document.body.removeChild(reloadNode);
+              document.removeEventListener("keydown", escapeHandler, true);
+            }
+
+            var escapeHandler = function(e) {
+              if (e.key === "Escape") {
+                closePopover();
+              }
+            };
+            document.addEventListener("keydown", escapeHandler, true);
+
+            reloadNode.querySelector('.js-list-popover-close').addEventListener('click', function(event) {
+              closePopover();
+              event.preventDefault();
+              return false;
+            });
+
+            reloadNode.querySelector('.js-list-popover-close').focus();
+          });
+          event.preventDefault();
+          document.activeElement.blur();
+          return false;
+        });
+      })();
+    </script></a>
+    <span class="text-xs text-gray-500"><script>
+      (function() {
+        var scriptParent = document.currentScript.parentElement;
+
+        const md5 = "2ca737f4dbc7cd4d0cf9b6019ca4c26c";
+
+        // # "text/css" for DDOS-GUARD caching.
+        fetch("/dyn/md5/inline_info/" + md5, { headers: { 'Accept': 'text/css' } }).then((response) => response.json()).then((json) => {
+          const icons = [
+            // TODO:TRANSLATE
+            ` · <span title="Downloads" class="whitespace-nowrap"><span class='text-[14px] align-text-bottom inline-block icon-[typcn--download] mr-[3px]'></span>${json.downloads_total.toLocaleString()}</span> <span title="Downloads">`,
+            // TODO:TRANSLATE
+            json.great_quality_count && `<span title="Great quality" class="whitespace-nowrap text-yellow-500"><span class='text-[14px] align-text-bottom inline-block icon-[material-symbols--star] mr-[2px]'></span>${json.great_quality_count.toLocaleString()}</span></span>`,
+            // TODO:TRANSLATE
+            json.lists_count && `<span title="Lists" class="whitespace-nowrap"><span class='text-[14px] align-[-3px] inline-block icon-[pepicons-pencil--bookmark-filled] mr-[2px]'></span>${json.lists_count.toLocaleString()}</span></span>`,
+            // TODO:TRANSLATE
+            json.comments_count && `<span title="Comments" class="whitespace-nowrap"><span class='text-[14px] align-[-3px] icon-[mdi--comment] mr-[4px]'></span>${json.comments_count.toLocaleString()}</span></span>`,
+            // TODO:TRANSLATE
+            json.reports_count && `<span title="File issues" class="whitespace-nowrap text-red-500"><span class='text-[14px] align-text-bottom inline-block icon-[material-symbols--warning] mr-[2px]'></span>${json.reports_count.toLocaleString()}</span></span>`,
+          ]
+          scriptParent.innerHTML = '<span class="align-text-bottom">' + icons.filter(Boolean).join(` · `) + '</span>';
+        });
+      })();
+    </script></span>
+</div>
+          <div class="hidden">base score: 14065.0, final score: 169190.88</div>
+        </div>
+      </div>
+
+      <div class="flex  pt-3 pb-3 border-b last:border-b-0 border-gray-100">
+        <a href="/md5/827bbd805f719bee2403b22f1d99f9dc" class="custom-a block mr-2 sm:mr-4 hover:opacity-80">
+          <div id="list_cover_aarecord_id__md5:827bbd805f719bee2403b22f1d99f9dc" class="w-20 h-[7.5rem] sm:w-24 sm:h-36 rounded shadow relative overflow-hidden text-left">
+    <img class="w-full h-full object-cover transition-transform relative z-10 rounded" src="https://s3proxy.cdn-zlib.sk//covers299/collections/chinese/ccc9b46dad6edd196aa394c4c33b9bfa5de4a292b701ae662cc87cceb23081fd.jpg" alt="" referrerpolicy="no-referrer" loading="lazy" decoding="async" onerror="this.parentNode.querySelector('.js-aarecord-list-fallback-cover').classList.remove('hidden'); this.parentNode.removeChild(this)">
+    <div class="absolute top-0 left-0 w-full h-full p-2 flex flex-col text-[7pt] leading-[1.1] break-words overflow-hidden select-none hidden js-aarecord-list-fallback-cover" style="background-color: hsl(120, 60%, 90%)">
+      <div class="font-bold text-violet-900 line-clamp-[5]" data-content="Discrete and system models"></div>
+      <div class="font-bold text-amber-900 line-clamp-[2] mt-2" data-content="edited by William F. Lucas, Fred S. Roberts, and Robert M. Thrall"></div>
+    </div>
+  </div>
+        </a>
+        <div class="max-w-full overflow-hidden flex flex-col justify-around">
+          <div>
+              <div class="line-clamp-[2] overflow-hidden break-words text-[9px] text-gray-500 font-mono">duxiu/initial_release/a_40357286.zip</div>
+<a href="/md5/827bbd805f719bee2403b22f1d99f9dc" class="line-clamp-[3] overflow-hidden break-words js-vim-focus custom-a text-[#2563eb] inline-block outline-offset-[-2px] outline-2 rounded-[3px] focus:outline font-semibold text-lg leading-[1.2] hover:opacity-80 mt-1">Discrete and system models</a><a href="/search?q=edited%20by%20William%20F.%20Lucas,%20Fred%20S.%20Roberts,%20and%20Robert%20M.%20Thrall" class="line-clamp-[2] overflow-hidden break-words block custom-a text-sm hover:opacity-70 leading-[1.2] mt-1"><span class="icon-[mdi--user-edit] text-base align-sub"></span> edited by William F. Lucas, Fred S. Roberts, and Robert M. Thrall</a><a href="/search?q=Springer-Verlag" class="line-clamp-[2] overflow-hidden break-words block custom-a text-sm hover:opacity-70 leading-[1.2] mt-1"><span class="icon-[mdi--company] text-base align-sub"></span> Springer-Verlag, Modules in applied mathematics, v. 3, New York, 1983</a>          </div>
+          <div>
+            <div class="line-clamp-[5]"></div><!-- Only to make sure Tailwind generates it -->
+<div class="relative"><div class="line-clamp-[2] overflow-hidden break-words text-sm text-gray-600 mt-2 mb-2 leading-[1.3]">The purpose of this four volume series is to make available for college teachers and students samples of important and realistic applications of mathematics which can be covered in undergraduate programs. The goal is to provide illustrations of how modem mathematics is actually employed to solve relevant contemporary problems. Although these independent chapters were prepared primarily for teachers in the general mathematical sciences, they should prove valuable to students, teachers, and research scientists in many of the fields of application as well. Prerequisites for each chapter and suggestions for the teacher are provided. Several of these chapters have been tested in a variety of classroom settings, and all have undergone extensive peer review and revision. Illustrations and exercises be covered in one class, are included in most chapters. Some units can whereas others provide sufficient material for a few weeks of class time. Volume 1 contains 23 chapters and deals with differential equations and, in the last four chapters, problems leading to partial differential equations. Applications are taken from medicine, biology, traffic systems and several other fields. The 14 chapters in Volume 2 are devoted mostly to problems arising in political science, but they also address questions appearing in sociology and ecology. Topics covered include voting systems, weighted voting, proportional representation, coalitional values, and committees. The 14 chapters in Volume 3 emphasize discrete mathematical methods such as those which arise in graph theory, combinatorics, and networks.</div> <a href="#" class="hidden js-aarecord-list-read-more absolute bottom-[-1px] right-0 text-xs bg-white pl-[6px] pr-1 py-[2px]" onclick="this.parentElement.children[0].classList.remove('line-clamp-[2]'); this.parentElement.children[0].classList.add('line-clamp-[5]'); this.parentNode.removeChild(this); event.preventDefault(); return false;">Read more…</a> <script>window.addReadMoreButton(document.currentScript.parentElement);</script></div>          </div>
+          <div class="text-gray-800 dark:text-slate-400 font-semibold text-sm leading-[1.2] mt-2">✅ English [en] · PDF · 50.4MB · 1983 · 📗 Book (unknown) · 🚀/duxiu/zlibzh    · <a href="#" class="custom-a text-[#2563eb] inline-block outline-offset-[-2px] outline-2 rounded-[3px] focus:outline font-semibold text-sm leading-none hover:opacity-80 relative"><span class="text-[15px] align-text-bottom inline-block icon-[pepicons-pencil--bookmark-filled] mr-[1px]"></span><!--TODO:TRANSLATE-->Save<script>
+      (function() {
+        var scriptParent = document.currentScript.parentElement;
+        scriptParent.addEventListener("click", (event) => {
+          var aarecord_id = "md5:827bbd805f719bee2403b22f1d99f9dc";
+          var leftPos = 0;
+          var innerStyles = 'width: calc(100% - 16px); margin-left: 8px'
+          if (document.body.clientWidth > 800) {
+            leftPos = (scriptParent.getBoundingClientRect().left + window.scrollX);
+            innerStyles = 'transform: translateX(-100%); max-width: ' + (scriptParent.getBoundingClientRect().left + window.scrollX) + 'px';
+          }
+
+          var reloadNode = document.createElement('div');
+          document.body.appendChild(reloadNode);
+          reloadNode.innerHTML = '<div class="absolute left-0 top-0 right-0 bottom-0" style="background:rgba(0,0,0,0.2); z-index: 9999999"><div role="dialog" class="js-lists-popover-inner absolute p-4 cursor-auto bg-white shadow-xl rounded-lg" style="left: ' + leftPos + 'px; top: ' + (scriptParent.getBoundingClientRect().top + window.scrollY) + 'px; ' + innerStyles + '"><span class="leading-none align-[-3px] text-[#555] inline-block icon-[svg-spinners--ring-resize]"></span></span></div></div>'
+
+          fetch("/dyn/lists/" + aarecord_id + '?is_popover=true').then((response) => response.ok ? response.text() : 'Error 921857').then((text) => {
+            reloadNode.querySelector('.js-lists-popover-inner').innerHTML = text;
+            window.executeScriptElements(reloadNode);
+
+            function closePopover() {
+              document.body.removeChild(reloadNode);
+              document.removeEventListener("keydown", escapeHandler, true);
+            }
+
+            var escapeHandler = function(e) {
+              if (e.key === "Escape") {
+                closePopover();
+              }
+            };
+            document.addEventListener("keydown", escapeHandler, true);
+
+            reloadNode.querySelector('.js-list-popover-close').addEventListener('click', function(event) {
+              closePopover();
+              event.preventDefault();
+              return false;
+            });
+
+            reloadNode.querySelector('.js-list-popover-close').focus();
+          });
+          event.preventDefault();
+          document.activeElement.blur();
+          return false;
+        });
+      })();
+    </script></a>
+    <span class="text-xs text-gray-500"><script>
+      (function() {
+        var scriptParent = document.currentScript.parentElement;
+
+        const md5 = "827bbd805f719bee2403b22f1d99f9dc";
+
+        // # "text/css" for DDOS-GUARD caching.
+        fetch("/dyn/md5/inline_info/" + md5, { headers: { 'Accept': 'text/css' } }).then((response) => response.json()).then((json) => {
+          const icons = [
+            // TODO:TRANSLATE
+            ` · <span title="Downloads" class="whitespace-nowrap"><span class='text-[14px] align-text-bottom inline-block icon-[typcn--download] mr-[3px]'></span>${json.downloads_total.toLocaleString()}</span> <span title="Downloads">`,
+            // TODO:TRANSLATE
+            json.great_quality_count && `<span title="Great quality" class="whitespace-nowrap text-yellow-500"><span class='text-[14px] align-text-bottom inline-block icon-[material-symbols--star] mr-[2px]'></span>${json.great_quality_count.toLocaleString()}</span></span>`,
+            // TODO:TRANSLATE
+            json.lists_count && `<span title="Lists" class="whitespace-nowrap"><span class='text-[14px] align-[-3px] inline-block icon-[pepicons-pencil--bookmark-filled] mr-[2px]'></span>${json.lists_count.toLocaleString()}</span></span>`,
+            // TODO:TRANSLATE
+            json.comments_count && `<span title="Comments" class="whitespace-nowrap"><span class='text-[14px] align-[-3px] icon-[mdi--comment] mr-[4px]'></span>${json.comments_count.toLocaleString()}</span></span>`,
+            // TODO:TRANSLATE
+            json.reports_count && `<span title="File issues" class="whitespace-nowrap text-red-500"><span class='text-[14px] align-text-bottom inline-block icon-[material-symbols--warning] mr-[2px]'></span>${json.reports_count.toLocaleString()}</span></span>`,
+          ]
+          scriptParent.innerHTML = '<span class="align-text-bottom">' + icons.filter(Boolean).join(` · `) + '</span>';
+        });
+      })();
+    </script></span>
+</div>
+          <div class="hidden">base score: 14068.0, final score: 169190.64</div>
+        </div>
+      </div>
+
+      <div class="flex  pt-3 pb-3 border-b last:border-b-0 border-gray-100">
+        <a href="/md5/8b5c1360abc47948a7dac752920512d9" class="custom-a block mr-2 sm:mr-4 hover:opacity-80">
+          <div id="list_cover_aarecord_id__md5:8b5c1360abc47948a7dac752920512d9" class="w-20 h-[7.5rem] sm:w-24 sm:h-36 rounded shadow relative overflow-hidden text-left">
+    <img class="w-full h-full object-cover transition-transform relative z-10 rounded" src="https://covers.openlibrary.org/b/id/11394249-L.jpg" alt="" referrerpolicy="no-referrer" loading="lazy" decoding="async" onerror="this.parentNode.querySelector('.js-aarecord-list-fallback-cover').classList.remove('hidden'); this.parentNode.removeChild(this)">
+    <div class="absolute top-0 left-0 w-full h-full p-2 flex flex-col text-[7pt] leading-[1.1] break-words overflow-hidden select-none hidden js-aarecord-list-fallback-cover" style="background-color: hsl(255, 60%, 90%)">
+      <div class="font-bold text-violet-900 line-clamp-[5]" data-content="Pulsars: Horizons in World Physics"></div>
+      <div class="font-bold text-amber-900 line-clamp-[2] mt-2" data-content="edited by A.D. Kuzmin; translated by Christine A. Gallant"></div>
+    </div>
+  </div>
+        </a>
+        <div class="max-w-full overflow-hidden flex flex-col justify-around">
+          <div>
+              <div class="line-clamp-[2] overflow-hidden break-words text-[9px] text-gray-500 font-mono">ia/pulsars0000unse.pdf</div>
+<a href="/md5/8b5c1360abc47948a7dac752920512d9" class="line-clamp-[3] overflow-hidden break-words js-vim-focus custom-a text-[#2563eb] inline-block outline-offset-[-2px] outline-2 rounded-[3px] focus:outline font-semibold text-lg leading-[1.2] hover:opacity-80 mt-1">Pulsars: Horizons in World Physics</a><a href="/search?q=edited%20by%20A.D.%20Kuzmin;%20translated%20by%20Christine%20A.%20Gallant" class="line-clamp-[2] overflow-hidden break-words block custom-a text-sm hover:opacity-70 leading-[1.2] mt-1"><span class="icon-[mdi--user-edit] text-base align-sub"></span> edited by A.D. Kuzmin; translated by Christine A. Gallant</a><a href="/search?q=Nova%20Science%20Publishers" class="line-clamp-[2] overflow-hidden break-words block custom-a text-sm hover:opacity-70 leading-[1.2] mt-1"><span class="icon-[mdi--company] text-base align-sub"></span> Nova Science Publishers, Lebedev Physics Institute series -- vol. 196., New York, New York State, 1992</a>          </div>
+          <div>
+            <div class="line-clamp-[5]"></div><!-- Only to make sure Tailwind generates it -->
+<div class="relative"><div class="line-clamp-[2] overflow-hidden break-words text-sm text-gray-600 mt-2 mb-2 leading-[1.3]">Pulsars (ed. A. D. Kuzmin, Nova Science, 1992) is volume 196 of the Proceedings of the Lebedev Physics Institute—a compact, 163-page collection distilling the Pushchino group’s radio-astronomy work on neutron-star pulsars. The volume surveys pulsar radio emission across meter–decimeter wavelengths, with chapters on energy output and spectra, frequency-dependent pulse profiles (and how their shapes and arrival times change), polarization and propagation effects in the interstellar medium, and techniques to reconstruct intrinsic profiles from scattering-broadened data. It emphasizes observational phenomenology—average vs. single pulses, interpulses, subpulses, and microstructure—linking these to magnetospheric geometry (core/cone components, hollow-cone models) and plasma processes. In short: a proceedings-style snapshot of early-1990s Russian leadership in low-frequency pulsar studies, useful as a historical and methodological reference for radio pulsar astronomy.</div> <a href="#" class="hidden js-aarecord-list-read-more absolute bottom-[-1px] right-0 text-xs bg-white pl-[6px] pr-1 py-[2px]" onclick="this.parentElement.children[0].classList.remove('line-clamp-[2]'); this.parentElement.children[0].classList.add('line-clamp-[5]'); this.parentNode.removeChild(this); event.preventDefault(); return false;">Read more…</a> <script>window.addReadMoreButton(document.currentScript.parentElement);</script></div>          </div>
+          <div class="text-gray-800 dark:text-slate-400 font-semibold text-sm leading-[1.2] mt-2">✅ English [en] · PDF · 8.7MB · 1992 · 📗 Book (unknown) · 🚀/ia    · <a href="#" class="custom-a text-[#2563eb] inline-block outline-offset-[-2px] outline-2 rounded-[3px] focus:outline font-semibold text-sm leading-none hover:opacity-80 relative"><span class="text-[15px] align-text-bottom inline-block icon-[pepicons-pencil--bookmark-filled] mr-[1px]"></span><!--TODO:TRANSLATE-->Save<script>
+      (function() {
+        var scriptParent = document.currentScript.parentElement;
+        scriptParent.addEventListener("click", (event) => {
+          var aarecord_id = "md5:8b5c1360abc47948a7dac752920512d9";
+          var leftPos = 0;
+          var innerStyles = 'width: calc(100% - 16px); margin-left: 8px'
+          if (document.body.clientWidth > 800) {
+            leftPos = (scriptParent.getBoundingClientRect().left + window.scrollX);
+            innerStyles = 'transform: translateX(-100%); max-width: ' + (scriptParent.getBoundingClientRect().left + window.scrollX) + 'px';
+          }
+
+          var reloadNode = document.createElement('div');
+          document.body.appendChild(reloadNode);
+          reloadNode.innerHTML = '<div class="absolute left-0 top-0 right-0 bottom-0" style="background:rgba(0,0,0,0.2); z-index: 9999999"><div role="dialog" class="js-lists-popover-inner absolute p-4 cursor-auto bg-white shadow-xl rounded-lg" style="left: ' + leftPos + 'px; top: ' + (scriptParent.getBoundingClientRect().top + window.scrollY) + 'px; ' + innerStyles + '"><span class="leading-none align-[-3px] text-[#555] inline-block icon-[svg-spinners--ring-resize]"></span></span></div></div>'
+
+          fetch("/dyn/lists/" + aarecord_id + '?is_popover=true').then((response) => response.ok ? response.text() : 'Error 921857').then((text) => {
+            reloadNode.querySelector('.js-lists-popover-inner').innerHTML = text;
+            window.executeScriptElements(reloadNode);
+
+            function closePopover() {
+              document.body.removeChild(reloadNode);
+              document.removeEventListener("keydown", escapeHandler, true);
+            }
+
+            var escapeHandler = function(e) {
+              if (e.key === "Escape") {
+                closePopover();
+              }
+            };
+            document.addEventListener("keydown", escapeHandler, true);
+
+            reloadNode.querySelector('.js-list-popover-close').addEventListener('click', function(event) {
+              closePopover();
+              event.preventDefault();
+              return false;
+            });
+
+            reloadNode.querySelector('.js-list-popover-close').focus();
+          });
+          event.preventDefault();
+          document.activeElement.blur();
+          return false;
+        });
+      })();
+    </script></a>
+    <span class="text-xs text-gray-500"><script>
+      (function() {
+        var scriptParent = document.currentScript.parentElement;
+
+        const md5 = "8b5c1360abc47948a7dac752920512d9";
+
+        // # "text/css" for DDOS-GUARD caching.
+        fetch("/dyn/md5/inline_info/" + md5, { headers: { 'Accept': 'text/css' } }).then((response) => response.json()).then((json) => {
+          const icons = [
+            // TODO:TRANSLATE
+            ` · <span title="Downloads" class="whitespace-nowrap"><span class='text-[14px] align-text-bottom inline-block icon-[typcn--download] mr-[3px]'></span>${json.downloads_total.toLocaleString()}</span> <span title="Downloads">`,
+            // TODO:TRANSLATE
+            json.great_quality_count && `<span title="Great quality" class="whitespace-nowrap text-yellow-500"><span class='text-[14px] align-text-bottom inline-block icon-[material-symbols--star] mr-[2px]'></span>${json.great_quality_count.toLocaleString()}</span></span>`,
+            // TODO:TRANSLATE
+            json.lists_count && `<span title="Lists" class="whitespace-nowrap"><span class='text-[14px] align-[-3px] inline-block icon-[pepicons-pencil--bookmark-filled] mr-[2px]'></span>${json.lists_count.toLocaleString()}</span></span>`,
+            // TODO:TRANSLATE
+            json.comments_count && `<span title="Comments" class="whitespace-nowrap"><span class='text-[14px] align-[-3px] icon-[mdi--comment] mr-[4px]'></span>${json.comments_count.toLocaleString()}</span></span>`,
+            // TODO:TRANSLATE
+            json.reports_count && `<span title="File issues" class="whitespace-nowrap text-red-500"><span class='text-[14px] align-text-bottom inline-block icon-[material-symbols--warning] mr-[2px]'></span>${json.reports_count.toLocaleString()}</span></span>`,
+          ]
+          scriptParent.innerHTML = '<span class="align-text-bottom">' + icons.filter(Boolean).join(` · `) + '</span>';
+        });
+      })();
+    </script></span>
+</div>
+          <div class="hidden">base score: 14068.0, final score: 169190.61</div>
+        </div>
+      </div>
+
+      <div class="flex  pt-3 pb-3 border-b last:border-b-0 border-gray-100">
+        <a href="/md5/6b6133d120319fc7a53e752ebca51427" class="custom-a block mr-2 sm:mr-4 hover:opacity-80">
+          <div id="list_cover_aarecord_id__md5:6b6133d120319fc7a53e752ebca51427" class="w-20 h-[7.5rem] sm:w-24 sm:h-36 rounded shadow relative overflow-hidden text-left">
+    <img class="w-full h-full object-cover transition-transform relative z-10 rounded" src="https://covers.openlibrary.org/b/id/10721079-L.jpg" alt="" referrerpolicy="no-referrer" loading="lazy" decoding="async" onerror="this.parentNode.querySelector('.js-aarecord-list-fallback-cover').classList.remove('hidden'); this.parentNode.removeChild(this)">
+    <div class="absolute top-0 left-0 w-full h-full p-2 flex flex-col text-[7pt] leading-[1.1] break-words overflow-hidden select-none hidden js-aarecord-list-fallback-cover" style="background-color: hsl(345, 60%, 90%)">
+      <div class="font-bold text-violet-900 line-clamp-[5]" data-content="Reader's Digest best loved books for young readers, vol. 9"></div>
+      <div class="font-bold text-amber-900 line-clamp-[2] mt-2" data-content="selected and condensed by the editors of Reader's Digest"></div>
+    </div>
+  </div>
+        </a>
+        <div class="max-w-full overflow-hidden flex flex-col justify-around">
+          <div>
+              <div class="line-clamp-[2] overflow-hidden break-words text-[9px] text-gray-500 font-mono">ia/readersdigestbes09bron.pdf</div>
+<a href="/md5/6b6133d120319fc7a53e752ebca51427" class="line-clamp-[3] overflow-hidden break-words js-vim-focus custom-a text-[#2563eb] inline-block outline-offset-[-2px] outline-2 rounded-[3px] focus:outline font-semibold text-lg leading-[1.2] hover:opacity-80 mt-1">Reader's Digest best loved books for young readers, vol. 9</a><a href="/search?q=selected%20and%20condensed%20by%20the%20editors%20of%20Reader's%20Digest" class="line-clamp-[2] overflow-hidden break-words block custom-a text-sm hover:opacity-70 leading-[1.2] mt-1"><span class="icon-[mdi--user-edit] text-base align-sub"></span> selected and condensed by the editors of Reader's Digest</a><a href="/search?q=Reader's%20Digest%20Association" class="line-clamp-[2] overflow-hidden break-words block custom-a text-sm hover:opacity-70 leading-[1.2] mt-1"><span class="icon-[mdi--company] text-base align-sub"></span> Reader's Digest Association, Reader's Digest best loved books for young readers, 1st ed., Pleasantville, New York, USA, New York State, 1968</a>          </div>
+          <div>
+            <div class="line-clamp-[5]"></div><!-- Only to make sure Tailwind generates it -->
+<div class="relative"><div class="line-clamp-[2] overflow-hidden break-words text-sm text-gray-600 mt-2 mb-2 leading-[1.3]">[Wuthering Heights](https://openlibrary.org/works/OL21177W) / Emily Bronte
+Typhoon / Joseph Conrad
+Last of the Mohicans / James F. Cooper
+[The Yearling](https://openlibrary.org/works/OL111382W) / Marjorie K. Rawlings.</div> <a href="#" class="hidden js-aarecord-list-read-more absolute bottom-[-1px] right-0 text-xs bg-white pl-[6px] pr-1 py-[2px]" onclick="this.parentElement.children[0].classList.remove('line-clamp-[2]'); this.parentElement.children[0].classList.add('line-clamp-[5]'); this.parentNode.removeChild(this); event.preventDefault(); return false;">Read more…</a> <script>window.addReadMoreButton(document.currentScript.parentElement);</script></div>          </div>
+          <div class="text-gray-800 dark:text-slate-400 font-semibold text-sm leading-[1.2] mt-2">✅ English [en] · PDF · 33.7MB · 1968 · 📗 Book (unknown) · 🚀/ia    · <a href="#" class="custom-a text-[#2563eb] inline-block outline-offset-[-2px] outline-2 rounded-[3px] focus:outline font-semibold text-sm leading-none hover:opacity-80 relative"><span class="text-[15px] align-text-bottom inline-block icon-[pepicons-pencil--bookmark-filled] mr-[1px]"></span><!--TODO:TRANSLATE-->Save<script>
+      (function() {
+        var scriptParent = document.currentScript.parentElement;
+        scriptParent.addEventListener("click", (event) => {
+          var aarecord_id = "md5:6b6133d120319fc7a53e752ebca51427";
+          var leftPos = 0;
+          var innerStyles = 'width: calc(100% - 16px); margin-left: 8px'
+          if (document.body.clientWidth > 800) {
+            leftPos = (scriptParent.getBoundingClientRect().left + window.scrollX);
+            innerStyles = 'transform: translateX(-100%); max-width: ' + (scriptParent.getBoundingClientRect().left + window.scrollX) + 'px';
+          }
+
+          var reloadNode = document.createElement('div');
+          document.body.appendChild(reloadNode);
+          reloadNode.innerHTML = '<div class="absolute left-0 top-0 right-0 bottom-0" style="background:rgba(0,0,0,0.2); z-index: 9999999"><div role="dialog" class="js-lists-popover-inner absolute p-4 cursor-auto bg-white shadow-xl rounded-lg" style="left: ' + leftPos + 'px; top: ' + (scriptParent.getBoundingClientRect().top + window.scrollY) + 'px; ' + innerStyles + '"><span class="leading-none align-[-3px] text-[#555] inline-block icon-[svg-spinners--ring-resize]"></span></span></div></div>'
+
+          fetch("/dyn/lists/" + aarecord_id + '?is_popover=true').then((response) => response.ok ? response.text() : 'Error 921857').then((text) => {
+            reloadNode.querySelector('.js-lists-popover-inner').innerHTML = text;
+            window.executeScriptElements(reloadNode);
+
+            function closePopover() {
+              document.body.removeChild(reloadNode);
+              document.removeEventListener("keydown", escapeHandler, true);
+            }
+
+            var escapeHandler = function(e) {
+              if (e.key === "Escape") {
+                closePopover();
+              }
+            };
+            document.addEventListener("keydown", escapeHandler, true);
+
+            reloadNode.querySelector('.js-list-popover-close').addEventListener('click', function(event) {
+              closePopover();
+              event.preventDefault();
+              return false;
+            });
+
+            reloadNode.querySelector('.js-list-popover-close').focus();
+          });
+          event.preventDefault();
+          document.activeElement.blur();
+          return false;
+        });
+      })();
+    </script></a>
+    <span class="text-xs text-gray-500"><script>
+      (function() {
+        var scriptParent = document.currentScript.parentElement;
+
+        const md5 = "6b6133d120319fc7a53e752ebca51427";
+
+        // # "text/css" for DDOS-GUARD caching.
+        fetch("/dyn/md5/inline_info/" + md5, { headers: { 'Accept': 'text/css' } }).then((response) => response.json()).then((json) => {
+          const icons = [
+            // TODO:TRANSLATE
+            ` · <span title="Downloads" class="whitespace-nowrap"><span class='text-[14px] align-text-bottom inline-block icon-[typcn--download] mr-[3px]'></span>${json.downloads_total.toLocaleString()}</span> <span title="Downloads">`,
+            // TODO:TRANSLATE
+            json.great_quality_count && `<span title="Great quality" class="whitespace-nowrap text-yellow-500"><span class='text-[14px] align-text-bottom inline-block icon-[material-symbols--star] mr-[2px]'></span>${json.great_quality_count.toLocaleString()}</span></span>`,
+            // TODO:TRANSLATE
+            json.lists_count && `<span title="Lists" class="whitespace-nowrap"><span class='text-[14px] align-[-3px] inline-block icon-[pepicons-pencil--bookmark-filled] mr-[2px]'></span>${json.lists_count.toLocaleString()}</span></span>`,
+            // TODO:TRANSLATE
+            json.comments_count && `<span title="Comments" class="whitespace-nowrap"><span class='text-[14px] align-[-3px] icon-[mdi--comment] mr-[4px]'></span>${json.comments_count.toLocaleString()}</span></span>`,
+            // TODO:TRANSLATE
+            json.reports_count && `<span title="File issues" class="whitespace-nowrap text-red-500"><span class='text-[14px] align-text-bottom inline-block icon-[material-symbols--warning] mr-[2px]'></span>${json.reports_count.toLocaleString()}</span></span>`,
+          ]
+          scriptParent.innerHTML = '<span class="align-text-bottom">' + icons.filter(Boolean).join(` · `) + '</span>';
+        });
+      })();
+    </script></span>
+</div>
+          <div class="hidden">base score: 14068.0, final score: 169190.48</div>
+        </div>
+      </div>
+
+      <div class="flex  pt-3 pb-3 border-b last:border-b-0 border-gray-100">
+        <a href="/md5/768928b61ad2d57f4e69e2b0912b63db" class="custom-a block mr-2 sm:mr-4 hover:opacity-80">
+          <div id="list_cover_aarecord_id__md5:768928b61ad2d57f4e69e2b0912b63db" class="w-20 h-[7.5rem] sm:w-24 sm:h-36 rounded shadow relative overflow-hidden text-left">
+    <img class="w-full h-full object-cover transition-transform relative z-10 rounded" src="https://covers.openlibrary.org/b/id/15116298-L.jpg" alt="" referrerpolicy="no-referrer" loading="lazy" decoding="async" onerror="this.parentNode.querySelector('.js-aarecord-list-fallback-cover').classList.remove('hidden'); this.parentNode.removeChild(this)">
+    <div class="absolute top-0 left-0 w-full h-full p-2 flex flex-col text-[7pt] leading-[1.1] break-words overflow-hidden select-none hidden js-aarecord-list-fallback-cover" style="background-color: hsl(240, 60%, 90%)">
+      <div class="font-bold text-violet-900 line-clamp-[5]" data-content="New Game! Vol. 2"></div>
+      <div class="font-bold text-amber-900 line-clamp-[2] mt-2" data-content="story &amp; art by Shotaro Tokuno; translation, Jenny McKeon; adaptation, Jamal Joseph, Jr.; lettering and retouch, Courtney Williams; editor, Jenn Grunigen"></div>
+    </div>
+  </div>
+        </a>
+        <div class="max-w-full overflow-hidden flex flex-col justify-around">
+          <div>
+              <div class="line-clamp-[2] overflow-hidden break-words text-[9px] text-gray-500 font-mono">ia/newgamevolume20000toku.pdf</div>
+<a href="/md5/768928b61ad2d57f4e69e2b0912b63db" class="line-clamp-[3] overflow-hidden break-words js-vim-focus custom-a text-[#2563eb] inline-block outline-offset-[-2px] outline-2 rounded-[3px] focus:outline font-semibold text-lg leading-[1.2] hover:opacity-80 mt-1">New Game! Vol. 2</a><a href="/search?q=story%20&amp;%20art%20by%20Shotaro%20Tokuno;%20translation,%20Jenny%20McKeon;%20adaptation,%20Jamal%20Joseph,%20Jr.;%20lettering%20and%20retouch,%20Courtney%20Williams;%20editor,%20Jenn%20Grunigen" class="line-clamp-[2] overflow-hidden break-words block custom-a text-sm hover:opacity-70 leading-[1.2] mt-1"><span class="icon-[mdi--user-edit] text-base align-sub"></span> story &amp; art by Shotaro Tokuno; translation, Jenny McKeon; adaptation, Jamal Joseph, Jr.; lettering and retouch, Courtney Williams; editor, Jenn Grunigen</a><a href="/search?q=Seven%20Seas%20Entertainment" class="line-clamp-[2] overflow-hidden break-words block custom-a text-sm hover:opacity-70 leading-[1.2] mt-1"><span class="icon-[mdi--company] text-base align-sub"></span> Seven Seas Entertainment, California, 2018</a>          </div>
+          <div>
+            <div class="line-clamp-[5]"></div><!-- Only to make sure Tailwind generates it -->
+<div class="relative"><div class="line-clamp-[2] overflow-hidden break-words text-sm text-gray-600 mt-2 mb-2 leading-[1.3]">"Suzukaze Aoba may look like a middle schooler, but she's actually a character designer fresh out of high school. Not only is she working for the company that put out one of her favourite games, she also gets to spend her days modeling and creating characters. Follow her adorable shenanigans in this 4-panel slice of life as she learns the ropes of the industry and gets to know her co-workers."--Publisher description.</div> <a href="#" class="hidden js-aarecord-list-read-more absolute bottom-[-1px] right-0 text-xs bg-white pl-[6px] pr-1 py-[2px]" onclick="this.parentElement.children[0].classList.remove('line-clamp-[2]'); this.parentElement.children[0].classList.add('line-clamp-[5]'); this.parentNode.removeChild(this); event.preventDefault(); return false;">Read more…</a> <script>window.addReadMoreButton(document.currentScript.parentElement);</script></div>          </div>
+          <div class="text-gray-800 dark:text-slate-400 font-semibold text-sm leading-[1.2] mt-2">✅ English [en] · PDF · 11.4MB · 2018 · 📗 Book (unknown) · 🚀/ia    · <a href="#" class="custom-a text-[#2563eb] inline-block outline-offset-[-2px] outline-2 rounded-[3px] focus:outline font-semibold text-sm leading-none hover:opacity-80 relative"><span class="text-[15px] align-text-bottom inline-block icon-[pepicons-pencil--bookmark-filled] mr-[1px]"></span><!--TODO:TRANSLATE-->Save<script>
+      (function() {
+        var scriptParent = document.currentScript.parentElement;
+        scriptParent.addEventListener("click", (event) => {
+          var aarecord_id = "md5:768928b61ad2d57f4e69e2b0912b63db";
+          var leftPos = 0;
+          var innerStyles = 'width: calc(100% - 16px); margin-left: 8px'
+          if (document.body.clientWidth > 800) {
+            leftPos = (scriptParent.getBoundingClientRect().left + window.scrollX);
+            innerStyles = 'transform: translateX(-100%); max-width: ' + (scriptParent.getBoundingClientRect().left + window.scrollX) + 'px';
+          }
+
+          var reloadNode = document.createElement('div');
+          document.body.appendChild(reloadNode);
+          reloadNode.innerHTML = '<div class="absolute left-0 top-0 right-0 bottom-0" style="background:rgba(0,0,0,0.2); z-index: 9999999"><div role="dialog" class="js-lists-popover-inner absolute p-4 cursor-auto bg-white shadow-xl rounded-lg" style="left: ' + leftPos + 'px; top: ' + (scriptParent.getBoundingClientRect().top + window.scrollY) + 'px; ' + innerStyles + '"><span class="leading-none align-[-3px] text-[#555] inline-block icon-[svg-spinners--ring-resize]"></span></span></div></div>'
+
+          fetch("/dyn/lists/" + aarecord_id + '?is_popover=true').then((response) => response.ok ? response.text() : 'Error 921857').then((text) => {
+            reloadNode.querySelector('.js-lists-popover-inner').innerHTML = text;
+            window.executeScriptElements(reloadNode);
+
+            function closePopover() {
+              document.body.removeChild(reloadNode);
+              document.removeEventListener("keydown", escapeHandler, true);
+            }
+
+            var escapeHandler = function(e) {
+              if (e.key === "Escape") {
+                closePopover();
+              }
+            };
+            document.addEventListener("keydown", escapeHandler, true);
+
+            reloadNode.querySelector('.js-list-popover-close').addEventListener('click', function(event) {
+              closePopover();
+              event.preventDefault();
+              return false;
+            });
+
+            reloadNode.querySelector('.js-list-popover-close').focus();
+          });
+          event.preventDefault();
+          document.activeElement.blur();
+          return false;
+        });
+      })();
+    </script></a>
+    <span class="text-xs text-gray-500"><script>
+      (function() {
+        var scriptParent = document.currentScript.parentElement;
+
+        const md5 = "768928b61ad2d57f4e69e2b0912b63db";
+
+        // # "text/css" for DDOS-GUARD caching.
+        fetch("/dyn/md5/inline_info/" + md5, { headers: { 'Accept': 'text/css' } }).then((response) => response.json()).then((json) => {
+          const icons = [
+            // TODO:TRANSLATE
+            ` · <span title="Downloads" class="whitespace-nowrap"><span class='text-[14px] align-text-bottom inline-block icon-[typcn--download] mr-[3px]'></span>${json.downloads_total.toLocaleString()}</span> <span title="Downloads">`,
+            // TODO:TRANSLATE
+            json.great_quality_count && `<span title="Great quality" class="whitespace-nowrap text-yellow-500"><span class='text-[14px] align-text-bottom inline-block icon-[material-symbols--star] mr-[2px]'></span>${json.great_quality_count.toLocaleString()}</span></span>`,
+            // TODO:TRANSLATE
+            json.lists_count && `<span title="Lists" class="whitespace-nowrap"><span class='text-[14px] align-[-3px] inline-block icon-[pepicons-pencil--bookmark-filled] mr-[2px]'></span>${json.lists_count.toLocaleString()}</span></span>`,
+            // TODO:TRANSLATE
+            json.comments_count && `<span title="Comments" class="whitespace-nowrap"><span class='text-[14px] align-[-3px] icon-[mdi--comment] mr-[4px]'></span>${json.comments_count.toLocaleString()}</span></span>`,
+            // TODO:TRANSLATE
+            json.reports_count && `<span title="File issues" class="whitespace-nowrap text-red-500"><span class='text-[14px] align-text-bottom inline-block icon-[material-symbols--warning] mr-[2px]'></span>${json.reports_count.toLocaleString()}</span></span>`,
+          ]
+          scriptParent.innerHTML = '<span class="align-text-bottom">' + icons.filter(Boolean).join(` · `) + '</span>';
+        });
+      })();
+    </script></span>
+</div>
+          <div class="hidden">base score: 14068.0, final score: 169190.45</div>
+        </div>
+      </div>
+
+      </div>
+              
+              
+</body>
+</html>

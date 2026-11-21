@@ -13,11 +13,35 @@ object UrlValidator {
      * Anna's Archive itself. Declared here rather than in
      * `AnnasArchiveConfig` so the redirect guard, the source's own entry check
      * and the UI's cover check all read one list.
+     *
+     * **This list rots, and a stale entry is a security problem.** The project
+     * loses domains to seizures and takedowns and registers replacements within
+     * days, so what is below is a snapshot, not a constant. Verified by
+     * DNS-over-HTTPS on 2026-10-10:
+     *
+     * | domain | state |
+     * | --- | --- |
+     * | `.org` | NXDOMAIN — registrar `serverHold`, Jan 2026 |
+     * | `.se` | NXDOMAIN — suspended |
+     * | `.li` | **deleted** Mar 2026; now a domain-sale parking page |
+     * | `.pm` | blocked Feb 2026; now a ParkLogic parking page |
+     * | `.gs` | deleted; now redirects to an ad network |
+     * | `.in` | NXDOMAIN |
+     * | `.gl`, `.pk`, `.gd` | resolving — the current hosts |
+     *
+     * **Never re-add a lapsed domain.** A squatted host in a *trusted* list is
+     * worse than a missing one: the app would fetch covers and book files from
+     * whoever bought it. `.li` was in this set until 2026-10-10 while serving a
+     * parking page — that is exactly the failure this comment exists to stop.
+     *
+     * The live set is discovered at runtime rather than trusted from here, see
+     * `AnnasArchiveConfig.DEFAULT_HOSTS` (failover order) and the user's host
+     * override in Settings.
      */
     val ANNAS_ARCHIVE_HOSTS: Set<String> = setOf(
-        "annas-archive.se",
-        "annas-archive.org",
-        "annas-archive.li"
+        "annas-archive.gl",
+        "annas-archive.pk",
+        "annas-archive.gd"
     )
 
     /**
@@ -58,6 +82,18 @@ object UrlValidator {
         "standardebooks.org"
     ) + ANNAS_ARCHIVE_HOSTS + ANNAS_ARCHIVE_MIRROR_HOSTS
 
+    /**
+     * Hosts Anna's Archive serves its cover images from.
+     *
+     * The covers are not on the archive's own domains — the search page links
+     * them to the Z-Library CDN. Images only: this set is deliberately *not*
+     * part of the download allow-list, so a book file can never be fetched
+     * from here.
+     */
+    val ANNAS_ARCHIVE_COVER_HOSTS: Set<String> = setOf(
+        "s3proxy.cdn-zlib.sk"
+    )
+
     /** Hosts we are willing to load images from. */
     val TRUSTED_IMAGE_HOSTS: Set<String> = setOf(
         "gutenberg.org",
@@ -67,7 +103,7 @@ object UrlValidator {
         "standardebooks.org",
         "books.google.com",
         "books.googleusercontent.com"
-    ) + ANNAS_ARCHIVE_HOSTS
+    ) + ANNAS_ARCHIVE_HOSTS + ANNAS_ARCHIVE_COVER_HOSTS
 
     /**
      * Validates a book-file URL. Returns it unchanged so callers can chain:

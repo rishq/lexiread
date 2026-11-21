@@ -2,6 +2,7 @@ package com.lexiread.data.repository
 
 import com.lexiread.data.local.dao.CatalogCacheDao
 import com.lexiread.data.local.entity.CatalogCacheEntity
+import com.lexiread.data.remote.api.AnnasArchiveApi
 import com.lexiread.data.remote.api.InternetArchiveApi
 import com.lexiread.data.remote.api.MyLibEapiApi
 import com.lexiread.data.remote.api.PgaApi
@@ -20,6 +21,7 @@ import com.lexiread.data.remote.gutendex.GutendexSearchResponseDto
 import com.lexiread.data.remote.openlibrary.OpenLibraryApi
 import com.lexiread.data.remote.openlibrary.OpenLibraryDocDto
 import com.lexiread.data.remote.openlibrary.OpenLibrarySearchResponseDto
+import com.lexiread.data.source.AnnasArchiveBookSource
 import com.lexiread.domain.model.Book
 import com.lexiread.domain.model.Bookmark
 import com.lexiread.domain.model.CatalogBook
@@ -33,6 +35,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -218,7 +221,8 @@ class BooksRepositoryImplTest {
         cache: FakeCatalogCacheDao = FakeCatalogCacheDao(),
         library: FakeBookRepository = FakeBookRepository(),
         pgaApi: FakePgaApi = FakePgaApi(),
-        myLibEapiApi: MyLibEapiApi = FakeMyLibApi()
+        myLibEapiApi: MyLibEapiApi = FakeMyLibApi(),
+        sources: List<BookSource> = listOf(FakeBookSource("gutenberg"))
     ) = BooksRepositoryImpl(
         gutendexApi = gutendex,
         openLibraryApi = openLibrary,
@@ -229,7 +233,7 @@ class BooksRepositoryImplTest {
         myLibEapiApi = myLibEapiApi,
         catalogCacheDao = cache,
         bookRepository = library,
-        sources = listOf(FakeBookSource("gutenberg")),
+        sources = sources,
         serializer = com.lexiread.data.local.CatalogCacheSerializer()
     )
 
@@ -474,6 +478,35 @@ class BooksRepositoryImplTest {
 
         assertTrue(page.books.isEmpty())
         assertTrue(!page.hasMore)
+    }
+
+    /**
+     * The browser check must survive the repository.
+     *
+     * A source behind a JavaScript check answers 403 until a browser has
+     * cleared it. Swallowing that failure is what made Anna's Archive look
+     * like an empty catalogue: no results, no explanation, no way out.
+     */
+    @Test
+    fun `a source asking for a browser check carries the check url out`() = runBlocking {
+        val annas = AnnasArchiveBookSource(
+            object : AnnasArchiveApi {
+                override suspend fun fetch(url: String): ResponseBody =
+                    throw HttpException(
+                        Response.error<ResponseBody>(403, "Checking your browser".toResponseBody())
+                    )
+            },
+            androidx.test.core.app.ApplicationProvider.getApplicationContext()
+        )
+
+        val page = repository(sources = listOf(annas)).search(
+            "pride",
+            1,
+            setOf(SourceKind.ANNAS_ARCHIVE)
+        )
+
+        assertTrue("the check url must reach the UI", page.challengeUrl != null)
+        assertTrue("a challenged source has no books yet", page.books.isEmpty())
     }
 
     /** A stand-in for one EAPI search answer. */

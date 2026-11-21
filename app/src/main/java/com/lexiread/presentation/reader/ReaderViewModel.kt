@@ -365,7 +365,8 @@ class ReaderViewModel(
         paginationCache.clear()
     }
 
-    fun onContainerDimensionsChanged(widthPx: Int, heightPx: Int) {
+    /** Bounds of the page text field itself, measured by the reader screen. */
+    fun onTextAreaDimensionsChanged(widthPx: Int, heightPx: Int) {
         if (widthPx <= 0 || heightPx <= 0) return
         if (this.availableWidthPx != widthPx || this.availableHeightPx != heightPx) {
             invalidatePagination()

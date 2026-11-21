@@ -11,6 +11,7 @@ import com.lexiread.data.mapper.toCatalogBook
 import com.lexiread.data.mapper.toDomainBook
 import com.lexiread.data.source.AnnasArchiveBookSource
 import com.lexiread.data.source.AnnasArchiveBookSource.Companion.toCatalogBook
+import com.lexiread.data.source.ChallengeRequiredException
 import com.lexiread.data.source.MyLibBookSource
 import com.lexiread.data.source.MyLibConfig
 import com.lexiread.data.source.PgaBookSource
@@ -372,7 +373,26 @@ class BooksRepositoryImpl(
             Log.w(TAG, "A book catalogue failed", error)
         }
 
+        // A source behind a JavaScript browser check is not broken, it is
+        // waiting for a browser. The URL travels with the page so the UI can
+        // open a WebView on it and retry with the clearance cookie.
+        val challengeUrl = failures.firstNotNullOfOrNull { (_, error) ->
+            (error as? ChallengeRequiredException)?.url
+        }
+
         if (pages.isEmpty()) {
+            if (challengeUrl != null) {
+                // Every source failed, but one of them only wants a browser
+                // check: report the empty page with the check attached rather
+                // than a dead "no catalogue could be reached".
+                return CatalogPage(
+                    books = emptyList(),
+                    page = page,
+                    totalResults = null,
+                    hasMore = false,
+                    challengeUrl = challengeUrl
+                )
+            }
             throw failures.firstOrNull()?.second
                 ?: IOException("No book catalogue responded.")
         }
@@ -389,7 +409,8 @@ class BooksRepositoryImpl(
             totalResults = pages.mapNotNull { it.totalResults }.maxOrNull(),
             hasMore = pages.any { it.hasMore },
             // Names, not stack traces: the exception itself is in the log above.
-            failedSources = failures.map { it.first }
+            failedSources = failures.map { it.first },
+            challengeUrl = challengeUrl
         )
     }
 
@@ -601,6 +622,10 @@ class BooksRepositoryImpl(
             writeCache(key, kind, cacheQuery, page, fresh)
             return@withContext fresh
         }
+
+        // A source waiting for a browser check outranks the cached page: the
+        // check has to be cleared before this query can be refreshed with it.
+        if (fresh?.challengeUrl != null) return@withContext fresh
 
         val fallback = cached?.let { entry ->
             serializer.deserialize(entry.payload)?.let { books -> entry to books }

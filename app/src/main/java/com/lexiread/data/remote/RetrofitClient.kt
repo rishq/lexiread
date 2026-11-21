@@ -67,6 +67,17 @@ object RetrofitClient {
      */
     private const val MAX_CATALOG_RESPONSE_BYTES = 64L * 1024 * 1024
 
+    /**
+     * The User-Agent used until a real browser has identified itself.
+     *
+     * Only a placeholder: the app cannot know the device's browser string
+     * before one has run, and a browser check refuses a request that claims
+     * to be a browser it is not.
+     */
+    private const val DEFAULT_BROWSER_USER_AGENT =
+        "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
+
     private val moshi: Moshi = Moshi.Builder()
         .build()
 
@@ -306,6 +317,28 @@ object RetrofitClient {
             level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
         }
 
+    /**
+     * The User-Agent the browser-checked sources are asked with.
+     *
+     * A browser check fingerprints the client that passed it, and the
+     * clearance it hands out belongs to that browser. Anna's Archive sits
+     * behind such a check, so the retry has to present the same User-Agent
+     * the WebView presented — the device's own, not a hardcoded desktop
+     * string, which would not match the fingerprint that earned the cookie.
+     */
+    @Volatile
+    private var browserUserAgent: String = DEFAULT_BROWSER_USER_AGENT
+
+    /**
+     * Records the User-Agent of the browser that cleared a check.
+     *
+     * A blank value is ignored: the fallback stays in place until a real
+     * browser has identified itself.
+     */
+    fun setBrowserUserAgent(userAgent: String) {
+        if (userAgent.isNotBlank()) browserUserAgent = userAgent
+    }
+
     /** Catalogue reads: cached, so a repeated query or a back-navigation is instant. */
     private val catalogOkHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -327,6 +360,24 @@ object RetrofitClient {
             )
             .applyCache()
             .applyRedirectGuard()
+            .build()
+    }
+
+    /**
+     * Anna's Archive, on a client of its own.
+     *
+     * It shares [catalogOkHttpClient] — same cookie jar, same cache, same
+     * redirect guard — and only adds the User-Agent the browser check saw.
+     */
+    private val annasArchiveOkHttpClient: OkHttpClient by lazy {
+        catalogOkHttpClient.newBuilder()
+            .addInterceptor { chain ->
+                chain.proceed(
+                    chain.request().newBuilder()
+                        .header("User-Agent", browserUserAgent)
+                        .build()
+                )
+            }
             .build()
     }
 
@@ -462,13 +513,13 @@ object RetrofitClient {
     /**
      * Anna's Archive. Scraped HTML, so no converter: the raw body goes straight
      * to Jsoup. Shares [catalogOkHttpClient] on purpose — that is the client
-     * carrying `appCookieJar`, so the `cf_clearance` cookie the WebView earns
+     * carrying `appCookieJar`, so the clearance cookie the WebView earns
      * during a challenge is sent on the retry.
      */
     val annasArchiveApi: AnnasArchiveApi by lazy {
         buildService(
             "https://${com.lexiread.data.source.AnnasArchiveConfig.DEFAULT_HOST}/",
-            catalogOkHttpClient,
+            annasArchiveOkHttpClient,
             AnnasArchiveApi::class.java,
             moshi = false
         )

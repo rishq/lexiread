@@ -218,7 +218,7 @@ class ReaderViewModelTest {
 
     @Test
     fun `loads book and restores chapter from saved progress`() {
-        viewModel.onContainerDimensionsChanged(360, 600)
+        viewModel.onTextAreaDimensionsChanged(360, 600)
         awaitUntil { viewModel.uiState.value.pagesForCurrentChapter.isNotEmpty() }
 
         assertEquals("Test Book", viewModel.uiState.value.book?.title)
@@ -227,7 +227,7 @@ class ReaderViewModelTest {
 
     @Test
     fun `stale progress re-emission does not reset reading position`() {
-        viewModel.onContainerDimensionsChanged(360, 600)
+        viewModel.onTextAreaDimensionsChanged(360, 600)
         awaitUntil { !viewModel.uiState.value.isLoadingBook }
 
         val before = viewModel.uiState.value
@@ -249,7 +249,7 @@ class ReaderViewModelTest {
 
     @Test
     fun `goToChapter clamps out-of-range index`() {
-        viewModel.onContainerDimensionsChanged(360, 600)
+        viewModel.onTextAreaDimensionsChanged(360, 600)
         awaitUntil { viewModel.uiState.value.pagesForCurrentChapter.isNotEmpty() }
 
         viewModel.goToChapter(99)
@@ -269,7 +269,7 @@ class ReaderViewModelTest {
 
     @Test
     fun `resize invalidates cached pagination and repaginates current chapter`() {
-        viewModel.onContainerDimensionsChanged(360, 600)
+        viewModel.onTextAreaDimensionsChanged(360, 600)
         awaitUntil { viewModel.uiState.value.pagesForCurrentChapter.isNotEmpty() }
         awaitUntil { !viewModel.uiState.value.isPaginating }
 
@@ -280,7 +280,7 @@ class ReaderViewModelTest {
             before
         )
 
-        viewModel.onContainerDimensionsChanged(500, 900)
+        viewModel.onTextAreaDimensionsChanged(500, 900)
         awaitUntil {
             !viewModel.uiState.value.isPaginating &&
                 viewModel.uiState.value.pagesForCurrentChapter != before
@@ -301,7 +301,7 @@ class ReaderViewModelTest {
 
     @Test
     fun `resized chapter is not served from stale prefetch cache`() {
-        viewModel.onContainerDimensionsChanged(360, 600)
+        viewModel.onTextAreaDimensionsChanged(360, 600)
         awaitUntil { viewModel.uiState.value.pagesForCurrentChapter.isNotEmpty() }
         // Chapter 2 is prefetched for the original viewport...
         awaitUntil { paginator.callsFor(CHAPTER_2).any { it.heightPx == 600 } }
@@ -313,7 +313,7 @@ class ReaderViewModelTest {
         val release = CompletableDeferred<Unit>()
         paginator.gate = CHAPTER_2 to release
 
-        viewModel.onContainerDimensionsChanged(500, 900)
+        viewModel.onTextAreaDimensionsChanged(500, 900)
         awaitUntil { paginator.callsFor(CHAPTER_2).any { it.heightPx == 900 } }
         viewModel.goToChapter(CHAPTER_2)
         release.complete(Unit)

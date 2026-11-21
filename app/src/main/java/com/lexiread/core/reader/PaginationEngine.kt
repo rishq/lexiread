@@ -57,12 +57,22 @@ class PaginationEngine(private val context: Context) : Paginator {
         }
 
         val density = context.resources.displayMetrics.density
-        val marginPx = (settings.marginDp * density).toInt()
-        val usableWidth = (availableWidthPx - (marginPx * 2)).coerceAtLeast(200)
-        val usableHeight = (availableHeightPx - (marginPx * 2) - (48 * density).toInt()).coerceAtLeast(200)
+        // The caller passes the text field's own bounds: horizontal margins and
+        // header/footer chrome are already excluded. Subtracting them again here
+        // made pages oversized and forced the reader to scroll for the last lines.
+        val usableWidth = availableWidthPx.coerceAtLeast(200)
+        val usableHeight = availableHeightPx.coerceAtLeast(200)
+        // Compose renders `sp` with the system font scale; TextPaint takes raw px.
+        // Without fontScale the engine thinks text is smaller than it renders.
+        val fontScale = context.resources.configuration.fontScale
+        val fontSizePx = settings.fontSizeSp * density * fontScale
+        // Compose applies an explicit lineHeight of fontSize × multiplier. Pin
+        // StaticLayout to that same height instead of its font-derived default so
+        // the measured line count matches what the reader actually displays.
+        val lineHeightPx = fontSizePx * settings.lineHeightMultiplier
 
         val textPaint = TextPaint().apply {
-            textSize = settings.fontSizeSp * density
+            textSize = fontSizePx
             isAntiAlias = true
             typeface = when (settings.fontFamilyName.lowercase()) {
                 "serif" -> Typeface.SERIF
@@ -90,7 +100,7 @@ class PaginationEngine(private val context: Context) : Paginator {
                 usableWidth = usableWidth,
                 usableHeight = usableHeight,
                 textPaint = textPaint,
-                spacingMult = settings.lineHeightMultiplier
+                lineHeightPx = lineHeightPx
             )
 
             var safeStart = startOffset
@@ -145,7 +155,7 @@ class PaginationEngine(private val context: Context) : Paginator {
         usableWidth: Int,
         usableHeight: Int,
         textPaint: TextPaint,
-        spacingMult: Float
+        lineHeightPx: Float
     ): Int {
         // Only measure a bounded window ahead of startOffset instead of copying the
         // entire remaining chapter (avoids O(N^2) substring allocations).
@@ -157,7 +167,7 @@ class PaginationEngine(private val context: Context) : Paginator {
             text = window,
             paint = textPaint,
             width = usableWidth,
-            spacingMult = spacingMult
+            lineHeightPx = lineHeightPx
         )
 
         val lineCount = staticLayout.lineCount
@@ -196,13 +206,15 @@ class PaginationEngine(private val context: Context) : Paginator {
         text: CharSequence,
         paint: TextPaint,
         width: Int,
-        spacingMult: Float
+        lineHeightPx: Float
     ): StaticLayout {
+        val naturalHeight = paint.fontMetrics.let { it.descent - it.ascent }
+        val spacingAdd = (lineHeightPx - naturalHeight).coerceAtLeast(0f)
         // minSdk is 24, so the builder API (23+) is always available — the old
         // `SDK_INT >= M` branch and its deprecated constructor were dead code.
         return StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
             .setAlignment(Layout.Alignment.ALIGN_NORMAL)
-            .setLineSpacing(0f, spacingMult)
+            .setLineSpacing(spacingAdd, 1f)
             .setIncludePad(false)
             .build()
     }

@@ -18,7 +18,7 @@ object PreloadedBooks {
         description = "It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife. However little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families, that he is considered the rightful property of some one or other of their daughters.",
         language = "en",
         subjects = "Fiction, Romance, Classic Literature",
-        isFavorite = true,
+        isFavorite = false,
         isSaved = true,
         isFinished = false,
         addedTimestamp = System.currentTimeMillis() - 86400000L * 3
@@ -46,7 +46,7 @@ object PreloadedBooks {
         description = "To Sherlock Holmes she is always the woman. I have seldom heard him mention her under any other name. In his eyes she eclipses and predominates the whole of her sex. It was not that he felt any emotion akin to love for Irene Adler.",
         language = "en",
         subjects = "Mystery, Detective, Crime",
-        isFavorite = true,
+        isFavorite = false,
         isSaved = true,
         isFinished = false,
         addedTimestamp = System.currentTimeMillis() - 86400000L * 1

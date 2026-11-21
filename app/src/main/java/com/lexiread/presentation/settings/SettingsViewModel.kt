@@ -21,7 +21,12 @@ data class SettingsUiState(
     val claudeApiKey: String = "",
     val deepSeekApiKey: String = "",
     // P1-6: offline by default — user text never leaves the device until opt-in.
-    val cloudLookupEnabled: Boolean = false
+    val cloudLookupEnabled: Boolean = false,
+    /**
+     * A hostname the user typed to replace the built-in Anna's Archive host, or
+     * empty to use the built-in failover list.
+     */
+    val annasArchiveHost: String = ""
 )
 
 class SettingsViewModel(
@@ -42,8 +47,9 @@ class SettingsViewModel(
         ) { provider, openAiKey, claudeKey, deepSeekKey ->
             listOf(provider, openAiKey, claudeKey, deepSeekKey)
         },
-        preferencesManager.cloudLookupEnabled
-    ) { base, ai, cloudEnabled ->
+        preferencesManager.cloudLookupEnabled,
+        preferencesManager.annasArchiveHost
+    ) { base, ai, cloudEnabled, annasHost ->
         SettingsUiState(
             readerSettings = base.first,
             targetLanguage = base.second,
@@ -52,7 +58,8 @@ class SettingsViewModel(
             openAiApiKey = ai[1],
             claudeApiKey = ai[2],
             deepSeekApiKey = ai[3],
-            cloudLookupEnabled = cloudEnabled
+            cloudLookupEnabled = cloudEnabled,
+            annasArchiveHost = annasHost
         )
     }.stateIn(
         scope = viewModelScope,
@@ -126,6 +133,17 @@ class SettingsViewModel(
     fun setCloudLookupEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesManager.setCloudLookupEnabled(enabled)
+        }
+    }
+
+    /**
+     * Anna's Archive's domains are seized and replaced every few months, so the
+     * host is user-editable instead of only compiled in. Stored raw; it is
+     * reduced to a bare hostname where it is used.
+     */
+    fun setAnnasArchiveHost(host: String) {
+        viewModelScope.launch {
+            preferencesManager.updateAnnasArchiveHost(host)
         }
     }
 

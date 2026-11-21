@@ -258,6 +258,62 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        // 2d. Anna's Archive host. The site keeps losing its domains to seizures
+        // and squatters, so the working host is user-editable rather than only
+        // compiled in — otherwise every takedown means the source is dead until
+        // an app release ships.
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Anna's Archive Host",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Anna's Archive keeps losing its domains. If the source returns no " +
+                        "results or downloads fail, enter a current domain here " +
+                        "(for example annas-archive.gl). Leave it empty to use the built-in list.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                var hostValue by remember(state.annasArchiveHost) {
+                    mutableStateOf(state.annasArchiveHost)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = hostValue,
+                        onValueChange = { hostValue = it },
+                        placeholder = { Text("annas-archive.gl") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("annas_archive_host_field")
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    androidx.compose.material3.Button(onClick = {
+                        viewModel.setAnnasArchiveHost(hostValue)
+                    }) {
+                        Text("Save")
+                    }
+                }
+                if (state.annasArchiveHost.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Trying ${state.annasArchiveHost} first",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF10B981)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         // 3. AI & Language Translation Settings
         Card(
             modifier = Modifier.fillMaxWidth(),
