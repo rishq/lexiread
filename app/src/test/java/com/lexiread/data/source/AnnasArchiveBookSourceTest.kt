@@ -346,6 +346,33 @@ class AnnasArchiveBookSourceTest {
         }
     }
 
+    /**
+     * The mirror URL is remote markup too: an absolute href on the record page
+     * must not become the initial request URL (RedirectGuard only checks redirects).
+     */
+    @Test
+    fun `downloadContent refuses a scraped mirror URL outside the allow-list`() {
+        val evilHost = "https://192.168.1.50"
+        val evilDetail = DETAIL_PAGE.replace(
+            "/slow_download/abc123/0/1234",
+            "$evilHost/slow_download/abc123/0/1234"
+        )
+        val api = object : AnnasArchiveApi {
+            override suspend fun fetch(url: String): ResponseBody = when {
+                url.startsWith(evilHost) -> throw AssertionError("SSRF: fetched $url")
+                url.contains("/md5/") -> body(evilDetail)
+                else -> throw AssertionError("Unexpected fetch: $url")
+            }
+        }
+        val source = AnnasArchiveBookSource(api, context)
+
+        assertThrows(SecurityException::class.java) {
+            runBlocking {
+                source.downloadContent(Book(id = "annas_abc123", title = "x", author = "y"))
+            }
+        }
+    }
+
     @Test(expected = ChallengeRequiredException::class)
     fun `downloadContent raises the browser challenge on 503`(): Unit = runBlocking {
         val walled = object : AnnasArchiveApi {

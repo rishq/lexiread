@@ -153,10 +153,12 @@ class AnnasArchiveBookSource(
             parse = { url, html -> parseBookInfo(html, url, config)?.let { url to it } }
         )
 
-        val mirrorPage = info.mirrorUrl
-            ?: throw UnsupportedOperationException(
+        // RedirectGuard only sees redirects, so validate this scraped initial URL here.
+        val mirrorPage = trustedDownloadUrl(
+            info.mirrorUrl ?: throw UnsupportedOperationException(
                 "No download mirror is listed for '${book.title}'."
             )
+        )
 
         val format = info.format
             ?: throw UnsupportedOperationException(

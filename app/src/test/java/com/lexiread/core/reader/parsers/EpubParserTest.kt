@@ -151,4 +151,27 @@ class EpubParserTest {
         assertTrue("Expected readable Cyrillic text", chapters[0].content.contains(body))
         epub.delete()
     }
+
+    /**
+     * Regression: an unterminated <h1> made extractChapterTitle rescan the whole
+     * chapter from every opener (74s for 50k openers before the span was bounded).
+     */
+    @Test
+    fun `unterminated heading does not hang chapter title extraction`() {
+        val epub = buildEpub(
+            mapOf(
+                "META-INF/container.xml" to containerXml("content.opf"),
+                "content.opf" to opf(listOf("c1" to "ch1.xhtml")),
+                "ch1.xhtml" to ("x" + "<h1>".repeat(50_000)).toByteArray()
+            )
+        )
+
+        val startedAt = System.nanoTime()
+        val chapters = runBlocking { EpubParser().parseChapters(epub) }
+        val elapsed = (System.nanoTime() - startedAt) / 1_000_000
+
+        assertEquals(1, chapters.size)
+        assertTrue("title extraction took ${elapsed}ms", elapsed < 10_000)
+        epub.delete()
+    }
 }

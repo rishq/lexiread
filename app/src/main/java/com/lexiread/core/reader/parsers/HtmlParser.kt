@@ -102,7 +102,8 @@ class HtmlParser : BookParser {
         const val TITLE_MAX_LENGTH = 80
 
         val BODY_REGEX = Regex("<body[^>]*>([\\s\\S]*)</body>", RegexOption.IGNORE_CASE)
-        val HEADING_REGEX = Regex("<h([1-3])[^>]*>([\\s\\S]*?)</h\\1>", RegexOption.IGNORE_CASE)
-        val TITLE_REGEX = Regex("<title[^>]*>([\\s\\S]*?)</title>", RegexOption.IGNORE_CASE)
+        // Bounded spans: an unterminated opener must not scan to EOF.
+        val HEADING_REGEX = Regex("<h([1-3])[^>]*>([\\s\\S]{0,256}?)</h\\1>", RegexOption.IGNORE_CASE)
+        val TITLE_REGEX = Regex("<title[^>]*>([\\s\\S]{0,256}?)</title>", RegexOption.IGNORE_CASE)
     }
 }

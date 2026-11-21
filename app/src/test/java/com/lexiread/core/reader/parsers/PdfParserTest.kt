@@ -121,4 +121,13 @@ class PdfParserTest {
         assertCompletesQuickly { chaptersOf(file) }
         file.delete()
     }
+
+    /** `/Type /Pages` with no `/Count` used to make the page-count regex quadratic. */
+    @Test
+    fun `stays linear when the header is full of Pages markers`() {
+        val file = pdfFile("pages-openers", "/Type /Pages ".repeat(10_000))
+
+        assertCompletesQuickly(limitMillis = 5_000) { chaptersOf(file) }
+        file.delete()
+    }
 }

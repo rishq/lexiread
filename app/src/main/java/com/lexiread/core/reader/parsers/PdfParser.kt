@@ -148,7 +148,8 @@ class PdfParser : BookParser {
     }
 
     private fun extractPageCountFromString(text: String): Int {
-        val countMatch = Regex("/Type\\s*/Pages[\\s\\S]*?/Count\\s+(\\d+)").find(text)
+        // Bounded span: repeated /Pages with no /Count must not scan to EOF.
+        val countMatch = Regex("/Type\\s*/Pages[\\s\\S]{0,256}?/Count\\s+(\\d+)").find(text)
             ?: Regex("/Count\\s+(\\d+)").find(text)
         return countMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0
     }

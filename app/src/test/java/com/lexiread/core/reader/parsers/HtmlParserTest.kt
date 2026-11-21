@@ -132,4 +132,17 @@ class HtmlParserTest {
     fun `returns no chapters for an empty file instead of crashing`() = runBlocking {
         assertTrue(parser.parseChapters(write("", "empty.html")).isEmpty())
     }
+
+    /** Regression: unterminated headings used to make splitIntoSections quadratic. */
+    @Test
+    fun `unterminated headings do not hang chapter splitting`() = runBlocking {
+        val file = write("x" + "<h1>".repeat(50_000), "headings.html")
+
+        val startedAt = System.nanoTime()
+        val chapters = parser.parseChapters(file)
+        val elapsed = (System.nanoTime() - startedAt) / 1_000_000
+
+        assertTrue(chapters.isNotEmpty())
+        assertTrue("chapter splitting took ${elapsed}ms", elapsed < 10_000)
+    }
 }

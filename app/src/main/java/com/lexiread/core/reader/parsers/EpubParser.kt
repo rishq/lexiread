@@ -345,13 +345,14 @@ class EpubParser : BookParser {
     }
 
     private fun extractChapterTitle(htmlText: String): String? {
-        val h1Regex = Regex("<h[1-3][^>]*>(.*?)</h[1-3]>", RegexOption.IGNORE_CASE)
+        // Bound the lazy span: with no closing tag an opener must not scan to EOF.
+        val h1Regex = Regex("<h[1-3][^>]*>(.{0,256}?)</h[1-3]>", RegexOption.IGNORE_CASE)
         val match = h1Regex.find(htmlText)
         if (match != null) {
             val title = ChapterParser.cleanHtmlText(match.groupValues[1])
             if (title.isNotBlank()) return title
         }
-        val titleTagRegex = Regex("<title[^>]*>(.*?)</title>", RegexOption.IGNORE_CASE)
+        val titleTagRegex = Regex("<title[^>]*>(.{0,256}?)</title>", RegexOption.IGNORE_CASE)
         val titleMatch = titleTagRegex.find(htmlText)
         if (titleMatch != null) {
             val title = ChapterParser.cleanHtmlText(titleMatch.groupValues[1])
