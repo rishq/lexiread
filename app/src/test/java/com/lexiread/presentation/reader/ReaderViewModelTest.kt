@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -48,8 +49,11 @@ class ReaderViewModelTest {
 
     private val mainDispatcher = UnconfinedTestDispatcher()
 
+    private lateinit var context: Context
     private lateinit var progressFlow: MutableStateFlow<ReadingProgress?>
     private lateinit var viewModel: ReaderViewModel
+    private lateinit var fakeRepo: FakeBookRepo
+    private val savedProgresses = mutableListOf<ReadingProgress>()
     private val paginator = FakePaginator()
 
     /** `book` below starts at chapter index 1 (see the saved progress in setUp). */
@@ -130,19 +134,40 @@ class ReaderViewModelTest {
 
     private class FakeBookRepo(
         private val book: Book,
-        private val progressFlow: Flow<ReadingProgress?>
+        private val progressFlow: Flow<ReadingProgress?>,
+        private val onSave: (ReadingProgress) -> Unit = {},
+        private val storedBook: Book = book,
+        private val fetchResult: Book = book,
+        private val fetchGate: CompletableDeferred<Unit>? = null
     ) : BookRepository {
+        private val fetchCalls = AtomicInteger(0)
+        private val activeFetches = AtomicInteger(0)
+        private val peakFetches = AtomicInteger(0)
+
+        val fetchCount: Int get() = fetchCalls.get()
+        val maxConcurrentFetches: Int get() = peakFetches.get()
+
         override fun getAllBooks() = flowOf(listOf(book))
         override fun getFavoriteBooks() = flowOf(emptyList<Book>())
         override fun getSavedBooks() = flowOf(emptyList<Book>())
         override fun getFinishedBooks() = flowOf(emptyList<Book>())
-        override suspend fun getBookById(id: String) = book
-        override suspend fun fetchAndSaveFullBook(book: Book, forceRefresh: Boolean) = Result.success(book)
+        override suspend fun getBookById(id: String) = storedBook
+        override suspend fun fetchAndSaveFullBook(book: Book, forceRefresh: Boolean): Result<Book> {
+            fetchCalls.incrementAndGet()
+            val active = activeFetches.incrementAndGet()
+            peakFetches.updateAndGet { prev -> maxOf(prev, active) }
+            try {
+                fetchGate?.await()
+            } finally {
+                activeFetches.decrementAndGet()
+            }
+            return Result.success(fetchResult)
+        }
         override suspend fun addBookToLibrary(book: Book) {}
         override suspend fun deleteBook(id: String) {}
         override suspend fun toggleFavorite(bookId: String, isFavorite: Boolean) {}
         override suspend fun toggleFinished(bookId: String, isFinished: Boolean) {}
-        override suspend fun saveReadingProgress(progress: ReadingProgress) {}
+        override suspend fun saveReadingProgress(progress: ReadingProgress) = onSave(progress)
         override fun getReadingProgress(bookId: String) = progressFlow
         override fun getLatestProgress() = flowOf<ReadingProgress?>(null)
         override fun getBookmarks(bookId: String) = flowOf(emptyList<Bookmark>())
@@ -193,23 +218,25 @@ class ReaderViewModelTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(mainDispatcher)
-        val context = ApplicationProvider.getApplicationContext<Context>()
+        context = ApplicationProvider.getApplicationContext<Context>()
 
         progressFlow = MutableStateFlow(ReadingProgress(bookId = "b1", currentChapter = 1, currentPage = 0))
-
-        viewModel = ReaderViewModel(
-            bookId = "b1",
-            bookRepository = FakeBookRepo(book, progressFlow),
-            dictionaryRepository = FakeDictRepo(),
-            translationRepository = FakeTransRepo(),
-            vocabularyRepository = FakeVocabRepo(),
-            aiRepository = FakeAiRepo(),
-            preferencesManager = UserPreferencesManager(context),
-            ttsHelper = TTSHelper(context),
-            bookImporter = BookImporter(context),
-            paginationEngine = paginator
-        )
+        fakeRepo = FakeBookRepo(book, progressFlow, onSave = { savedProgresses += it })
+        viewModel = buildViewModel(fakeRepo)
     }
+
+    private fun buildViewModel(repo: FakeBookRepo): ReaderViewModel = ReaderViewModel(
+        bookId = "b1",
+        bookRepository = repo,
+        dictionaryRepository = FakeDictRepo(),
+        translationRepository = FakeTransRepo(),
+        vocabularyRepository = FakeVocabRepo(),
+        aiRepository = FakeAiRepo(),
+        preferencesManager = UserPreferencesManager(context),
+        ttsHelper = TTSHelper(context),
+        bookImporter = BookImporter(context),
+        paginationEngine = paginator
+    )
 
     @After
     fun tearDown() {
@@ -326,5 +353,104 @@ class ReaderViewModelTest {
         val fresh = viewModel.uiState.value.pagesForCurrentChapter
         assertNotEquals("stale prefetched pages were served after a resize", stale, fresh)
         assertEquals(paginator.pagesFor(CHAPTER_2, 500, 900), fresh)
+    }
+
+    // --- BUG-20: local chapters must not force a download ---
+
+    @Test
+    fun `book with local chapters does not force a download`() {
+        awaitUntil { !viewModel.uiState.value.isLoadingBook }
+        assertEquals(0, fakeRepo.fetchCount)
+        assertEquals("Test Book", viewModel.uiState.value.book?.title)
+        assertNull(viewModel.uiState.value.errorMessage)
+    }
+
+    // --- BUG-22: slider position must be staged for commitProgress ---
+
+    @Test
+    fun `slider goToPage stages progress for commitProgress`() {
+        viewModel.onTextAreaDimensionsChanged(360, 600)
+        awaitUntil { viewModel.uiState.value.pagesForCurrentChapter.size >= 3 }
+
+        viewModel.goToPage(2, saveProgress = false)
+        viewModel.commitProgress()
+
+        awaitUntil { savedProgresses.isNotEmpty() }
+        assertEquals(2, savedProgresses.last().currentPage)
+    }
+
+    // --- BUG-23: final progress must be persisted on clear ---
+
+    @Test
+    fun `onCleared flush persists the latest staged progress`() {
+        viewModel.onTextAreaDimensionsChanged(360, 600)
+        awaitUntil { viewModel.uiState.value.pagesForCurrentChapter.size >= 3 }
+
+        repeat(2) { viewModel.nextPage() } // page 0 -> 2
+        savedProgresses.clear()
+        viewModel.flushProgressOnCleared()
+
+        assertEquals(2, savedProgresses.last().currentPage)
+    }
+
+    // --- BUG-25: final page of final chapter must be 100% ---
+
+    @Test
+    fun `final page of final chapter reports 100 percent`() {
+        viewModel.onTextAreaDimensionsChanged(500, 900) // 5 pages per chapter
+        awaitUntil { viewModel.uiState.value.pagesForCurrentChapter.size == 5 }
+
+        viewModel.goToChapter(2, Int.MAX_VALUE) // last chapter, last page
+        awaitUntil {
+            !viewModel.uiState.value.isPaginating &&
+                viewModel.uiState.value.currentChapterIndex == 2 &&
+                viewModel.uiState.value.currentPageIndex == 4
+        }
+
+        savedProgresses.clear()
+        viewModel.flushProgressOnCleared()
+        assertEquals(100f, savedProgresses.last().percentCompleted)
+    }
+
+    // --- BUG-28: out-of-range saved chapter must be clamped ---
+
+    @Test
+    fun `out-of-range saved chapter is clamped to last chapter`() {
+        val repo = FakeBookRepo(
+            book,
+            MutableStateFlow(ReadingProgress(bookId = "b1", currentChapter = 50, currentPage = 0)),
+            onSave = { savedProgresses += it }
+        )
+        val vm = buildViewModel(repo)
+        vm.onTextAreaDimensionsChanged(360, 600)
+        awaitUntil { !vm.uiState.value.isLoadingBook }
+
+        assertEquals(2, vm.uiState.value.currentChapterIndex)
+        assertNull(vm.uiState.value.errorMessage)
+    }
+
+    // --- BUG-29: a new retry must cancel the prior in-flight load ---
+
+    @Test
+    fun `repeated retry cancels the prior in-flight load`() {
+        val gate = CompletableDeferred<Unit>()
+        // No filePath and no local chapters -> this book needs a download.
+        val needyBook = book.copy(fullText = null, filePath = null)
+        val repo = FakeBookRepo(
+            book = book,
+            progressFlow = MutableStateFlow<ReadingProgress?>(null),
+            storedBook = needyBook,
+            fetchResult = book,
+            fetchGate = gate
+        )
+        val vm = buildViewModel(repo)
+
+        // Initial load is blocked on the gate; two retries should supersede it.
+        vm.retryLoad()
+        vm.retryLoad()
+        gate.complete(Unit)
+
+        awaitUntil { !vm.uiState.value.isLoadingBook }
+        assertEquals(1, repo.maxConcurrentFetches)
     }
 }

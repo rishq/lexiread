@@ -11,6 +11,7 @@ import com.lexiread.domain.model.CatalogPage
 import com.lexiread.domain.model.Category
 import com.lexiread.domain.model.SourceKind
 import com.lexiread.domain.repository.BookRepository
+import com.lexiread.domain.usecase.DEFAULT_SOURCES
 import com.lexiread.domain.usecase.GetBooksByCategoryUseCase
 import com.lexiread.domain.usecase.GetPopularBooksUseCase
 import com.lexiread.domain.usecase.OpenBookForReadingUseCase
@@ -36,12 +37,8 @@ data class CatalogUiState(
     val isLoadingMore: Boolean = false,
     val errorMessage: String? = null,
     val partialFailureMessage: String? = null,
-    /**
-     * No source is pre-selected: opening search must not look like every
-     * filter is already on. The user picks explicitly; an empty set simply
-     * yields no results until they do.
-     */
-    val sources: Set<SourceKind> = emptySet(),
+    /** Readable sources are on by default so the first load returns books. */
+    val sources: Set<SourceKind> = DEFAULT_SOURCES,
     val activeCategory: Category? = null,
     val openingBookId: String? = null
 )
@@ -80,6 +77,8 @@ class CatalogViewModel(
     fun onQueryChange(value: String) {
         _uiState.update { it.copy(query = value, activeCategory = null) }
         searchJob?.cancel()
+        // An in-flight category/popular load must not overwrite the search results.
+        loadJob?.cancel()
         challengeShown = false
 
         if (value.isBlank()) {

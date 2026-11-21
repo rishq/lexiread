@@ -39,6 +39,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 data class SelectedWordState(
     val word: String,
@@ -124,6 +125,7 @@ class ReaderViewModel(
     private var availableHeightPx: Int = 0
     private var paginationJob: kotlinx.coroutines.Job? = null
     private var prefetchJob: kotlinx.coroutines.Job? = null
+    private var loadJob: kotlinx.coroutines.Job? = null
     // P1-4: debounce progress writes — rapid page turns conflate into one Room
     // write per 500 ms instead of hundreds of transactions. Flush on dispose.
     private val pendingProgress = MutableStateFlow<ReadingProgress?>(null)
@@ -209,21 +211,30 @@ class ReaderViewModel(
         }
     }
 
+    /** Persist the newest staged progress synchronously (lifecycle teardown). */
+    internal fun flushProgressOnCleared() {
+        pendingProgress.value?.let { progress ->
+            runBlocking { runCatching { bookRepository.saveReadingProgress(progress) } }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
-        // Best-effort synchronous flush is impossible here (no scope), so the
-        // debounced collector already holds the value; flush via runBlocking-free
-        // fire-and-forget is handled by commitProgress() callers (slider stop,
-        // chapter change). Keep the hook documented for lifecycle owners:
-        // call commitProgress() from DisposableEffect.onDispose.
+        // viewModelScope is already cancelled here, so the debounced collector
+        // will never emit the last position — persist it directly (BUG-23).
+        flushProgressOnCleared()
     }
 
     private fun loadBookAndChapters() {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             try {
                 _uiState.update { it.copy(isLoadingBook = true) }
                 val stored = bookRepository.getBookById(bookId)
-                val needsDownload = stored == null || stored.filePath.isNullOrBlank()
+                // Preloaded books have no filePath but ship their chapters in
+                // the local DB — treat those as readable, no network needed.
+                val needsDownload = stored == null ||
+                    (stored.filePath.isNullOrBlank() && bookImporter.getChapterCount(stored) == 0)
 
                 val book = if (needsDownload) {
                     val fetchResult = bookRepository.fetchAndSaveFullBook(
@@ -250,17 +261,19 @@ class ReaderViewModel(
                 // Read saved progress before loading chapters so we know which
                 // chapter to load first.
                 val progress = bookRepository.getReadingProgress(bookId).first()
-                val targetChapter = progress?.currentChapter?.coerceAtLeast(0) ?: 0
+                // Total is the real chapter count (DB or fullText), not the size of
+                // the lazily loaded window — otherwise navigation bounds collapse
+                // to a single chapter. Clamp the saved chapter to it so a stale
+                // out-of-range index cannot empty the window (BUG-28).
+                val totalChapters = bookImporter.getChapterCount(book)
+                val targetChapter = (progress?.currentChapter ?: 0)
+                    .coerceIn(0, (totalChapters - 1).coerceAtLeast(0))
 
                 // Lazy loading: load only the target chapter initially.
                 // For books with a file path or chapters in DB, this loads one
                 // chapter; for legacy fullText books, getChaptersForBook returns
                 // the single requested window.
                 var chapters = bookImporter.getChaptersForBook(book, limit = 1, offset = targetChapter)
-                // Total is the real chapter count (DB or fullText), not the size of
-                // the lazily loaded window — otherwise navigation bounds collapse
-                // to a single chapter.
-                val totalChapters = bookImporter.getChapterCount(book)
 
                 if (chapters.isEmpty() && !book.isImported) {
                     // One clean re-download before reporting an error.
@@ -542,12 +555,13 @@ class ReaderViewModel(
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun goToPage(pageIndex: Int, saveProgress: Boolean = true) {
         val maxPage = (_uiState.value.pagesForCurrentChapter.size - 1).coerceAtLeast(0)
         _uiState.value = _uiState.value.copy(currentPageIndex = pageIndex.coerceIn(0, maxPage))
-        if (saveProgress) {
-            saveCurrentProgress()
-        }
+        // Always stage. Slider drags pass saveProgress=false and rely on
+        // commitProgress() to flush, so the new page must reach pendingProgress.
+        saveCurrentProgress()
     }
 
     fun commitProgress() {
@@ -659,7 +673,14 @@ class ReaderViewModel(
         val state = _uiState.value
         val currentBook = state.book ?: return
         val totalChapters = (state.totalChapterCount.takeIf { it > 0 } ?: state.chapters.size).coerceAtLeast(1)
-        val percent = ((state.currentChapterIndex.toFloat() + (state.currentPageIndex.toFloat() / state.pagesForCurrentChapter.size.coerceAtLeast(1))) / totalChapters * 100f).coerceIn(0f, 100f)
+        val isFinalPage = state.currentChapterIndex == totalChapters - 1 &&
+            state.pagesForCurrentChapter.isNotEmpty() &&
+            state.currentPageIndex == state.pagesForCurrentChapter.size - 1
+        val percent = if (isFinalPage) {
+            100f
+        } else {
+            ((state.currentChapterIndex.toFloat() + (state.currentPageIndex.toFloat() / state.pagesForCurrentChapter.size.coerceAtLeast(1))) / totalChapters * 100f).coerceIn(0f, 100f)
+        }
 
         // P1-4: conflate — no coroutine/transaction per tap, the debounced
         // collector persists the latest value.

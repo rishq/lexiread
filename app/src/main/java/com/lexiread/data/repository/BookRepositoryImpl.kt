@@ -32,35 +32,44 @@ class BookRepositoryImpl(
 ) : BookRepository {
 
     override suspend fun initializePreloadedBooks() {
-        val existing = bookDao.getBookMetaById("gutenberg_1342")
-        // Gate on the chapter table too, not just the book row: inserting books
-        // and chapters as two separate statements meant a process killed in
-        // between left the preloaded books permanently chapter-less, and the book
-        // guard then blocked re-seeding on every later launch.
-        val chaptersMissing = existing != null && chapterDao.getChapterCount("gutenberg_1342") == 0
-        if (existing == null || chaptersMissing) {
-            // One transaction, so the seed is all-or-nothing.
-            database.withTransaction {
-                if (existing == null) {
-                    bookDao.insertBooks(PreloadedBooks.defaultBooks)
+        // Gate on every preloaded book, not a single sentinel: a partial seeding
+        // or a v4→v5 migration can leave individual books missing or chapter-less
+        // while the sentinel looks fine, and each must be seeded/repaired.
+        // Pride & Prejudice has two real chapters; a lone chapter is the legacy
+        // fullText blob MIGRATION_4_5 copied, which means every preloaded book
+        // carries legacy text and needs its chapter set replaced.
+        val sentinelMissing = bookDao.getBookMetaById(PRELOADED_SENTINEL) == null
+        val legacyMigration = chapterDao.getChapterCount(PRELOADED_SENTINEL) == 1
+        val booksToRepair = PreloadedBooks.preloaded.filter { preloaded ->
+            val id = preloaded.book.id
+            legacyMigration ||
+                bookDao.getBookMetaById(id) == null ||
+                chapterDao.getChapterCount(id) == 0
+        }
+        if (booksToRepair.isEmpty()) return
+
+        // One transaction, so the seed/repair is all-or-nothing.
+        database.withTransaction {
+            booksToRepair.forEach { preloaded ->
+                val id = preloaded.book.id
+                if (bookDao.getBookMetaById(id) == null) {
+                    bookDao.insertBook(preloaded.book)
                 }
-                if (chaptersMissing || existing == null) {
-                    PreloadedBooks.preloaded.forEach { preloaded ->
-                        chapterDao.insertChapters(preloaded.chapters)
-                    }
-                }
-                if (existing == null) {
-                    readingProgressDao.saveProgress(
-                        ReadingProgressEntity(
-                            bookId = "gutenberg_1342",
-                            scrollOffset = 0,
-                            currentChapter = 1,
-                            totalLength = 1000,
-                            percentCompleted = 5f,
-                            lastReadTimestamp = System.currentTimeMillis()
-                        )
+                // Drop legacy/partial chapters so the real set is not duplicated.
+                chapterDao.deleteChaptersForBook(id)
+                chapterDao.insertChapters(preloaded.chapters)
+            }
+            if (sentinelMissing) {
+                readingProgressDao.saveProgress(
+                    ReadingProgressEntity(
+                        bookId = PRELOADED_SENTINEL,
+                        scrollOffset = 0,
+                        currentChapter = 1,
+                        totalLength = 1000,
+                        percentCompleted = 5f,
+                        lastReadTimestamp = System.currentTimeMillis()
                     )
-                }
+                )
             }
         }
     }
@@ -114,21 +123,21 @@ class BookRepositoryImpl(
 
     override suspend fun deleteBook(id: String) {
         val book = bookDao.getBookMetaById(id)
+        // Remove dependent rows and the book in one transaction, and let any
+        // failure propagate so a partial cleanup never orphans rows.
+        database.withTransaction {
+            readingProgressDao.deleteProgressForBook(id)
+            bookmarkDao.deleteBookmarksForBook(id)
+            highlightDao.deleteHighlightsForBook(id)
+            chapterDao.deleteChaptersForBook(id)
+            bookDao.deleteBook(id)
+        }
+        // Delete files only after the DB deletion commits: deleting them first
+        // left a saved book whose content file was already gone on a crash.
         if (book?.filePath != null) {
             runCatching { java.io.File(book.filePath).delete() }
         }
         deleteDerivedCover(book?.coverUrl)
-        // Remove dependent rows first: deleting the book alone would leave
-        // orphaned reading progress, chapters, and bookmarks behind forever.
-        runCatching { readingProgressDao.deleteProgressForBook(id) }
-            .onFailure { android.util.Log.w("BookRepository", "Failed to clear progress for $id", it) }
-        runCatching { bookmarkDao.deleteBookmarksForBook(id) }
-            .onFailure { android.util.Log.w("BookRepository", "Failed to clear bookmarks for $id", it) }
-        runCatching { highlightDao.deleteHighlightsForBook(id) }
-            .onFailure { android.util.Log.w("BookRepository", "Failed to clear highlights for $id", it) }
-        runCatching { chapterDao.deleteChaptersForBook(id) }
-            .onFailure { android.util.Log.w("BookRepository", "Failed to clear chapters for $id", it) }
-        bookDao.deleteBook(id)
     }
 
     /**
@@ -311,3 +320,6 @@ fun Highlight.toEntity() = HighlightEntity(
 
 /** Suffix of the app-private cover sidecar written by the EPUB/FB2 parsers. */
 private const val COVER_SIDECAR_SUFFIX = "_cover.jpg"
+
+/** Sentinel preloaded book used for the legacy-migration and progress-seed checks. */
+private const val PRELOADED_SENTINEL = "gutenberg_1342"

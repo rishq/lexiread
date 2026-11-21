@@ -90,7 +90,10 @@ class LibraryViewModel(
 
     fun deleteBook(bookId: String) {
         viewModelScope.launch {
-            bookRepository.deleteBook(bookId)
+            // deleteBook rolls back on DB failure and now propagates it; keep a
+            // transient failure from crashing the app via an uncaught coroutine.
+            runCatching { bookRepository.deleteBook(bookId) }
+                .onFailure { android.util.Log.w("LibraryViewModel", "Failed to delete $bookId", it) }
         }
     }
 

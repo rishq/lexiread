@@ -65,7 +65,22 @@ class TranslationRepositoryImpl(
             null
         }
         if (!aiTranslated.isNullOrBlank()) {
-            return Result.success(cacheAndReturn(cacheKey, cleanText, aiTranslated.trim(), targetLang))
+            val translated = aiTranslated.trim()
+            // A cache-write failure must not escape translateText (which would
+            // leave the caller's loading state stuck) nor discard a valid result.
+            return try {
+                Result.success(cacheAndReturn(cacheKey, cleanText, translated, targetLang))
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Result.success(
+                    TranslationResult(
+                        sourceText = cleanText,
+                        translatedText = translated,
+                        targetLang = targetLang
+                    )
+                )
+            }
         }
 
         // 3. Fallback: MyMemory API

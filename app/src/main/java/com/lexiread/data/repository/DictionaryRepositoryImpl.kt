@@ -58,24 +58,30 @@ class DictionaryRepositoryImpl(
                 )
             } ?: emptyList()
 
-            val entry = DictionaryEntry(
+            DictionaryEntry(
                 word = cleanWord,
                 phonetics = phoneticsText,
                 audioUrl = audioUrl,
                 meanings = meanings
             )
+        }
 
-            // Cache in Room
-            val jsonStr = adapter.toJson(entry)
-            cacheDao.insertDictionaryCache(
-                DictionaryCacheEntity(
-                    word = cleanWord,
-                    jsonResult = jsonStr,
-                    timestamp = System.currentTimeMillis()
+        // Cache in Room outside the fetch guard: a cache-write failure must not
+        // turn a successfully fetched definition into an "offline" stub.
+        result.getOrNull()?.let { entry ->
+            try {
+                cacheDao.insertDictionaryCache(
+                    DictionaryCacheEntity(
+                        word = cleanWord,
+                        jsonResult = adapter.toJson(entry),
+                        timestamp = System.currentTimeMillis()
+                    )
                 )
-            )
-
-            entry
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // The fetched definition is still valid even if caching fails.
+            }
         }
 
         // A word that genuinely has no entry must surface as "not found";

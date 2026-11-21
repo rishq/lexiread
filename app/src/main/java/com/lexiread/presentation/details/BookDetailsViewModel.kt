@@ -10,7 +10,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class BookDetailsUiState(
     val book: Book? = null,
@@ -25,6 +28,9 @@ class BookDetailsViewModel(
 
     private val _uiState = MutableStateFlow(BookDetailsUiState(isLoading = true))
     val uiState: StateFlow<BookDetailsUiState> = _uiState.asStateFlow()
+
+    // Serializes toggles so a second tap reads the state written by the first.
+    private val favoriteMutex = Mutex()
 
     init {
         loadBookDetails()
@@ -56,12 +62,20 @@ class BookDetailsViewModel(
     }
 
     fun toggleFavorite() {
-        val current = _uiState.value.book ?: return
         viewModelScope.launch {
-            runCatching { bookRepository.toggleFavorite(current.id, !current.isFavorite) }
-                .onSuccess {
-                    _uiState.value = _uiState.value.copy(book = current.copy(isFavorite = !current.isFavorite))
-                }
+            favoriteMutex.withLock {
+                val current = _uiState.value.book ?: return@withLock
+                val newFavorite = !current.isFavorite
+                runCatching { bookRepository.toggleFavorite(current.id, newFavorite) }
+                    .onSuccess {
+                        _uiState.update { state ->
+                            val book = state.book
+                            if (book != null && book.id == current.id) {
+                                state.copy(book = book.copy(isFavorite = newFavorite))
+                            } else state
+                        }
+                    }
+            }
         }
     }
 

@@ -154,20 +154,27 @@ class AiRepositoryImpl(
                         exampleSentences = examples
                     )
 
-                    // Cache in Room
-                    cacheDao.insertAiExplanationCache(
-                        AiExplanationEntity(
-                            cacheKey = cacheKey,
-                            sourceText = cleanText,
-                            contextSentence = cleanContext,
-                            simpleEnglish = simpleEng,
-                            russianTranslation = ruTrans,
-                            whyUsed = why,
-                            grammarExplanation = grammar,
-                            examplesJson = org.json.JSONArray(examples).toString(),
-                            timestamp = System.currentTimeMillis()
+                    // Cache in Room, but a cache-write failure must not discard
+                    // an explanation that was already generated successfully.
+                    try {
+                        cacheDao.insertAiExplanationCache(
+                            AiExplanationEntity(
+                                cacheKey = cacheKey,
+                                sourceText = cleanText,
+                                contextSentence = cleanContext,
+                                simpleEnglish = simpleEng,
+                                russianTranslation = ruTrans,
+                                whyUsed = why,
+                                grammarExplanation = grammar,
+                                examplesJson = org.json.JSONArray(examples).toString(),
+                                timestamp = System.currentTimeMillis()
+                            )
                         )
-                    )
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to cache AI explanation", e)
+                    }
 
                     return Result.success(explanation)
                 }
