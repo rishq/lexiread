@@ -76,7 +76,6 @@ class CatalogLivePayloadTest {
         override fun getHighlights(bookId: String): Flow<List<Highlight>> = emptyFlow()
         override suspend fun addHighlight(highlight: Highlight) = Unit
         override suspend fun deleteHighlight(id: Long) = Unit
-        override suspend fun initializePreloadedBooks() = Unit
     }
 
     private class NoopSource(override val idPrefix: String) : BookSource {

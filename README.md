@@ -1,12 +1,12 @@
 # LexiRead
 
-![LexiRead — e-book reader and language learning](assets/cover.svg)
+![LexiRead — e-book reader with translation](assets/cover.svg)
 
-LexiRead is an Android application designed for reading e-books and improving language comprehension with built-in translation, dictionary lookup, space-repetition vocabulary learning, and AI-powered text explanations.
+LexiRead is an Android application designed for reading e-books and improving language comprehension with built-in translation, dictionary lookup, and AI-powered text explanations.
 
 ## Overview
 
-LexiRead combines an e-book reader with language-learning utilities. Readers can import personal books in multiple formats or browse curated public-domain classics, tap any word to view definitions and contextual translations, and save vocabulary for review.
+LexiRead combines an e-book reader with language utilities. Readers can import personal books in multiple formats or browse curated public-domain classics, and tap any word to view definitions and contextual translations.
 
 ## Key Features
 
@@ -22,9 +22,6 @@ LexiRead combines an e-book reader with language-learning utilities. Readers can
   Cloud Lookups` toggles them anytime. API keys are stored encrypted on-device.
 - **Text-to-Speech (TTS)**: Built-in audio pronunciation for words and context sentences.
 - **AI Tutor & Context Analysis**: Powered by Gemini API to provide simplified explanations, grammar breakdowns, and contextual context for challenging sentences or phrases.
-- **Vocabulary Trainer**:
-  - Saved word repository categorized by source book and date.
-  - Interactive flashcard review with flashcard flip animations and mastery status tracking.
 - **Library & Progress Tracking**:
   - Filter books by Reading, Favorites, Saved, and Finished.
   - Reading progress, chapter position, and percent completed persist automatically across sessions.
@@ -54,7 +51,7 @@ LexiRead combines an e-book reader with language-learning utilities. Readers can
 - `app/src/main/java/com/lexiread/core/`: Reader parsers, pagination engine, user preferences, and utilities (TTS, helpers).
 - `app/src/main/java/com/lexiread/data/`: Room database, DAOs, entities, and repository implementations.
 - `app/src/main/java/com/lexiread/domain/`: Domain models and repository interface declarations.
-- `app/src/main/java/com/lexiread/presentation/`: Composables and ViewModels for Library, Reader, Explore, Vocabulary, and Settings screens.
+- `app/src/main/java/com/lexiread/presentation/`: Composables and ViewModels for Library, Reader, Explore, and Settings screens.
 
 ## CI/CD Pipeline (GitHub Actions)
 

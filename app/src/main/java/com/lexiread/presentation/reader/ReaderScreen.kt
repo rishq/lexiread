@@ -489,7 +489,6 @@ fun ReaderScreen(
                     selectedState = selected,
                     onSpeak = { text -> viewModel.speakWord(text) },
                     onAiExplainClick = { viewModel.requestAiExplanation() },
-                    onSaveWordClick = { viewModel.saveWordToVocabulary() },
                     onDismiss = { viewModel.dismissWordSelection() }
                 )
             }

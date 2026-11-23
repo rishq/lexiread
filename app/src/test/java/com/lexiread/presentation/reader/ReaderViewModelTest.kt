@@ -12,17 +12,14 @@ import com.lexiread.domain.model.BookChapter
 import com.lexiread.domain.model.Bookmark
 import com.lexiread.domain.model.DictionaryEntry
 import com.lexiread.domain.model.Highlight
-import com.lexiread.domain.model.LearningStatus
 import com.lexiread.domain.model.ReaderPage
 import com.lexiread.domain.model.ReaderSettings
 import com.lexiread.domain.model.ReadingProgress
-import com.lexiread.domain.model.SavedWord
 import com.lexiread.domain.model.TranslationResult
 import com.lexiread.domain.repository.AiRepository
 import com.lexiread.domain.repository.BookRepository
 import com.lexiread.domain.repository.DictionaryRepository
 import com.lexiread.domain.repository.TranslationRepository
-import com.lexiread.domain.repository.VocabularyRepository
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -180,7 +177,6 @@ class ReaderViewModelTest {
         override fun getHighlights(bookId: String) = flowOf(emptyList<Highlight>())
         override suspend fun addHighlight(highlight: Highlight) {}
         override suspend fun deleteHighlight(id: Long) {}
-        override suspend fun initializePreloadedBooks() = Unit
     }
 
     private class FakeDictRepo : DictionaryRepository {
@@ -191,15 +187,6 @@ class ReaderViewModelTest {
     private class FakeTransRepo : TranslationRepository {
         override suspend fun translateText(text: String, targetLang: String): Result<TranslationResult> =
             Result.success(TranslationResult(sourceText = text, translatedText = "перевод"))
-    }
-
-    private class FakeVocabRepo : VocabularyRepository {
-        override fun getSavedWords() = flowOf(emptyList<SavedWord>())
-        override suspend fun isWordSaved(word: String) = false
-        override suspend fun saveWord(savedWord: SavedWord) {}
-        override suspend fun updateStatus(id: Int, status: LearningStatus) {}
-        override suspend fun reviewWord(id: Int, rating: com.lexiread.core.util.SrsScheduler.ReviewRating) {}
-        override suspend fun deleteWord(id: Int) {}
     }
 
     private class FakeAiRepo : AiRepository {
@@ -234,7 +221,6 @@ class ReaderViewModelTest {
         bookRepository = repo,
         dictionaryRepository = FakeDictRepo(),
         translationRepository = FakeTransRepo(),
-        vocabularyRepository = FakeVocabRepo(),
         aiRepository = FakeAiRepo(),
         preferencesManager = UserPreferencesManager(context),
         ttsHelper = TTSHelper(context),

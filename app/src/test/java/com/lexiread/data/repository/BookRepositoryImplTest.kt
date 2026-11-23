@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.lexiread.data.local.AppDatabase
-import com.lexiread.data.local.PreloadedBooks
 import com.lexiread.data.local.dao.CacheDao
 import com.lexiread.data.local.dao.HighlightDao
 import com.lexiread.data.local.entity.AiExplanationEntity
@@ -85,75 +84,6 @@ class BookRepositoryImplTest {
         isImported = false,
         addedTimestamp = 1L
     )
-
-    // --- BUG-1 / BUG-10: preloaded seeding gate -------------------------------
-
-    @Test
-    fun `fresh install seeds every preloaded book and its chapters`() = runBlocking {
-        repository().initializePreloadedBooks()
-
-        assertEquals(PreloadedBooks.preloaded.size, db.bookDao().getAllBooks().first().size)
-        PreloadedBooks.preloaded.forEach { preloaded ->
-            assertEquals(
-                "chapters for ${preloaded.book.id}",
-                preloaded.chapters.size,
-                db.chapterDao().getChapterCount(preloaded.book.id)
-            )
-        }
-        // Progress is seeded once for the sentinel on a fresh install.
-        assertTrue(db.readingProgressDao().getLatestProgress().first() != null)
-    }
-
-    @Test
-    fun `partial seeding repairs chapterless books without duplicating healthy ones`() = runBlocking {
-        // Simulate a crash mid-seed: all book rows present, only the sentinel
-        // has chapters, and it was given a user favorite flag worth preserving.
-        PreloadedBooks.preloaded.forEach { db.bookDao().insertBook(it.book) }
-        val sentinel = PreloadedBooks.preloaded.first()
-        db.chapterDao().insertChapters(sentinel.chapters)
-        db.bookDao().setFavorite(sentinel.book.id, true)
-
-        repository().initializePreloadedBooks()
-
-        // Healthy sentinel: chapters not duplicated, user state preserved.
-        assertEquals(2, db.chapterDao().getChapterCount(sentinel.book.id))
-        assertTrue(db.bookDao().getBookMetaById(sentinel.book.id)!!.isFavorite)
-        // The three chapter-less books are repaired.
-        PreloadedBooks.preloaded.drop(1).forEach { preloaded ->
-            assertEquals(
-                "chapters for ${preloaded.book.id}",
-                preloaded.chapters.size,
-                db.chapterDao().getChapterCount(preloaded.book.id)
-            )
-        }
-    }
-
-    @Test
-    fun `legacy single chapter is replaced with current preloaded chapters`() = runBlocking {
-        // MIGRATION_4_5 left every preloaded book with one inline fullText chapter.
-        PreloadedBooks.preloaded.forEach { preloaded ->
-            db.bookDao().insertBook(preloaded.book)
-            db.chapterDao().insertChapters(
-                listOf(
-                    ChapterEntity(
-                        bookId = preloaded.book.id,
-                        title = preloaded.book.title,
-                        chapterIndex = 0,
-                        content = "legacy fullText blob"
-                    )
-                )
-            )
-        }
-
-        repository().initializePreloadedBooks()
-
-        PreloadedBooks.preloaded.forEach { preloaded ->
-            val chapters = db.chapterDao().getChaptersForBook(preloaded.book.id)
-            assertEquals(preloaded.chapters.size, chapters.size)
-            assertEquals(preloaded.chapters.first().title, chapters.first().title)
-            assertFalse(chapters.any { it.content == "legacy fullText blob" })
-        }
-    }
 
     // --- BUG-11: deleteBook transaction --------------------------------------
 

@@ -11,7 +11,6 @@ import com.lexiread.data.local.dao.CacheDao
 import com.lexiread.data.local.dao.ChapterDao
 import com.lexiread.data.local.dao.HighlightDao
 import com.lexiread.data.local.dao.ReadingProgressDao
-import com.lexiread.data.local.dao.SavedWordDao
 import com.lexiread.data.local.entity.AiExplanationEntity
 import com.lexiread.data.local.entity.BookEntity
 import com.lexiread.data.local.entity.BookmarkEntity
@@ -20,7 +19,6 @@ import com.lexiread.data.local.entity.ChapterEntity
 import com.lexiread.data.local.entity.DictionaryCacheEntity
 import com.lexiread.data.local.entity.HighlightEntity
 import com.lexiread.data.local.entity.ReadingProgressEntity
-import com.lexiread.data.local.entity.SavedWordEntity
 import com.lexiread.data.local.entity.TranslationCacheEntity
 
 @Database(
@@ -28,7 +26,6 @@ import com.lexiread.data.local.entity.TranslationCacheEntity
         BookEntity::class,
         ChapterEntity::class,
         ReadingProgressEntity::class,
-        SavedWordEntity::class,
         BookmarkEntity::class,
         DictionaryCacheEntity::class,
         TranslationCacheEntity::class,
@@ -36,14 +33,13 @@ import com.lexiread.data.local.entity.TranslationCacheEntity
         CatalogCacheEntity::class,
         HighlightEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun bookDao(): BookDao
     abstract fun chapterDao(): ChapterDao
     abstract fun readingProgressDao(): ReadingProgressDao
-    abstract fun savedWordDao(): SavedWordDao
     abstract fun bookmarkDao(): BookmarkDao
     abstract fun highlightDao(): HighlightDao
     abstract fun cacheDao(): CacheDao
@@ -104,10 +100,8 @@ abstract class AppDatabase : RoomDatabase() {
          *
          * Before dropping `fullText`, any non-null text is migrated into the
          * new `book_chapters` table as a single chapter so that user-imported
-         * books (EPUB, PDF, FB2, TXT) are not lost. Preloaded books that stored
-         * text inline are also migrated; [BookRepositoryImpl.initializePreloadedBooks]
-         * will skip re-inserting preloaded books because it checks for the
-         * existence of `gutenberg_1342` first.
+         * books (EPUB, PDF, FB2, TXT) are not lost. The bundled demo books that
+         * stored text inline are also migrated here; v8 removes them again.
          */
         val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -216,6 +210,23 @@ abstract class AppDatabase : RoomDatabase() {
                     "UPDATE `books` SET `isFavorite` = 0 " +
                         "WHERE `id` IN ('gutenberg_1342', 'gutenberg_1661')"
                 )
+            }
+        }
+
+        /**
+         * Drops the word-learning table and removes the bundled demo books from
+         * existing libraries; the app now starts with an empty library.
+         */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS `saved_words`")
+                listOf("gutenberg_1342", "gutenberg_11", "gutenberg_1661", "gutenberg_215").forEach { id ->
+                    db.execSQL("DELETE FROM `book_chapters` WHERE `bookId` = ?", arrayOf(id))
+                    db.execSQL("DELETE FROM `reading_progress` WHERE `bookId` = ?", arrayOf(id))
+                    db.execSQL("DELETE FROM `bookmarks` WHERE `bookId` = ?", arrayOf(id))
+                    db.execSQL("DELETE FROM `highlights` WHERE `bookId` = ?", arrayOf(id))
+                    db.execSQL("DELETE FROM `books` WHERE `id` = ?", arrayOf(id))
+                }
             }
         }
     }

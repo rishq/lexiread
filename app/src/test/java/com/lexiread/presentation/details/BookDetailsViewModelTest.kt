@@ -100,6 +100,5 @@ class BookDetailsViewModelTest {
         override fun getHighlights(bookId: String): Flow<List<Highlight>> = flowOf(emptyList())
         override suspend fun addHighlight(highlight: Highlight) = Unit
         override suspend fun deleteHighlight(id: Long) = Unit
-        override suspend fun initializePreloadedBooks() = Unit
     }
 }

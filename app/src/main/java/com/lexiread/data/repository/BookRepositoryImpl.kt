@@ -2,7 +2,6 @@
 
 import androidx.room.withTransaction
 import com.lexiread.core.util.runSuspendCatching
-import com.lexiread.data.local.PreloadedBooks
 import com.lexiread.data.local.dao.BookDao
 import com.lexiread.data.local.dao.BookmarkDao
 import com.lexiread.data.local.dao.ChapterDao
@@ -30,49 +29,6 @@ class BookRepositoryImpl(
     private val highlightDao: HighlightDao,
     private val sources: List<BookSource>
 ) : BookRepository {
-
-    override suspend fun initializePreloadedBooks() {
-        // Gate on every preloaded book, not a single sentinel: a partial seeding
-        // or a v4→v5 migration can leave individual books missing or chapter-less
-        // while the sentinel looks fine, and each must be seeded/repaired.
-        // Pride & Prejudice has two real chapters; a lone chapter is the legacy
-        // fullText blob MIGRATION_4_5 copied, which means every preloaded book
-        // carries legacy text and needs its chapter set replaced.
-        val sentinelMissing = bookDao.getBookMetaById(PRELOADED_SENTINEL) == null
-        val legacyMigration = chapterDao.getChapterCount(PRELOADED_SENTINEL) == 1
-        val booksToRepair = PreloadedBooks.preloaded.filter { preloaded ->
-            val id = preloaded.book.id
-            legacyMigration ||
-                bookDao.getBookMetaById(id) == null ||
-                chapterDao.getChapterCount(id) == 0
-        }
-        if (booksToRepair.isEmpty()) return
-
-        // One transaction, so the seed/repair is all-or-nothing.
-        database.withTransaction {
-            booksToRepair.forEach { preloaded ->
-                val id = preloaded.book.id
-                if (bookDao.getBookMetaById(id) == null) {
-                    bookDao.insertBook(preloaded.book)
-                }
-                // Drop legacy/partial chapters so the real set is not duplicated.
-                chapterDao.deleteChaptersForBook(id)
-                chapterDao.insertChapters(preloaded.chapters)
-            }
-            if (sentinelMissing) {
-                readingProgressDao.saveProgress(
-                    ReadingProgressEntity(
-                        bookId = PRELOADED_SENTINEL,
-                        scrollOffset = 0,
-                        currentChapter = 1,
-                        totalLength = 1000,
-                        percentCompleted = 5f,
-                        lastReadTimestamp = System.currentTimeMillis()
-                    )
-                )
-            }
-        }
-    }
 
     override fun getAllBooks(): Flow<List<Book>> {
         return bookDao.getAllBooks().map { entities -> entities.map { it.toDomain() } }
@@ -320,6 +276,3 @@ fun Highlight.toEntity() = HighlightEntity(
 
 /** Suffix of the app-private cover sidecar written by the EPUB/FB2 parsers. */
 private const val COVER_SIDECAR_SUFFIX = "_cover.jpg"
-
-/** Sentinel preloaded book used for the legacy-migration and progress-seed checks. */
-private const val PRELOADED_SENTINEL = "gutenberg_1342"

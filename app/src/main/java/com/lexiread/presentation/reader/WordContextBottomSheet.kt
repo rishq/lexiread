@@ -14,8 +14,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
@@ -28,7 +26,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -56,7 +53,6 @@ fun WordContextBottomSheet(
     selectedState: SelectedWordState,
     onSpeak: (String) -> Unit,
     onAiExplainClick: () -> Unit,
-    onSaveWordClick: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -225,7 +221,7 @@ fun WordContextBottomSheet(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Bottom Actions: AI Explain & Save Word
+            // Bottom Action: AI Explain
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -240,23 +236,6 @@ fun WordContextBottomSheet(
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                 ) {
                     Text("AI Explain", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                }
-
-                OutlinedButton(
-                    onClick = onSaveWordClick,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(48.dp)
-                        .testTag("save_word_button"),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(
-                        imageVector = if (selectedState.isWordSaved) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(if (selectedState.isWordSaved) "Saved" else "Save Word", fontSize = 14.sp)
                 }
             }
         }

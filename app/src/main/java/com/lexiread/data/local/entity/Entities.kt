@@ -72,31 +72,6 @@ data class ReadingProgressEntity(
 )
 
 @Entity(
-    tableName = "saved_words",
-    indices = [Index("word"), Index("nextReviewEpoch")]
-)
-data class SavedWordEntity(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val word: String,
-    val translation: String,
-    val definition: String,
-    val phonetics: String,
-    val partOfSpeech: String,
-    val example: String,
-    val sourceBookId: String,
-    val sourceBookTitle: String,
-    val sourceSentence: String,
-    val dateAdded: Long,
-    val learningStatus: String = "NEW",
-    // SM-2 spaced repetition fields
-    val srsReps: Int = 0,
-    val srsEase: Double = 2.5,
-    val srsIntervalDays: Int = 0,
-    val lastReviewEpoch: Long = 0,
-    val nextReviewEpoch: Long = 0
-)
-
-@Entity(
     tableName = "bookmarks",
     indices = [Index("bookId")]
 )

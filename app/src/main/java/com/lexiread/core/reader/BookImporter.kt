@@ -246,8 +246,8 @@ class BookImporter(
     }
 
     /**
-     * Returns chapters for a book. Tries the DB first (for imported/preloaded
-     * books), then falls back to parsing the file on disk.
+     * Returns chapters for a book. Tries the DB first (for imported books),
+     * then falls back to parsing the file on disk.
      *
      * Supports lazy loading: [limit] and [offset] allow fetching a window
      * of chapters instead of the entire book at once.
@@ -257,7 +257,7 @@ class BookImporter(
         limit: Int? = null,
         offset: Int = 0
     ): List<BookChapter> = withContext(Dispatchers.IO) {
-        // Try DB first (preloaded and imported books store chapters here).
+        // Try DB first (imported books store chapters here).
         if (chapterDao != null) {
             val dbChapters = if (limit != null) {
                 chapterDao.getChaptersRange(book.id, limit, offset)

@@ -19,13 +19,11 @@ import com.lexiread.domain.model.ReaderPage
 import com.lexiread.domain.model.ReaderSettings
 import com.lexiread.domain.model.ReaderThemeOption
 import com.lexiread.domain.model.ReadingProgress
-import com.lexiread.domain.model.SavedWord
 import com.lexiread.domain.model.TranslationResult
 import com.lexiread.domain.repository.AiRepository
 import com.lexiread.domain.repository.BookRepository
 import com.lexiread.domain.repository.DictionaryRepository
 import com.lexiread.domain.repository.TranslationRepository
-import com.lexiread.domain.repository.VocabularyRepository
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.CancellationException
@@ -50,7 +48,6 @@ data class SelectedWordState(
     val isLoadingDict: Boolean = false,
     val isLoadingTrans: Boolean = false,
     val isLoadingAi: Boolean = false,
-    val isWordSaved: Boolean = false,
     val translationError: String? = null,
     val aiError: String? = null,
     /**
@@ -110,7 +107,6 @@ class ReaderViewModel(
     private val bookRepository: BookRepository,
     private val dictionaryRepository: DictionaryRepository,
     private val translationRepository: TranslationRepository,
-    private val vocabularyRepository: VocabularyRepository,
     private val aiRepository: AiRepository,
     private val preferencesManager: UserPreferencesManager,
     private val ttsHelper: TTSHelper,
@@ -231,8 +227,8 @@ class ReaderViewModel(
             try {
                 _uiState.update { it.copy(isLoadingBook = true) }
                 val stored = bookRepository.getBookById(bookId)
-                // Preloaded books have no filePath but ship their chapters in
-                // the local DB — treat those as readable, no network needed.
+                // A book with chapters already stored locally is readable
+                // without a download, even if it has no file path.
                 val needsDownload = stored == null ||
                     (stored.filePath.isNullOrBlank() && bookImporter.getChapterCount(stored) == 0)
 
@@ -787,14 +783,12 @@ class ReaderViewModel(
 
         viewModelScope.launch {
             val transResult = translationRepository.translateText(cleanWord)
-            val isSaved = vocabularyRepository.isWordSaved(cleanWord)
             val current = _uiState.value.selectedWordState
             if (current?.word == cleanWord) {
                 _uiState.value = _uiState.value.copy(
                     selectedWordState = current.copy(
                         translation = transResult.getOrNull(),
                         isLoadingTrans = false,
-                        isWordSaved = isSaved,
                         // P2-8: user-friendly message, never raw exception text.
                         translationError = transResult.exceptionOrNull()?.let { err ->
                             UserErrorMessages.messageFor(err, "Translation is unavailable offline.")
@@ -839,34 +833,6 @@ class ReaderViewModel(
                             UserErrorMessages.messageFor(err, "AI explanation is unavailable.")
                         }
                     )
-                )
-            }
-        }
-    }
-
-    fun saveWordToVocabulary() {
-        val selected = _uiState.value.selectedWordState ?: return
-        val currentBook = _uiState.value.book
-
-        val savedWord = SavedWord(
-            word = selected.word,
-            translation = selected.translation?.translatedText ?: "Translation",
-            definition = selected.dictionaryEntry?.meanings?.firstOrNull()?.definitions?.firstOrNull() ?: "",
-            phonetics = selected.dictionaryEntry?.phonetics ?: "/${selected.word}/",
-            partOfSpeech = selected.dictionaryEntry?.meanings?.firstOrNull()?.partOfSpeech ?: "word",
-            example = selected.dictionaryEntry?.meanings?.firstOrNull()?.example ?: "",
-            sourceBookId = currentBook?.id ?: "",
-            sourceBookTitle = currentBook?.title ?: "",
-            sourceSentence = selected.contextSentence,
-            dateAdded = System.currentTimeMillis()
-        )
-
-        viewModelScope.launch {
-            vocabularyRepository.saveWord(savedWord)
-            val current = _uiState.value.selectedWordState
-            if (current?.word == selected.word) {
-                _uiState.value = _uiState.value.copy(
-                    selectedWordState = current.copy(isWordSaved = true)
                 )
             }
         }
@@ -996,7 +962,6 @@ class ReaderViewModel(
         private val bookRepository: BookRepository,
         private val dictionaryRepository: DictionaryRepository,
         private val translationRepository: TranslationRepository,
-        private val vocabularyRepository: VocabularyRepository,
         private val aiRepository: AiRepository,
         private val preferencesManager: UserPreferencesManager,
         private val ttsHelper: TTSHelper,
@@ -1010,7 +975,6 @@ class ReaderViewModel(
                 bookRepository,
                 dictionaryRepository,
                 translationRepository,
-                vocabularyRepository,
                 aiRepository,
                 preferencesManager,
                 ttsHelper,

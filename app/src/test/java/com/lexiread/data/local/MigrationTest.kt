@@ -236,4 +236,52 @@ class MigrationTest {
 
         v7.close()
     }
+
+    @Test
+    fun `migrate 7 to 8 removes bundled books and keeps user books`() {
+        helper.createDatabase(testDatabaseName, 7).use { db ->
+            listOf("gutenberg_1342", "gutenberg_11", "gutenberg_1661", "gutenberg_215", "my_book").forEach { id ->
+                db.execSQL(
+                    "INSERT INTO `books` (`id`, `title`, `author`, `coverUrl`, `description`," +
+                        " `filePath`, `format`, `language`, `subjects`, `isFavorite`, `isSaved`," +
+                        " `isFinished`, `isImported`, `addedTimestamp`)" +
+                        " VALUES (?, 'Title', 'Author', NULL, NULL, NULL," +
+                        " 'EPUB', 'en', '[]', 0, 1, 0, 0, 1)",
+                    arrayOf<Any?>(id)
+                )
+                db.execSQL(
+                    "INSERT INTO `book_chapters` (`bookId`, `title`, `content`, `chapterIndex`)" +
+                        " VALUES (?, 'Chapter', 'text', 0)",
+                    arrayOf<Any?>(id)
+                )
+                db.execSQL(
+                    "INSERT INTO `reading_progress` (`bookId`, `scrollOffset`, `currentChapter`," +
+                        " `currentPage`, `totalPagesInChapter`, `totalLength`, `percentCompleted`," +
+                        " `lastReadTimestamp`) VALUES (?, 0, 0, 0, 1, 10, 0.0, 1)",
+                    arrayOf<Any?>(id)
+                )
+            }
+        }
+
+        val v8 = helper.runMigrationsAndValidate(
+            testDatabaseName, 8, true, AppDatabase.MIGRATION_7_8
+        )
+
+        v8.query("SELECT `id` FROM `books`").use { cursor ->
+            val ids = mutableListOf<String>()
+            while (cursor.moveToNext()) ids += cursor.getString(0)
+            assertEquals(listOf("my_book"), ids)
+        }
+        listOf("book_chapters", "reading_progress").forEach { table ->
+            v8.query("SELECT COUNT(*) FROM `$table`").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(1, cursor.getInt(0))
+            }
+        }
+        v8.query("SELECT COUNT(*) FROM sqlite_master WHERE `name` = 'saved_words'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(0, cursor.getInt(0))
+        }
+        v8.close()
+    }
 }

@@ -1,14 +1,11 @@
 ﻿package com.lexiread.domain.repository
 
-import com.lexiread.core.util.SrsScheduler
 import com.lexiread.domain.model.AiExplanation
 import com.lexiread.domain.model.Book
 import com.lexiread.domain.model.Bookmark
 import com.lexiread.domain.model.DictionaryEntry
 import com.lexiread.domain.model.Highlight
-import com.lexiread.domain.model.LearningStatus
 import com.lexiread.domain.model.ReadingProgress
-import com.lexiread.domain.model.SavedWord
 import com.lexiread.domain.model.TranslationResult
 import kotlinx.coroutines.flow.Flow
 
@@ -33,8 +30,6 @@ interface BookRepository {
     fun getHighlights(bookId: String): Flow<List<Highlight>>
     suspend fun addHighlight(highlight: Highlight)
     suspend fun deleteHighlight(id: Long)
-    /** P2-7: seed preloaded books; part of the contract so DI never downcasts. */
-    suspend fun initializePreloadedBooks()
 }
 
 interface DictionaryRepository {
@@ -43,15 +38,6 @@ interface DictionaryRepository {
 
 interface TranslationRepository {
     suspend fun translateText(text: String, targetLang: String = "ru"): Result<TranslationResult>
-}
-
-interface VocabularyRepository {
-    fun getSavedWords(): Flow<List<SavedWord>>
-    suspend fun isWordSaved(word: String): Boolean
-    suspend fun saveWord(savedWord: SavedWord)
-    suspend fun updateStatus(id: Int, status: LearningStatus)
-    suspend fun reviewWord(id: Int, rating: SrsScheduler.ReviewRating)
-    suspend fun deleteWord(id: Int)
 }
 
 interface AiRepository {

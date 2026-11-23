@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import com.lexiread.domain.model.Book
 import com.lexiread.domain.model.ReadingProgress
 import com.lexiread.domain.repository.BookRepository
-import com.lexiread.domain.repository.VocabularyRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -17,35 +16,28 @@ data class HomeUiState(
     val continueReadingBook: Book? = null,
     val latestProgress: ReadingProgress? = null,
     val recentBooks: List<Book> = emptyList(),
-    val recommendedBooks: List<Book> = emptyList(),
-    val savedWordsCount: Int = 0,
-    val knownWordsCount: Int = 0
+    val recommendedBooks: List<Book> = emptyList()
 )
 
 class HomeViewModel(
-    private val bookRepository: BookRepository,
-    private val vocabularyRepository: VocabularyRepository
+    private val bookRepository: BookRepository
 ) : ViewModel() {
 
     val uiState: StateFlow<HomeUiState> = combine(
         bookRepository.getAllBooks(),
-        bookRepository.getLatestProgress(),
-        vocabularyRepository.getSavedWords()
-    ) { allBooks, progress, savedWords ->
+        bookRepository.getLatestProgress()
+    ) { allBooks, progress ->
         val continueBook = allBooks.find { it.id == progress?.bookId } ?: allBooks.firstOrNull()
         // Only reuse the progress if it actually belongs to the highlighted book,
         // otherwise the card would show another book's percentage.
         val matchedProgress = progress?.takeIf { it.bookId == continueBook?.id }
         val recs = allBooks.filter { it.id != continueBook?.id }
-        val known = savedWords.count { it.learningStatus == com.lexiread.domain.model.LearningStatus.KNOWN }
 
         HomeUiState(
             continueReadingBook = continueBook,
             latestProgress = matchedProgress,
             recentBooks = allBooks.take(5),
-            recommendedBooks = recs,
-            savedWordsCount = savedWords.size,
-            knownWordsCount = known
+            recommendedBooks = recs
         )
     }.stateIn(
         scope = viewModelScope,
@@ -60,12 +52,11 @@ class HomeViewModel(
     }
 
     class Factory(
-        private val bookRepository: BookRepository,
-        private val vocabularyRepository: VocabularyRepository
+        private val bookRepository: BookRepository
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return HomeViewModel(bookRepository, vocabularyRepository) as T
+            return HomeViewModel(bookRepository) as T
         }
     }
 }

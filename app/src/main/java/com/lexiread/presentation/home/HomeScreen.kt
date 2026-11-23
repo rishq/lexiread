@@ -20,7 +20,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
@@ -32,7 +31,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -72,14 +70,6 @@ fun HomeScreen(
         // App Header
         item {
             HeaderSection(onSearchClick = onSearchClick)
-        }
-
-        // Stats Banner
-        item {
-            StatsSection(
-                savedWordsCount = state.savedWordsCount,
-                knownWordsCount = state.knownWordsCount
-            )
         }
 
         // Continue Reading Hero Card
@@ -192,68 +182,6 @@ private fun HeaderSection(onSearchClick: () -> Unit) {
                 contentDescription = "Search Books",
                 tint = MaterialTheme.colorScheme.primary
             )
-        }
-    }
-}
-
-@Composable
-private fun StatsSection(savedWordsCount: Int, knownWordsCount: Int) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 8.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-        ),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceAround,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Filled.Bookmark,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                    Text(
-                        text = "$savedWordsCount Words",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                    Text(
-                        text = "Saved in Vocabulary",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            Surface(
-                modifier = Modifier
-                    .width(1.dp)
-                    .height(36.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
-            ) {}
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column {
-                    Text(
-                        text = "$knownWordsCount Mastered",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                    Text(
-                        text = "Known Vocabulary",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
         }
     }
 }

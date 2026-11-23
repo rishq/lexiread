@@ -39,8 +39,6 @@ import com.lexiread.presentation.catalog.CatalogScreen
 import com.lexiread.presentation.catalog.CatalogViewModel
 import com.lexiread.presentation.settings.SettingsScreen
 import com.lexiread.presentation.settings.SettingsViewModel
-import com.lexiread.presentation.vocabulary.VocabularyScreen
-import com.lexiread.presentation.vocabulary.VocabularyViewModel
 import com.lexiread.ui.theme.LexiReadTheme
 
 class MainActivity : ComponentActivity() {
@@ -148,7 +146,7 @@ fun LexiReadApp(container: AppContainer, onSetVolumeKeyListener: (((Int) -> Bool
     ) {
       composable(Screen.Home.route) {
         val homeViewModel: HomeViewModel = viewModel(
-          factory = HomeViewModel.Factory(container.bookRepository, container.vocabularyRepository)
+          factory = HomeViewModel.Factory(container.bookRepository)
         )
         HomeScreen(
           viewModel = homeViewModel,
@@ -192,13 +190,6 @@ fun LexiReadApp(container: AppContainer, onSetVolumeKeyListener: (((Int) -> Bool
         )
       }
 
-      composable(Screen.Vocabulary.route) {
-        val vocabularyViewModel: VocabularyViewModel = viewModel(
-          factory = VocabularyViewModel.Factory(container.vocabularyRepository, container.ttsHelper)
-        )
-        VocabularyScreen(viewModel = vocabularyViewModel)
-      }
-
       composable(Screen.Settings.route) {
         val settingsViewModel: SettingsViewModel = viewModel(
           factory = SettingsViewModel.Factory(container.userPreferencesManager)
@@ -232,7 +223,6 @@ fun LexiReadApp(container: AppContainer, onSetVolumeKeyListener: (((Int) -> Bool
             bookRepository = container.bookRepository,
             dictionaryRepository = container.dictionaryRepository,
             translationRepository = container.translationRepository,
-            vocabularyRepository = container.vocabularyRepository,
             aiRepository = container.aiRepository,
             preferencesManager = container.userPreferencesManager,
             ttsHelper = container.ttsHelper,

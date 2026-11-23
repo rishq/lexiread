@@ -12,7 +12,6 @@ import com.lexiread.data.local.entity.ChapterEntity
 import com.lexiread.data.local.entity.DictionaryCacheEntity
 import com.lexiread.data.local.entity.HighlightEntity
 import com.lexiread.data.local.entity.ReadingProgressEntity
-import com.lexiread.data.local.entity.SavedWordEntity
 import com.lexiread.data.local.entity.TranslationCacheEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -135,39 +134,6 @@ interface ReadingProgressDao {
 
     @Query("DELETE FROM reading_progress WHERE bookId = :bookId")
     suspend fun deleteProgressForBook(bookId: String)
-}
-
-@Dao
-interface SavedWordDao {
-    @Query("SELECT * FROM saved_words ORDER BY dateAdded DESC")
-    fun getAllSavedWords(): Flow<List<SavedWordEntity>>
-
-    @Query("SELECT * FROM saved_words WHERE word = :word LIMIT 1")
-    suspend fun getWordByText(word: String): SavedWordEntity?
-
-    @Query("SELECT * FROM saved_words WHERE id = :id LIMIT 1")
-    suspend fun getWordById(id: Int): SavedWordEntity?
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertWord(word: SavedWordEntity)
-
-    @Query("UPDATE saved_words SET learningStatus = :status WHERE id = :id")
-    suspend fun updateStatus(id: Int, status: String)
-
-    @Query("""
-        UPDATE saved_words
-        SET srsReps = :reps, srsEase = :ease, srsIntervalDays = :intervalDays,
-            lastReviewEpoch = :lastReview, nextReviewEpoch = :nextReview,
-            learningStatus = :status
-        WHERE id = :id
-    """)
-    suspend fun updateSrs(
-        id: Int, reps: Int, ease: Double, intervalDays: Int,
-        lastReview: Long, nextReview: Long, status: String
-    )
-
-    @Query("DELETE FROM saved_words WHERE id = :id")
-    suspend fun deleteWord(id: Int)
 }
 
 @Dao

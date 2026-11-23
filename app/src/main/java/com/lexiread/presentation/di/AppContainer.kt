@@ -22,14 +22,12 @@ import com.lexiread.data.repository.AiRepositoryImpl
 import com.lexiread.data.repository.BookRepositoryImpl
 import com.lexiread.data.repository.DictionaryRepositoryImpl
 import com.lexiread.data.repository.TranslationRepositoryImpl
-import com.lexiread.data.repository.VocabularyRepositoryImpl
 import com.lexiread.domain.repository.AiRepository
 import com.lexiread.domain.repository.BookRepository
 import com.lexiread.domain.repository.BookSource
 import com.lexiread.domain.repository.BooksRepository
 import com.lexiread.domain.repository.DictionaryRepository
 import com.lexiread.domain.repository.TranslationRepository
-import com.lexiread.domain.repository.VocabularyRepository
 import com.lexiread.domain.usecase.GetBooksByCategoryUseCase
 import com.lexiread.domain.usecase.GetPopularBooksUseCase
 import com.lexiread.domain.usecase.OpenBookForReadingUseCase
@@ -55,7 +53,8 @@ class AppContainer(private val context: Context) {
             AppDatabase.MIGRATION_3_4,
             AppDatabase.MIGRATION_4_5,
             AppDatabase.MIGRATION_5_6,
-            AppDatabase.MIGRATION_6_7
+            AppDatabase.MIGRATION_6_7,
+            AppDatabase.MIGRATION_7_8
         )
             .build()
     }
@@ -166,12 +165,6 @@ class AppContainer(private val context: Context) {
         )
     }
 
-    val vocabularyRepository: VocabularyRepository by lazy {
-        VocabularyRepositoryImpl(
-            savedWordDao = database.savedWordDao()
-        )
-    }
-
     private val aiProviderConfig: suspend () -> Pair<String, String> = {
         val prefs = userPreferencesManager
         val provider = prefs.aiProvider.first()
@@ -205,12 +198,6 @@ class AppContainer(private val context: Context) {
             // Stale catalogue pages still serve as offline fallback, but they
             // must not accumulate forever.
             runCatching { database.catalogCacheDao().deleteExpired(System.currentTimeMillis() - CACHE_TTL_MS) }
-        }
-        applicationScope.launch {
-            // P2-7: contract method — no downcast to impl, no silent swallow:
-            // seed failure is logged so a chapter-less first launch is visible.
-            runCatching { bookRepository.initializePreloadedBooks() }
-                .onFailure { android.util.Log.w("AppContainer", "Preload seed failed", it) }
         }
     }
 
